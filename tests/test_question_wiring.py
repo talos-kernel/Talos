@@ -240,14 +240,15 @@ def test_yes_does_not_answer_a_question(tmp_path):
 
 
 def test_a_number_grants_no_approval(tmp_path):
-    conductor, _desk, sent, _structured = _build(tmp_path, AskThenAnswer())
+    conductor, _desk, _sent, structured = _build(tmp_path, AskThenAnswer())
     request = ToolRequest("write_file", OWNER, {"path": str(tmp_path / "x"), "content": "y"})
     conductor.approvals.park(CHAT, request, "prompt", principal=OWNER)
 
     assert conductor.handle(msg(1, "2")) is True
 
     assert conductor.approvals.get(CHAT) is not None, "eine Zahl hat die Freigabe verbraucht"
-    assert "nur ja, immer oder nein" in sent[-1][1]
+    assert "nur ja, immer oder nein" in structured[-1].text
+    assert structured[-1].markdown is False
     assert not (tmp_path / "x").exists()
 
 

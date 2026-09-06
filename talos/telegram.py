@@ -850,20 +850,20 @@ class TelegramActivity:
     def _mission(self, now: float, elapsed: float, *, final: bool, footer: str) -> str:
         """A measured timeline: a finished turn never claims a worker job is done."""
         if self._fatal:
-            glyph, state = self._style.fail, "STOPPED"
+            glyph, state = self._style.fail, "Stopped"
         elif self._waiting:
-            glyph, state = self._style.gate, "NEEDS YOUR APPROVAL"
+            glyph, state = self._style.gate, "Needs your approval"
         elif final:
-            glyph, state = ("⚠️", "TURN FINISHED WITH ISSUES") if self._issues else ("🏁", "TURN FINISHED")
+            glyph, state = ("⚠️", "Finished with issues") if self._issues else ("🏁", "Turn finished")
         else:
-            glyph, state = self._style.talos, "WORKING"
+            glyph, state = self._style.talos, "Working"
         seconds = max(0, int(elapsed))
         duration = f"{seconds // 60}m {seconds % 60:02d}s" if seconds >= 60 else f"{seconds}s"
         calls = f"{self._tool_calls} tool call{'s' if self._tool_calls != 1 else ''}"
         parts = [f"{glyph} {_redact(self._name)[:60]} · {state}", f"⏱ {duration}  ·  {calls}"]
         if not final and self._step:
-            # max_steps is a safety budget, never a progress percentage or ETA.
-            parts.append(f"Step {self._step}" + (f"  ·  limit {self._max_steps}" if self._max_steps else ""))
+            # The safety budget is neither task size nor a useful completion estimate.
+            parts[-1] += f"  ·  Step {self._step}"
         parts.append("")
         if self._dropped:
             parts.append(f"↥ {self._dropped} earlier events · /log for the full record")
@@ -873,14 +873,19 @@ class TelegramActivity:
         if final and footer:
             parts.append(f"\n{_redact(footer)}")
         if not final:
-            parts.append("\n/stop to interrupt  ·  /log for receipts")
+            parts.append("\n/stop · interrupt  /log · details")
         return "\n".join(parts)
 
     def _format(self, text: str) -> str:
         if self._style is not EXPRESSIVE:
             return text
-        head, separator, body = text.partition("\n")
-        return f"<b>{html.escape(head)}</b>{separator}{html.escape(body)}"
+        lines = text.split("\n")
+        lines[0] = f"<b>{html.escape(lines[0])}</b>"
+        for index in range(1, len(lines)):
+            line = html.escape(lines[index])
+            # Quiet metadata under a clear heading; every dynamic value stays escaped.
+            lines[index] = f"<i>{line}</i>" if index == 1 else line
+        return "\n".join(lines)
 
     def _edit(self, *, text: str | None = None, force: bool = False) -> None:
         if self._message_id is None:
@@ -909,7 +914,7 @@ class _Verdict(Enum):
 
 
 def _verdict(collected: str) -> _Verdict | None:
-    """Entscheidet ueber einen Zug — `None` heisst: noch nicht entscheidbar.
+    """Entscheidet am Zeilenanfang — `None` heisst: noch nicht entscheidbar.
 
     Die CLI teilt den Text beliebig auf; ein Delta kann mitten in `TOOL_CALL` brechen.
     Entschieden wird deshalb erst, wenn der gesammelte Anfang es beweist: solange er ein
@@ -942,9 +947,9 @@ class TelegramReply:
 
     Zwei Regeln tragen den Rest:
 
-    1. **Erst entscheiden, dann zeigen.** Der Anfang jedes Zuges wird zurueckgehalten,
-       bis feststeht, ob Prosa oder eine `TOOL_CALL`-Zeile kommt (siehe `_verdict`).
-       Bei Maschinerie bleibt dieser Zug vollstaendig stumm.
+    1. **Jeden Zeilenanfang pruefen.** Auch nach einer normalen Ankuendigung kann
+       `TOOL_CALL` oder `PLAN` folgen. Mehrdeutige Praefixe bleiben im Puffer;
+       ab einem Kontrollmarker bleibt der Rest dieses Zuges stumm, auch JSON-Folgezeilen.
     2. **Genau eine Antwortnachricht.** `adopt` macht die gewachsene zur endgueltigen.
        Nur wenn das nicht geht, sendet der Aufrufer normal — nie beides.
 
@@ -965,7 +970,7 @@ class TelegramReply:
         self._clock = clock
         self._min_edit_interval = max(0.0, min_edit_interval)
         self._message_id: int | None = None
-        self._buffer = ""    # zurueckgehaltener Anfang, bis der Zug entscheidbar ist
+        self._buffer = ""    # mehrdeutiger Zeilenanfang, auch nach sichtbarer Prosa
         self._text = ""      # was dieser Zug bisher gesagt hat
         self._shown = ""     # was nachweislich in der Nachricht steht
         self._muted = False
@@ -998,19 +1003,26 @@ class TelegramReply:
         with self._lock:
             if self._done or self._muted or not delta:
                 return
-            if not self._decided:
-                self._buffer += delta
-                verdict = _verdict(self._buffer)
-                if verdict is None:
-                    return                      # noch unklar: nichts nach draussen
-                self._decided = True
-                if verdict is _Verdict.MUTE:
-                    self._muted = True
+            # Deltas may contain both narration and control lines, or split a marker
+            # at any character. Classifying just the first delta leaked raw tool JSON
+            # whenever the model announced its action before requesting the tool.
+            for fragment in delta.splitlines(keepends=True):
+                if not self._decided:
+                    self._buffer += fragment
+                    verdict = _verdict(self._buffer)
+                    if verdict is None:
+                        continue
+                    if verdict is _Verdict.MUTE:
+                        self._muted = True
+                        self._buffer = ""
+                        break
+                    self._decided = True
+                    self._text += self._buffer
                     self._buffer = ""
-                    return
-                self._text, self._buffer = self._buffer, ""
-            else:
-                self._text += delta
+                else:
+                    self._text += fragment
+                if fragment.endswith(("\n", "\r")):
+                    self._decided = False
             payload = self._due()
         if payload is not None:
             self._write(payload)
@@ -1118,11 +1130,15 @@ def _tool_text(event: AgentProgress, style: Style = GEOMETRIC) -> str:
     # hineinschreibt. Der volle Befehl gehoert nur in den Freigabe-Dialog. Dasselbe gilt
     # fuer remote_exec: Host und Fernkommando stehen im Freigabe-Dialog, nicht im Fortschritt.
     if tool in ("run_shell", "remote_exec"):
+        if style is EXPRESSIVE and tool == "remote_exec":
+            return "Remote command"
         verb = style.tool_verbs.get(tool)
         return f"{verb} command" if verb else LABEL_SHELL_GENERIC
     # Der Loop liefert das Basislabel manchmal mit ("write — notes.md"); es wird abgetrennt,
     # damit das gewaehlte Label nicht doppelt erscheint, sobald der Stil es umbenennt.
-    if summary == base:
+    if summary == base or (style is EXPRESSIVE and summary in {
+        "run tool", "consult second agent", "git network op",
+    }):
         summary = ""
     else:
         summary = summary.removeprefix(f"{base} — ")
@@ -1217,14 +1233,23 @@ class TelegramChannel:
             except Exception as error:
                 errors.append(f"answerCallbackQuery: {error}")
         try:
-            if message.edit_message_id is not None:
-                self._client.edit_message_text(
-                    chat_id, message.edit_message_id, message.text, reply_markup=markup
-                )
+            def deliver(text: str, **kwargs: object) -> None:
+                if message.edit_message_id is not None:
+                    self._client.edit_message_text(
+                        chat_id, message.edit_message_id, text, reply_markup=markup, **kwargs
+                    )
+                else:
+                    self._client.send_message(
+                        chat_id, text, disable_notification=True, reply_markup=markup, **kwargs
+                    )
+
+            if message.markdown:
+                try:
+                    deliver(to_telegram_html(message.text), parse_mode="HTML")
+                except Exception:
+                    deliver(message.text)
             else:
-                self._client.send_message(
-                    chat_id, message.text, disable_notification=True, reply_markup=markup
-                )
+                deliver(message.text)
         except Exception as error:
             errors.append(f"message delivery: {error}")
         if errors:

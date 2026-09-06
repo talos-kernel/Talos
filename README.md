@@ -15,10 +15,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests", nicht „passing": die Zahl kommt aus dem Einsammeln (2398).
+  <!-- ⚠️ Bewusst „tests", nicht „passing": die Zahl kommt aus dem Einsammeln (2424).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-2398-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-2424-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-210%2F210-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-896%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-29%20gated-8a4318.svg" alt="Tools">
@@ -214,6 +214,14 @@ python -m talos why 4831                 # why that was allowed or refused
 python -m talos review                   # what this installation should change
 python -m talos report --out audit.txt   # what was done and what was refused
 ```
+
+With `TALOS_STATUS_STYLE=expressive`, Telegram keeps one live activity card with
+tool icons, elapsed time and an outcome for each step. It updates in place; the
+answer stays separate. Tool and plan JSON is hidden even after a prose introduction.
+Completed answers stay formatted after approval buttons, and Markdown tables become
+compact labelled rows. Approval prompts keep the exact command visible.
+`/stop` interrupts the run and `/log` opens its receipts. A finished conversation
+does not imply that a delegated background job has finished.
 
 A full walkthrough — install, identity, the session, every command, and the ones that are
 missing on purpose — is at **[talos-agent.ch/docs](https://talos-agent.ch/docs/)**.

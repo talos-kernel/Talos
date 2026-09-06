@@ -29,6 +29,56 @@ _HOLD = "\x00{}\x00"
 _HOLD_RE = re.compile("\x00(\\d+)\x00")
 
 
+def _bold_fragment(value: str) -> str:
+    # Telegram forbids code/pre inside bold. Keep mixed cells intact rather than
+    # splitting an existing link or style tag at an embedded placeholder.
+    if _HOLD_RE.search(value) or "<" in value:
+        return value
+    return f"<b>{value}</b>" if value else ""
+
+
+def _table_cells(line: str) -> list[str]:
+    line = line.strip()
+    if line.startswith("|"):
+        line = line[1:]
+    if line.endswith("|") and not line.endswith("\\|"):
+        line = line[:-1]
+    return [cell.strip().replace("\\|", "|") for cell in re.split(r"(?<!\\)\|", line)]
+
+
+def _tables(text: str) -> str:
+    """Telegram has no table tag: keep headers and values as narrow, readable rows.
+
+    Code is already held aside, so pipes inside commands cannot become columns.
+    Require a real separator row and matching cell counts; ordinary prose is untouched.
+    """
+    lines = text.split("\n")
+    out: list[str] = []
+    index = 0
+
+    while index < len(lines):
+        headers = _table_cells(lines[index])
+        separator = _table_cells(lines[index + 1]) if index + 1 < len(lines) else []
+        if (len(headers) < 2 or len(separator) != len(headers)
+                or not all(re.fullmatch(r":?-{3,}:?", cell) for cell in separator)):
+            out.append(lines[index])
+            index += 1
+            continue
+        index += 2
+        out.append(" · ".join(_bold_fragment(header) for header in headers))
+        while index < len(lines):
+            cells = _table_cells(lines[index])
+            if len(cells) != len(headers):
+                break
+            if len(cells) == 2:
+                out.append(f"• {_bold_fragment(cells[0])}: {cells[1]}")
+            else:
+                out.append("\n".join(f"• {_bold_fragment(header)}: {cell}" for header, cell in zip(headers, cells)))
+                out.append("")
+            index += 1
+    return "\n".join(out)
+
+
 def to_telegram_html(text: str) -> str:
     """Konvertiert das Markdown einer Antwort in Telegram-HTML.
 
@@ -48,9 +98,23 @@ def to_telegram_html(text: str) -> str:
 
     # 2. Der Rest ist Fliesstext: escapen, dann die Auszeichnung als Tags setzen.
     text = html.escape(text, quote=False)
-    text = _BOLD.sub(r"<b>\1</b>", text)
-    text = _STRIKE.sub(r"<s>\1</s>", text)
-    text = _LINK.sub(r'<a href="\2">\1</a>', text)
+    text = _BOLD.sub(lambda m: _bold_fragment(m.group(1)), text)
+    text = _STRIKE.sub(
+        lambda m: m.group(1) if _HOLD_RE.search(m.group(1)) else f"<s>{m.group(1)}</s>", text
+    )
+
+    def link(match: re.Match[str]) -> str:
+        # Code-styled link labels remain clickable text; code cannot nest in links.
+        label = _HOLD_RE.sub(
+            lambda m: re.sub(r"^<(?:code|pre)>|</(?:code|pre)>$", "", held[int(m.group(1))]),
+            match.group(1),
+        )
+        url = html.escape(html.unescape(match.group(2)), quote=True)
+        return hold(f'<a href="{url}">{label}</a>')
+
+    # Hold complete links too: a pipe in a URL or label is not a table boundary.
+    text = _LINK.sub(link, text)
+    text = _tables(text)
 
     # 3. Zitatzeilen: nach dem Escapen steht da `&gt; ` am Zeilenanfang.
     #    Zusammenhaengende Zeilen werden EIN Blockquote (Telegram verschachtelt nicht).

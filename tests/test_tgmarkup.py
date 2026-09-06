@@ -85,3 +85,50 @@ def test_a_realistic_report() -> None:
     assert "<code>rm</code>" in out
     assert "<blockquote>Bereich ~40–45 GB erreicht.</blockquote>" in out
     assert "•" in out and "→" in out
+
+
+def test_table_becomes_mobile_readable_rows() -> None:
+    out = to_telegram_html(
+        "**Status**\n\n| Metric | Value |\n|:---|---:|\n"
+        "| Disk `/` | 72 %, 40 GB free |\n| RAM | 6.32 / 15.25 GB |"
+    )
+    assert "|" not in out
+    assert "<b>Metric</b> · <b>Value</b>" in out
+    assert "• Disk <code>/</code>: 72 %, 40 GB free" in out
+    assert "• <b>RAM</b>: 6.32 / 15.25 GB" in out
+
+
+def test_table_keeps_multi_column_headers_and_cell_formatting() -> None:
+    out = to_telegram_html(
+        "Host | Disk | Result\n---|---|---\n"
+        "**demo** | `a|b` | [healthy](https://example.com)\n"
+    )
+    assert "<b>Host</b>: <b>demo</b>" in out
+    assert "<b>Disk</b>: <code>a|b</code>" in out
+    assert '<b>Result</b>: <a href="https://example.com">healthy</a>' in out
+
+
+def test_tables_do_not_rewrite_fenced_code_or_literal_pipes() -> None:
+    text = "```\n| x | y |\n|---|---|\n| 1 | 2 |\n```\na | b\nnot a table"
+    out = to_telegram_html(text)
+    assert "<pre>| x | y |\n|---|---|\n| 1 | 2 |</pre>" in out
+    assert "a | b\nnot a table" in out
+
+
+def test_table_escaped_pipe_stays_in_its_cell() -> None:
+    out = to_telegram_html("| Metric | Value |\n|---|---|\n| a\\|b | <unsafe> |")
+    assert "<b>a|b</b>: &lt;unsafe&gt;" in out
+
+
+def test_bold_code_is_a_sibling_not_illegal_nested_telegram_html() -> None:
+    assert to_telegram_html("**Disk `/` ready**") == "Disk <code>/</code> ready"
+
+
+def test_table_links_and_struck_code_remain_valid_and_keep_pipe_characters() -> None:
+    out = to_telegram_html(
+        "| Metric | Value |\n|---|---|\n"
+        "| [`a|b`](https://example.com/a|b) | ~~`x|y`~~ |"
+    )
+    assert '<a href="https://example.com/a|b">a|b</a>' in out
+    assert '<code>x|y</code>' in out
+    assert '<b><a' not in out and '<s><code>' not in out

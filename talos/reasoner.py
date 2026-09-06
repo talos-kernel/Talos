@@ -45,7 +45,7 @@ TOOL_PROTOCOL = (
     '- read_file   {"path": "…"}\n'
     '- write_file  {"path": "…", "content": "…"}\n'
     '- run_shell   {"command": "…"}\n'
-    '- remote_exec {"host": "operator-configured ssh alias", "command": "…"} — run a command on another machine over ssh; EVERY call needs the operator\'s approval (the sandbox cannot reach across machines), standing approvals bind to exact host+command\n'
+    '- remote_exec {"host": "operator-configured ssh alias", "command": "…"} — request remote execution through the kernel; a matching standing approval covers the exact host+command, otherwise the channel asks for approval\n'
     '- entity_status {"name": "known entity"}\n'
     '- vault_search {"query": "…", "limit": 1..10}\n'
     '- vault_get {"path": "qmd://obsidian/…md or relative/path.md"}\n'
@@ -77,8 +77,11 @@ TOOL_PROTOCOL = (
     "remote_exec is the one documented exception to \"no network\": its ssh client runs "
     "sandboxed but networked, reaching only the ssh aliases the operator configured. Use "
     "it for live status and administration of the operator's other machines instead of "
-    "guessing. Its effect lands on the remote machine — that is why every call goes to "
-    "the operator, and why only an exact host+command pair can become a standing rule.\n"
+    "guessing. Its effect lands on the remote machine, so only an exact host+command "
+    "pair can become a standing rule. For an authorized task, submit the TOOL_CALL; "
+    "do not first ask the operator to say yes in prose or claim every call needs a new "
+    "approval. The kernel checks existing standing approvals and the channel presents "
+    "any genuinely missing approval. A standing approval never overrides DENY.\n"
     "browse renders a page in a real browser, so JavaScript runs and you see what a "
     "reader would see — use it when web_fetch comes back empty or skeletal. It only "
     "reads: there is no clicking, typing or form submission, and the browser can reach "

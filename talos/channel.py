@@ -119,6 +119,8 @@ class StructuredMessage:
     edit_message_id: int | None = None
     callback_query_id: str | None = None
     callback_notice: str = ""
+    # Only completed answers opt in. Approval commands stay literal and auditable.
+    markdown: bool = False
 
 
 @dataclass(frozen=True)

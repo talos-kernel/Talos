@@ -250,6 +250,41 @@ def test_pending_decisions_are_worker_routed_while_stop_stays_inline(tmp_path):
     assert conductor.is_inline(msg(33, OWNER, "/stop")) is True
 
 
+def test_non_decision_reprompt_preserves_literal_command_and_pending_approval(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from unittest.mock import Mock
+
+    from talos.telegram import TelegramChannel
+
+    runner = Mock(side_effect=AssertionError("An unapproved command must never run"))
+    monkeypatch.setitem(tools.RUNNERS, "run_shell", runner)
+    client = Mock()
+    client.send_message.return_value = 77
+    channel = TelegramChannel(client)
+    command = "printf '**literal** `whoami` <value> a|b'"
+    reasoner = ScriptedReasoner(_tool_call("run_shell", {"command": command}, []))
+    conductor, _sent = _build(
+        tmp_path, reasoner, approval_picker=ApprovalPicker(),
+        send_structured=channel.send_structured,
+    )
+    conductor = replace(conductor, send=channel.send)
+
+    assert conductor.handle(msg(40, OWNER, "zeige den Befehl")) is True
+    pending = conductor.approvals.get(CHAT_OWNER)
+    assert pending is not None
+    assert conductor.handle(msg(41, OWNER, "was bedeutet das")) is True
+
+    delivered = client.send_message.call_args
+    assert delivered.args[1] == "Bitte nur ja, immer oder nein.\n\n" + pending.prompt
+    assert command.encode("utf-8") in delivered.args[1].encode("utf-8")
+    assert "parse_mode" not in delivered.kwargs
+    assert client.send_message.call_count == 2
+    assert conductor.approvals.get(CHAT_OWNER) == pending
+    assert reasoner.calls == 1
+    runner.assert_not_called()
+    assert not any(event["type"] == "grant.issued" for event in conductor.log.recent(50))
+
+
 def test_yes_executes_pending_once_then_second_yes_is_noop(tmp_path):
     reasoner = ScriptedReasoner(
         _tool_call("run_shell", {"command": "echo hi"}, []),
@@ -544,6 +579,9 @@ def test_approval_request_has_hermes_style_emoji_buttons_and_callback_executes(t
     assert result.edit_message_id == 77
     assert result.callback_query_id is None
     assert result.keyboard == ()
+    assert result.markdown is True
+    assert prompt.markdown is False
+    assert ack.markdown is False
     assert "Fertig." in result.text
     assert "rc=0" not in result.text
     assert "printf approved" not in result.text

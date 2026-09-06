@@ -248,7 +248,7 @@ html.js .rv.in{opacity:1; transform:none}
     <p class="lede">That one decision shapes the rest of this manual. It is why the
     command list is short, and why a few obvious conveniences are missing on purpose.</p>
     <div class="spec-row">
-      <div class="spec"><b>2398</b>unit tests</div>
+      <div class="spec"><b>2424</b>unit tests</div>
       <div class="spec"><b>210/210</b>adversarial</div>
       <div class="spec"><b>896</b>gate lines</div>
       <div class="spec"><b>29</b>gated tools</div>
@@ -314,6 +314,11 @@ python -m talos chat</pre>
     command. It preserves other settings, stores the detected CLI path, and saves
     each section atomically with mode 0600. The key that matters:</p>
 <pre><span class="f">TALOS_ALLOWED_PRINCIPALS</span>=telegram:123456789,cli:1000</pre>
+    <p>For live tool tracking, set <code>TALOS_STATUS_STYLE=expressive</code>. One
+    activity card updates in place while the answer stays separate. Answers retain
+    their formatting after approval buttons; tables become compact labelled rows.
+    Approval prompts show the exact command, and stored approvals apply only to the
+    action you approved.</p>
     <p>An identity is <strong>channel-qualified</strong>. The same number on a different
     channel is a different identity — so a Telegram account that may command Talos grants
     nothing to an email address spelling the same name.</p>

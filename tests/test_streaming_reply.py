@@ -6,6 +6,7 @@ liefert. Kein Netz, kein Modell.
 """
 import json
 import sys
+import pytest
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -121,7 +122,7 @@ def test_a_plan_line_never_reaches_the_chat_even_split_across_deltas() -> None:
     client = FakeChatClient()
     reply = _reply(client)
 
-    for delta in ("PL", "AN: {\"goal\": ", "\"SSZ-Ads\"", ", \"steps\": [\"suchen\"]}"):
+    for delta in ("PL", "AN: {\"goal\": ", "\"Campaign-report\"", ", \"steps\": [\"suchen\"]}"):
         reply.push(delta)
 
     assert client.sent == []
@@ -150,6 +151,35 @@ def test_prose_that_merely_starts_like_plan_still_appears() -> None:
     reply.push("ET der Affen.")
 
     assert client.sent[0][1] == "PLANET der Affen."
+
+
+@pytest.mark.parametrize("width", [1, 2, 7, 4096])
+@pytest.mark.parametrize("control", [
+    'TOOL_CALL: {"tool": "remote_exec", "args": {"host": "server", "command": "df -h /"}}',
+    'PLAN: {"goal": "Check storage", "steps": ["Read usage"]}\nTOOL_CALL: {}',
+    'TOOL_CALL: {\n  "tool": "read_file",\n  "args": {"path": "private-command-argument"}\n}',
+])
+def test_control_after_prose_is_never_visible_in_any_stream_snapshot(width, control):
+    client = FakeChatClient()
+    reply = _reply(client, min_edit_interval=0)
+    text = "Ich prüfe den Server.\n\n  " + control
+    for offset in range(0, len(text), width):
+        reply.push(text[offset:offset + width])
+    reply.settle()
+    assert client.texts
+    assert client.texts[-1].strip() == "Ich prüfe den Server."
+    assert all("TOOL" not in text and "PLAN" not in text and "command" not in text
+               and "{" not in text for text in client.texts)
+
+
+def test_line_filter_keeps_normal_multiline_prose_and_marker_mentions():
+    client = FakeChatClient()
+    reply = _reply(client, min_edit_interval=0)
+    text = "Erster Absatz.\n\nPLANET und TOOLs sind Wörter.\nDas Wort TOOL_CALL ist hier Prosa."
+    for char in text:
+        reply.push(char)
+    reply.settle()
+    assert client.texts[-1] == text
 
 
 def test_prose_grows_visibly_and_the_last_version_is_exactly_the_answer() -> None:
@@ -351,6 +381,20 @@ def test_tool_turn_stays_silent_and_only_the_prose_turn_shows(tmp_path) -> None:
     assert client.messages == 1
     assert all("TOOL" not in text for text in client.texts)
     assert client.edited[-1][2] == "Steht drin: kalt.\n\n1 tool call, 0 failed"
+
+
+def test_narration_then_tool_executes_normally_without_streaming_its_protocol(tmp_path):
+    target = tmp_path / "storage.txt"
+    target.write_text("52 GiB free\n")
+    client = FakeChatClient()
+    turn = "Ich lese den Status.\n\n" + _tool_call("read_file", {"path": str(target)})
+    reasoner = StreamingReasoner(tuple(turn), ("52 GiB frei.",))
+    conductor, sent = _conductor(tmp_path, reasoner, client=client)
+    assert conductor.handle(_msg(12, "Lies den Status."))
+    assert reasoner.calls == 2 and "52 GiB free" in reasoner.kwargs[1][0]
+    assert sent == [] and client.messages == 1
+    assert all("TOOL_CALL" not in text and str(target) not in text for text in client.texts)
+    assert client.edited[-1][2] == "52 GiB frei.\n\n1 tool call, 0 failed"
 
 
 def test_an_approval_run_leaves_no_stray_answer_message(tmp_path) -> None:

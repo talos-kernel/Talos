@@ -512,7 +512,11 @@ class Conductor:
         always = is_always(text)
         if not negative and not always and not is_affirmative(text):
             self.log.append(Event(run_id, "conductor", "approval.reprompt", {"tool": rec.req.tool}))
-            return self._approval_reply(update, run_id, "Bitte nur ja, immer oder nein.\n\n" + rec.prompt)
+            # This still requests consent: Markdown must not rewrite the kernel's command.
+            return self._reply_structured(
+                update, run_id,
+                StructuredMessage("Bitte nur ja, immer oder nein.\n\n" + rec.prompt),
+            )
 
         with self.execution_lock:
             return self._execute_approval(update, run_id, rec, negative=negative, always=always)
@@ -1613,6 +1617,7 @@ class Conductor:
             StructuredMessage(
                 text,
                 edit_message_id=callback.message_id,
+                markdown=True,
             ),
         )
 

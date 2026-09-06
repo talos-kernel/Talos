@@ -24,7 +24,10 @@ ANSWER_FORMAT = (
     "`inline code` fuer Pfade, Befehle und Dateinamen, ```-Codebloecken fuer "
     "mehrzeilige Befehle oder Ausgaben und > fuer Zitate. Setze sparsame, treffende "
     "Emojis als Abschnittsmarken (✅ erledigt, ❌ fehlgeschlagen, ⚠️ Warnung, "
-    "🛠 Werkzeug, 📊 Zahlen). Kurze Antworten bleiben schlicht."
+    "🛠 Werkzeug, 📊 Zahlen). Kurze Antworten bleiben schlicht. "
+    "In Telegram kurze Listen mit Bezeichnung und Wert statt Markdown-Tabellen. "
+    "Befehle nur zeigen, wenn der Operator sie braucht; angeforderte Arbeit ausfuehren "
+    "statt mit einer Liste von Befehlen und einer vorsorglichen Go-Frage zu enden."
 )
 
 _cache: dict[str, tuple[bytes, str]] = {}

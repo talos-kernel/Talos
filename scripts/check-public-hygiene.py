@@ -35,13 +35,15 @@ ALLOWED_ENDPOINT_FIXTURE_HOSTS = {
 # Exact private project/person markers, stored only as case-folded SHA-256 digests so the
 # public guard does not repeat the identifiers it is meant to keep out of the tree.
 BLOCKED_MARKER_DIGESTS = frozenset({
+    "428f02d3f146dd0eb63bc2f98d193adbe9e21da58eb01bfacc8aedff994cf990",
+    "48f9460fe0dc9f272e7414963dd2b52287ec07d872d665d2e9364c957f163ab0",
+    "8bc6a2a98e5987eb3cb80f3b5e62de708e62eceeed159344d8e9297f6ca2ff1d",
     "0afa9d9a1b780339772946ac0dfd4b98e5e56b34a117cac353985be7a6a50ac7",
     "b5143f0410a1d4d905bfe2290fd4c965e1e1ece5bc99a6b7ee5f663a366256ca",
     "c8d536fa90e0f08ece57e02d258f95221656edf172e5b577132c54cbb48da03d",
     "3a5a2512949399115565867a73a413ec6ba215c8f2df385f78b33238a6639b7c",
     "e1608f75c5d7813f3d4031cb30bfb786507d98137538ff8e128a6ff74e84e643",
     "4676c685dbf2380d0339a9a87c931e0bba3c8488262dce8324c55b71f90bb629",
-    "48f9460fe0dc9f272e7414963dd2b52287ec07d872d665d2e9364c957f163ab0",
     "7aecf6e598c1f48798dada5d00a0f578ab5f9bc1b9e66bce9ac176fe058cf104",
     "7cd59327d99d11138461861191fd25b85a9132da71e8e71818c7fa6802368cd8",
     # + service-unit and host markers that reached the tree before the set covered them (2026-08-15)
@@ -173,7 +175,10 @@ def _findings(path: Path, text: str) -> list[str]:
 
     # A public path leaks an identifier just as surely as file content does.
     for match in WORD.finditer(relative + "\n" + text):
-        if _digest(match.group(0).casefold().encode("utf-8")) in BLOCKED_MARKER_DIGESTS:
+        # Compound names must not hide a blocked marker behind a separator.
+        token = match.group(0).casefold()
+        parts = (token, *re.split(r"[-_]", token))
+        if any(_digest(part.encode("utf-8")) in BLOCKED_MARKER_DIGESTS for part in parts):
             findings.append("blocked private marker")
             break
 

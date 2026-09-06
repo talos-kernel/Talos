@@ -33,7 +33,7 @@ installiert die Tabelle (`install`), Zaehler und Kommandozentrale lesen sie (`lo
 Das ist Prozesszustand — bewusst: die Composition-Root reicht die Konfiguration nicht
 an jeden Verbraucher, und ein weiterer Konstruktor-Parameter an drei Stellen machte
 nichts sicherer. Die Overrides sind wie `TALOS_MODEL` eine Betreiber-Entscheidung auf
-der geprueften Modell-Konfigurationsflaeche (Butch-Kontext: keine Sonderlogik, dieselbe
+der geprueften Modell-Konfigurationsflaeche (keine Sonderlogik, dieselbe
 Ebene, derselbe Weg). Wer es explizit will, uebergibt `UsageMeter(infos=…)`; die
 Tabelle selbst ist unveraenderlich und wird als Ganzes ersetzt, nie editiert.
 """

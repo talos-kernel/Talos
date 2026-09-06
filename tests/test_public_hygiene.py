@@ -52,6 +52,17 @@ def test_url_literals_and_malformed_hosts_do_not_crash_the_publication_check() -
                PUBLIC_HYGIENE._findings(path, 'https://' + '[broken/'))
 
 
+def test_compound_markers_cannot_hide_in_content_or_paths(monkeypatch) -> None:
+    marker = "PrivateMarkerProbe"
+    monkeypatch.setattr(PUBLIC_HYGIENE, "BLOCKED_MARKER_DIGESTS", frozenset({
+        PUBLIC_HYGIENE._digest(marker.casefold().encode("utf-8")),
+    }))
+    for compound in (f"{marker}-context", f"test_{marker.upper()}", f"prefix-{marker}_suffix"):
+        assert "blocked private marker" in PUBLIC_HYGIENE._findings(ROOT / "probe.py", compound)
+        assert "blocked private marker" in PUBLIC_HYGIENE._findings(ROOT / f"{compound}.py", "neutral")
+    assert not PUBLIC_HYGIENE._findings(ROOT / "probe.py", "PublicMarkerProbe-context")
+
+
 @pytest.mark.parametrize("kind", ("RSA ", "EC ", "OPENSSH ", ""))
 def test_standard_private_key_headers_are_detected(kind: str) -> None:
     header = f"-----BEGIN {kind}PRIVATE KEY-----"

@@ -6,6 +6,29 @@ they make possible that was not possible before — or, more often, what they ta
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions are alpha: the kernel's rules are stable, the surface around them is not.
 
+## [Unreleased]
+
+## [0.18.1-alpha] — 2026-09-06
+
+### Security
+
+- Publication checks now detect blocked identifiers inside hyphenated and underscored
+  names. Legacy operator-specific comment and test text use neutral wording.
+
+### Fixed
+
+- Completed Telegram answers after approval buttons now use the same formatting as
+  normal replies; pending approval commands remain literal, including reprompts.
+- Markdown tables become compact labelled rows, preserving code and links without
+  unsupported Telegram HTML nesting. Remote-task guidance lets the kernel apply
+  existing exact standing approvals instead of asking for a second prose confirmation.
+
+- Telegram no longer streams raw tool or plan JSON after a prose introduction.
+  Every new line is checked before display, including markers split across deltas;
+  tool execution and approval routing are unchanged.
+- Expressive activity cards use quieter headings, compact elapsed-time metadata,
+  a clear remote-command label and no generic “run tool” filler or internal step limit.
+
 ## [0.18.0-alpha] — 2026-09-05
 
 ### Added
