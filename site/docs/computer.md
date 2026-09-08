@@ -196,6 +196,10 @@ Both switches are policy settings: a model cannot enable them through config set
 The Computer now has a persistent Chromium browser with semantic form actions:
 inspect, navigate, fill, type, select, check, click, submit, press, wait and upload.
 Use `computer_run` with `op: browser`, a project, a stable key, title and action.
+Reuse the observed `tab` identifier on subsequent actions. Chromium can reorder
+numeric page indices between connections; `tab` identifies the same target across
+reconnects and fails explicitly if that tab has closed. Do not send `page` and
+`tab` together. Tab identity does not grant permission or bypass a kernel check.
 Its job receipt lists observed selectors, required fields, options, validation errors,
 page text, response statuses and console page errors. Use the returned selectors;
 wait for each dependent choice and check values after blur. Uploaded files must

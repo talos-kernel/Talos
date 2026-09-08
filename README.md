@@ -56,6 +56,9 @@ curl -fsSL https://talos-agent.ch/install.sh | sh     # then run it
 The installer verifies the signature and the checksum, runs the full suite — and then
 **stops**. Nothing starts listening until you say so.
 
+**Current alpha:** [0.19.0-alpha](https://github.com/talos-kernel/talos/releases/tag/v0.19.0-alpha).
+See [verification scope and reproducible checks](docs/verification.md).
+
 **Native Mac preview:** [desktop setup, connections and build instructions](macos/README.md).
 The preview bundles its runtime and opens guided setup in the app; no Terminal.app installation steps are needed by an app user.
 
