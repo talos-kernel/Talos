@@ -344,6 +344,24 @@ def run_agent(
 
         call = parse_tool_call(text)
         if call is None:
+            from . import proposal
+            if proposal.malformed(text):
+                exhausted = proposal_repairs >= proposal.MAX_REPAIRS
+                executor.log.append(Event(run_id, "agent", "protocol.repair", {
+                    "reason": "malformed tool reply", "attempt": proposal_repairs + 1,
+                    "exhausted": exhausted,
+                }))
+                if exhausted:
+                    message = "The model could not produce a valid tool request. These replies ran no action."
+                    stopped = active.abort(message) if active else None
+                    return AgentResult(
+                        AgentStatus.PLAN_ABORTED if stopped else AgentStatus.STEP_LIMIT,
+                        stopped.report() if stopped else message,
+                        steps=step, history=tuple(history), plan=stopped,
+                    )
+                proposal_repairs += 1
+                history.append(proposal.MALFORMED_NOTE)
+                continue
             if text.strip() in {"", "(leere Antwort)", "(Empty answer.)"}:
                 executor.log.append(Event(run_id, "agent", "protocol.repair", {
                     "reason":"empty model answer", "attempt":empty_repairs + 1,

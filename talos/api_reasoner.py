@@ -67,7 +67,7 @@ from typing import Any, Callable, Iterable, Mapping, Protocol
 
 from . import catalog, instructions
 from .credentials import WORKER_ENV_VAR, CredentialStore, Route, parse_worker_socket
-from .reasoner import CANCELLED_TEXT, PLAN_PROTOCOL, TOOL_PROTOCOL, render_skill_source
+from .reasoner import CANCELLED_TEXT, FINAL_CHANNEL_PROTOCOL, PLAN_PROTOCOL, TOOL_PROTOCOL, render_skill_source
 from .provider_errors import ReasonerFailure
 from .stream import OnText
 from .usage import Run, UsageMeter
@@ -412,6 +412,7 @@ class ApiReasoner:
             tool_protocol=TOOL_PROTOCOL,
             plan_protocol=PLAN_PROTOCOL,
             skills=self._skills_text(prompt),
+            final_protocol=FINAL_CHANNEL_PROTOCOL,
         ), prompt
 
     def _route(self) -> Route:

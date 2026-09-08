@@ -17,6 +17,23 @@ REQUIRED_TEXT = {
 MAX_REPAIRS = 2
 
 
+def malformed(text):
+    """Recognize an attempted control reply, not examples embedded in prose.
+
+    Called only after parsing failed. Never salvage one call from a malformed batch:
+    the model must propose a single complete request, which still goes to the kernel.
+    """
+    return text.lstrip().startswith("TOOL_CALL:")
+
+
+MALFORMED_NOTE = (
+    '[The last TOOL_CALL reply was not one valid request. Nothing ran from that reply. '
+    'Return exactly one TOOL_CALL: {"tool":"name","args":{...}} with valid JSON, '
+    'or answer in prose if finished. Use existing receipts; do not repeat completed, '
+    'uncertain or declined actions. Every corrected request still passes the kernel.]'
+)
+
+
 def problem(tool, args):
     """Return argument names or a fixed schema error, never argument values."""
     missing = [name for name in REQUIRED_TEXT.get(tool, ())

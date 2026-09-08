@@ -15,10 +15,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests", nicht „passing": die Zahl kommt aus dem Einsammeln (2594).
+  <!-- ⚠️ Bewusst „tests", nicht „passing": die Zahl kommt aus dem Einsammeln (2604).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-2594-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-2604-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-217%2F217-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-913%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-31%20gated-8a4318.svg" alt="Tools">
@@ -682,6 +682,11 @@ tool that skips the kernel — a tool without a target extractor is `DENY` by co
 | `skill_write` | a new skill, written exactly once — and never without a human's yes |
 
 ### Operator-owned entity knowledge
+
+Vaults, workers and agent consultations are optional. Small edits, file operations,
+tests and local CLI workflows can run directly through the sandboxed Talos tools.
+For larger tasks, Talos prefers a configured worker when delegation fits the requested
+scope. Every direct or delegated action still passes the kernel.
 
 Talos ships with no real entity names, hosts or service units. To enable entity-aware
 status checks, copy the neutral example and replace every placeholder with infrastructure

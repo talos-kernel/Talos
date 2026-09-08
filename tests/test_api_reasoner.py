@@ -238,6 +238,21 @@ def test_the_prompt_carries_soul_protocol_and_skills() -> None:
     assert http.body["messages"] == [{"role": "user", "content": "Wie heisst du?"}]
 
 
+@pytest.mark.parametrize("provider,lines", [("anthropic-api", ANTHROPIC_LINES), ("openai-api", OPENAI_LINES)])
+def test_api_transport_keeps_control_requests_in_final_output_without_provider_tools(provider, lines) -> None:
+    reasoner, http, _response = build(lines, provider=provider)
+    reasoner.reason("Read the supplied local file.")
+    system = (http.body["system"] if provider == "anthropic-api" else http.body["messages"][0]["content"]).lower()
+    assert "final answer channel" in system
+    assert "never put plan or tool_call in commentary or analysis" in system
+    assert system.rfind("final answer channel") > system.rfind("plan:")
+    assert "tools" not in http.body
+    assert "self-contained local task does not require a vault lookup" in system
+    assert "workers are optional" in system
+    assert "several steps alone do not require delegation" in system
+    assert "one missing integration does not disable other tools" in system
+
+
 def test_a_broken_skill_source_costs_the_catalogue_not_the_turn() -> None:
     def boom() -> str:
         raise RuntimeError("Katalog kaputt")

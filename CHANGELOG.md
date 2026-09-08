@@ -25,6 +25,14 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ### Fixed
 
+- Local tasks no longer require optional Vault or worker integrations. Notes and
+  delegation follow configuration, relevance and the operator's requested scope;
+  a failed integration does not make other tools unavailable.
+- API reasoners place machine-control proposals in the final answer channel, as
+  the CLI wrapper already requires. No provider tools are enabled.
+- Malformed tool replies receive at most two inference-only correction attempts
+  before a visible failure. Partial batches are never executed; existing receipts,
+  cancellation, step budgets and kernel decisions remain authoritative.
 - Failed foreground runs retain the unresolved request in bounded conversation
   context with an explicit interruption status, so follow-ups keep their subject.
   This does not fabricate an answer, replay tools or import background context.
