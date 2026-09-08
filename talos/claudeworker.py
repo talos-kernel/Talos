@@ -532,8 +532,10 @@ class _Jobs:
                  mcp_registry: McpServerRegistry | None = None,
                  mcp_enabled: frozenset[str] = frozenset(),
                  agy: AgyBackend | None = None,
-                 codex: codexworker.CodexBackend | None = None) -> None:
+                 codex: codexworker.CodexBackend | None = None,
+                 claude_bin: str | None = None) -> None:
         self._max_parallel = max_parallel
+        self._claude_bin = claude_bin
         self._worker_home = worker_home
         self._browser = browser if browser is not None else BrowserMcp()
         # Registry (operator-owned Datei) und das Worker-Gate: ein Server ist
@@ -925,7 +927,7 @@ def handle_frame(raw: bytes, jobs: _Jobs, *, spawn: Spawn | None = None,
         return _invalid("frame is not an object")
     op = frame.get("op")
     hersteller = spawn if spawn is not None else make_spawn(
-        os.environ.get("TALOS_CLAUDE_WORKER_BIN", DEFAULT_BIN))
+        jobs._claude_bin or os.environ.get("TALOS_CLAUDE_WORKER_BIN", DEFAULT_BIN))
     grenzen = limits if limits is not None else SandboxLimits(
         timeout_s=DEFAULT_JOB_TIMEOUT_S)
     try:
@@ -1110,7 +1112,7 @@ def serve(socket_path: str = DEFAULT_SOCKET, env_path: str = DEFAULT_ENV, *,
                             cfg("TALOS_CLAUDE_WORKER_CODEX_MODEL"))
     jobs = _Jobs(max_parallel=max_parallel, worker_home=worker_home,
                  browser=browser, mcp_registry=mcp_registry,
-                 mcp_enabled=mcp_enabled, agy=agy, codex=codex)
+                 mcp_enabled=mcp_enabled, agy=agy, codex=codex, claude_bin=claude_bin)
     limits = SandboxLimits(timeout_s=timeout_s)
     # Kein Default-Spawn hier: handle_frame baut ihn selbst — und zwar pro
     # Backend (claude wie agy). Wer hier einen einzigen vorgefertigten Spawn

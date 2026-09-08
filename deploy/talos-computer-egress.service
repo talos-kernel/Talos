@@ -1,0 +1,24 @@
+[Unit]
+Description=Talos computer public web egress
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+RuntimeDirectory=talos-computer-egress
+RuntimeDirectoryMode=0755
+ExecStart=/usr/bin/python3 /opt/talos-computer/talos/computer/egress.py
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=192M
+TasksMax=64
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -15,13 +15,13 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests", nicht „passing": die Zahl kommt aus dem Einsammeln (2424).
+  <!-- ⚠️ Bewusst „tests", nicht „passing": die Zahl kommt aus dem Einsammeln (2587).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-2424-2e7d32.svg" alt="Tests">
-  <img src="https://img.shields.io/badge/red%20team-210%2F210-2e7d32.svg" alt="Red team">
-  <img src="https://img.shields.io/badge/gate%20path-896%20lines-8a4318.svg" alt="Gate path">
-  <img src="https://img.shields.io/badge/tools-29%20gated-8a4318.svg" alt="Tools">
+  <img src="https://img.shields.io/badge/tests-2587-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/red%20team-217%2F217-2e7d32.svg" alt="Red team">
+  <img src="https://img.shields.io/badge/gate%20path-913%20lines-8a4318.svg" alt="Gate path">
+  <img src="https://img.shields.io/badge/tools-31%20gated-8a4318.svg" alt="Tools">
   <img src="https://img.shields.io/badge/default%20identities-0-c62828.svg" alt="Default identities">
   <img src="https://img.shields.io/badge/python-3.11%2B-1565c0.svg" alt="Python">
   <img src="https://img.shields.io/badge/licence-MIT-616161.svg" alt="MIT">
@@ -55,6 +55,9 @@ curl -fsSL https://talos-agent.ch/install.sh | sh     # then run it
 
 The installer verifies the signature and the checksum, runs the full suite — and then
 **stops**. Nothing starts listening until you say so.
+
+**Native Mac preview:** [desktop setup, connections and build instructions](macos/README.md).
+The preview bundles its runtime and opens guided setup in the app; no Terminal.app installation steps are needed by an app user.
 
 ---
 
@@ -93,6 +96,35 @@ The installer verifies the signature and the checksum, runs the full suite — a
 
 </details>
 
+
+## Your own Computer (experimental)
+
+A persistent Linux computer for Talos: terminal, scripts, projects and an authenticated
+workbench. Headless by default; the semantic Chromium browser can inspect and fill
+forms without a graphical desktop. Add `--desktop` for live mouse and keyboard takeover.
+Expand, fullscreen and zoom make small screens readable. `computer_run` always passes
+the kernel; attended auto-approval is an explicit operator setting, off by default.
+`computer_status` reads durable receipts, files, screenshots
+and private routine templates. Interrupted writes are not replayed automatically.
+
+The initial backend requires ARM64 Linux with KVM and is installed separately.
+Run `talos computer setup` and follow [the Computer guide](docs/computer.md).
+One operator, one VM; projects share the VM. File checksum checks prove only
+the requested file expectations, not the entire task.
+
+## Recoverable model failures
+
+A provider limit leaves the service control commands reachable: `/model`, `/status`,
+`/queue` and `/stop` work without a model answer. Explicit model changes are tested
+before they replace the saved selection. `/status` distinguishes service operation
+from model availability and shows the bounded retry delay and any reported reset hint.
+
+Known CLI errors retain a safe category and exit code from either output stream.
+A declared empty response may retry the same model request once, inside its original
+time budget. Tools and whole jobs are never replayed by that retry; cancellation stops
+the wait. It does not change providers. Queue notices update when their actual turn
+starts, ends, fails or is cancelled.
+
 ## Why this exists
 
 Every capable agent eventually asks for shell access. At that moment you are trusting a
@@ -105,7 +137,7 @@ authorised individually, bound to its exact arguments and targets, valid once, f
 seconds. Forgetting to call the gate does not produce an unchecked effect — it produces no
 effect at all, because the raw runners are unreachable without a token.
 
-That design is testable, and it is tested: 210 adversarial scenarios run on every change and
+That design is testable, and it is tested: 217 adversarial scenarios run on every change and
 try to get an effect past the kernel. They are in [`redteam.py`](redteam.py). Read them
 before you trust anything written above.
 
@@ -453,9 +485,9 @@ stops and asks. What the announcement does is **bind the run**:
 
 - the step budget shrinks from the house limit to what was announced — a three-step plan
   cannot become forty tool calls;
-- the first step that fails ends the run with a report of what ran, what stopped it, and
-  what therefore did not happen — instead of the model improvising around the failure,
-  which is how an agent turns a refusal into a bigger second attempt;
+- a failed step ends the run with a factual report. Recognized transient read failures
+  have at most two alternative-source opportunities inside the unchanged budget.
+  Refusals and uncertain writes are not retried;
 - the plan is read **once**. A tool result is a stranger's text; if it could install a
   second, larger plan mid-run, prompt injection would be a way to buy budget.
 
@@ -704,7 +736,7 @@ executing anything. It is the fastest way to understand the kernel.
 
 ## Architecture
 
-Small modules on purpose. The gate path (`policy.py`, 896 lines) has to be readable in one
+Small modules on purpose. The gate path (`policy.py`, 913 lines) has to be readable in one
 sitting — a gate you cannot read is not a gate.
 
 | Module | Role |

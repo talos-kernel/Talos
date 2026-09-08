@@ -1,0 +1,36 @@
+[Unit]
+Description=Talos isolated Linux computer
+After=network-online.target talos-computer-egress.service
+Requires=talos-computer-egress.service
+
+[Service]
+Type=simple
+User=talos-computer
+Group=talos-computer
+SupplementaryGroups=kvm
+RuntimeDirectory=talos-computer-vm
+RuntimeDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/bin/qemu-system-aarch64 -name talos-computer -machine virt,accel=kvm -cpu host -smp 2 -m 4096 -nodefaults -display none -bios /usr/share/qemu-efi-aarch64/QEMU_EFI.fd -drive file=/var/lib/talos-computer/disk.qcow2,if=virtio,format=qcow2 -drive file=/var/lib/talos-computer/seed.iso,if=virtio,format=raw,readonly=on -netdev user,id=net,restrict=on,ipv6=off,hostfwd=tcp:127.0.0.1:22241-:22,hostfwd=tcp:127.0.0.1:5901-:5900,guestfwd=tcp:10.0.2.100:3128-cmd:/usr/bin/python3\x20/opt/talos-computer/talos/computer/bridge.py -device virtio-net-pci,netdev=net,romfile= -device virtio-rng-pci -serial file:/var/lib/talos-computer/console.log -qmp unix:/run/talos-computer-vm/qmp.sock,server=on,wait=off -monitor none
+WorkingDirectory=/opt/talos-computer
+ExecStartPost=/usr/bin/python3 -m talos.computer.ready
+TimeoutStartSec=120
+Restart=on-failure
+TimeoutStopSec=30
+KillMode=mixed
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+ReadWritePaths=/var/lib/talos-computer
+DevicePolicy=closed
+DeviceAllow=/dev/kvm rw
+DeviceAllow=/dev/urandom r
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=5G
+TasksMax=96
+CPUQuota=180%
+
+[Install]
+WantedBy=multi-user.target

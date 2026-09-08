@@ -106,6 +106,8 @@ class FallbackReasoner:
         try:
             return str(self._primary.reason(prompt, on_text=on_text))  # type: ignore[attr-defined]
         except ReasonerFailure as err:
+            if not err.fallback_allowed:
+                raise  # Classifying CLI failures must not enable provider switching.
             if not self._chain or err.kind not in FALLBACKABLE_KINDS:
                 # Genau der bisherige Text — dieselbe Zeile, die der Reasoner ohne Kette
                 # selbst ausgeliefert haette. e2e/redteam haengen an diesem Wortlaut.

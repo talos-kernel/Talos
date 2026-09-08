@@ -3246,6 +3246,36 @@ with tempfile.TemporaryDirectory(prefix="talos-codex-gate-") as _codex_ws:
     if not _codex_ok:
         failures += 1
 
+# Operator-enabled computer work must not grant unattended, foreign or host power.
+with __import__('unittest.mock', fromlist=['patch']).patch.dict(os.environ, {
+    "TALOS_COMPUTER_SOCKET":"/run/example/control.sock",
+    "TALOS_COMPUTER_AUTOAPPROVE":"1", "TALOS_REMOTE_READONLY_AUTOAPPROVE":"1",
+    "TALOS_REMOTE_HOSTS":"example",
+}):
+    from talos.schedule import UnattendedCeiling as _ComputerUnattended
+    _cg = GovernedKernel(PolicyKernel(default_manifest(), frozenset({OWNER})),
+                         AutonomyGovernor(5), lambda _:Trust.FULL, attended_autoapprove=True)
+    _ca = {"op":"exec","project":"test","key":"first","title":"Test","command":"printf ok"}
+    _ccases = [
+        ("Computer opt-in accepts a foreign principal", ToolRequest("computer_run", STRANGER, _ca)),
+        ("Computer opt-in accepts an omitted project", ToolRequest("computer_run", OWNER, {"op":"exec","command":"id"})),
+        ("Computer opt-in accepts a host override", ToolRequest("computer_run", OWNER, _ca|{"host":"elsewhere"})),
+        ("Computer opt-in hides a declared secret target", ToolRequest("computer_run", OWNER, _ca, (str(Path.home()/'.secrets/x'),))),
+        ("Remote diagnostic opt-in permits command chaining", ToolRequest("remote_exec", OWNER, {"host":"example","command":"df -h; id"})),
+        ("Remote diagnostic opt-in exposes service credentials", ToolRequest("remote_exec", OWNER, {"host":"example","command":"systemctl show demo.service -p Environment"})),
+    ]
+    for _name, _req in _ccases:
+        _decision = _cg.decide(_req)
+        _ok = _decision.verdict.value != "allow"
+        _result(_ok, _name, _decision.reason)
+        failures += int(not _ok)
+    _cu = _ComputerUnattended()
+    with _cu.active():
+        _decision = replace(_cg, unattended=_cu).decide(ToolRequest("computer_run", OWNER, _ca))
+        _ok = _decision.verdict.value == "deny"
+        _result(_ok, "Computer opt-in leaks into unattended work", _decision.reason)
+        failures += int(not _ok)
+
 # Gezaehlt, nicht addiert. Auf einer Maschine ohne Isolation faellt der
 # Identitaets-Block als SKIP heraus — dann steht hier ehrlich eine kleinere Zahl,
 # statt zwei Faelle zu behaupten, die niemand gefahren hat.

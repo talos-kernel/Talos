@@ -68,6 +68,7 @@ from typing import Any, Callable, Iterable, Mapping, Protocol
 from . import catalog, instructions
 from .credentials import WORKER_ENV_VAR, CredentialStore, Route, parse_worker_socket
 from .reasoner import CANCELLED_TEXT, PLAN_PROTOCOL, TOOL_PROTOCOL, render_skill_source
+from .provider_errors import ReasonerFailure
 from .stream import OnText
 from .usage import Run, UsageMeter
 
@@ -209,23 +210,6 @@ class HttpTransport(Protocol):
         headers: Mapping[str, str],
         timeout: float,
     ) -> HttpResponse: ...
-
-
-class ReasonerFailure(Exception):
-    """Ein klassifizierter Denk-Fehlschlag — strukturiert, ohne den Text zu aendern.
-
-    `message` ist EXAKT die bisherige, bereits bereinigte Betreiber-Meldung: Wer die
-    Ausnahme nur abfaengt und ihren Text ausliefert, verhaelt sich wortgleich wie vor
-    ihrer Einfuehrung (e2e/redteam assertieren auf diese Texte). `kind` ist die
-    maschinelle Form derselben Ursache, damit eine Fallback-Kette entscheiden kann,
-    ob ein weiterer Versuch sinnvoll ist — ohne an der Meldung zu raten.
-    """
-
-    def __init__(self, message: str, *, kind: str, note: str = "") -> None:
-        super().__init__(message)
-        self.message = message
-        self.kind = kind
-        self.note = note
 
 
 class _ApiFailure(Exception):

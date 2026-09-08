@@ -408,3 +408,49 @@ def test_a_plain_answer_still_gets_no_status_line(tmp_path: Path) -> None:
     )
     assert result.status is AgentStatus.ANSWERED
     assert result.text.strip() == "Da steht: da."
+
+
+def test_empty_question_is_repaired_without_aborting_or_spending_a_tool_call(tmp_path):
+    target = tmp_path / "result.txt"
+    executor = _executor(tmp_path)
+    proposals = iter([
+        _plan_line("Read and write the result", ["Read source", "Write result"])
+        + "\n" + _read_ok(tmp_path),
+        _tool_call("ask_operator", {}),
+        _tool_call("write_file", {"path": str(target), "content": "verified"}),
+        "Result written.",
+    ])
+    result = run_agent(lambda history: next(proposals), executor, OWNER, "repair")
+    assert result.status is AgentStatus.ANSWERED
+    assert target.read_text() == "verified"
+    assert result.plan.calls == 2
+    assert result.steps <= result.plan.ceiling
+    assert any("question format" in entry.lower() for entry in result.history)
+    events = executor.log.by_run("repair")
+    assert not any(e["type"] == "exec.intent" and e["payload"]["tool"] == "ask_operator"
+                   for e in events)
+    assert any(e["type"] == "protocol.repair" for e in events)
+
+
+def test_repeated_empty_questions_stop_without_sending_or_granting(tmp_path):
+    executor = _executor(tmp_path)
+    text = (_plan_line("Inspect then act", ["Inspect", "Act"])
+            + "\n" + _tool_call("ask_operator", {}))
+    result = run_agent(lambda history: text, executor, OWNER, "invalid-questions")
+    assert result.status is AgentStatus.PLAN_ABORTED
+    assert result.steps == 3
+    assert result.plan.calls == 0
+    assert "question" in result.text.lower()
+    assert not any(e["type"] == "exec.intent"
+                   for e in executor.log.by_run("invalid-questions"))
+
+
+def test_question_repair_never_authorizes_the_following_action(tmp_path):
+    proposals = iter([
+        _tool_call("ask_operator", {}),
+        _tool_call("run_shell", {"command": "git reset --hard"}),
+    ])
+    result = run_agent(lambda history: next(proposals), _executor(tmp_path),
+                       OWNER, "repair-approval")
+    assert result.status is AgentStatus.NEEDS_HUMAN
+    assert result.pending.tool == "run_shell"

@@ -30,10 +30,10 @@ class Worker:
     def drain(self): return 0
 
 
-def build(tmp_path: Path):
+def build(tmp_path: Path, reasoner_factory=Reasoner):
     log = EventLog(tmp_path / "e.db")
     registry = ProviderRegistry((Provider("alpha", "Alpha", ("one", "two")), Provider("beta", "Beta", ("x",)),))
-    router = ModelRouter(registry, ModelSelection("alpha", "one"), Reasoner, log)
+    router = ModelRouter(registry, ModelSelection("alpha", "one"), reasoner_factory, log)
     picker = ModelPicker(registry, router, token_factory=lambda: "tok")
     policy = PolicyKernel(tools.default_manifest(), frozenset({OWNER}))
     mint = CapabilityMint(policy)
@@ -71,6 +71,34 @@ def test_model_command_returns_structured_provider_picker(tmp_path: Path) -> Non
     assert conductor.handle(inbound(1, OWNER, "/model"))
     assert sent and sent[-1].keyboard
     assert "Select a provider" in sent[-1].text
+
+
+def test_quota_failure_keeps_control_commands_and_explicit_switch_available(tmp_path):
+    from talos.provider_errors import cli_failure
+    probes = []
+    class Limited(Reasoner):
+        def validate(self):
+            probes.append(self.selection.model)
+            if self.selection.model == "one":
+                raise AssertionError("The limited model must never be probed at boot")
+        def reason(self, prompt):
+            if self.selection.model == "one":
+                raise cli_failure('{"type":"result","is_error":true,"api_error_status":429}',
+                                  "", 1, provider="claude-cli", model="fixture")
+            return "healthy answer"
+    conductor, router, ui = build(tmp_path, Limited)
+    assert probes == []
+    assert not conductor.handle(inbound(50, OWNER, "hello"))
+    assert router.readiness()["kind"] == "rate_limited"
+    for uid, command in enumerate(("/model", "/status", "/queue", "/stop"), 51):
+        message = inbound(uid, OWNER, command)
+        assert conductor.is_inline(message)
+        assert conductor.handle(message)
+    assert ui[-1].keyboard
+    assert conductor.handle(inbound(55, OWNER, "/model alpha two"))
+    assert probes == ["two"]
+    assert conductor.handle(inbound(56, OWNER, "hello"))
+    assert router.readiness()["state"] == "ready"
 
 
 def test_authorized_callback_switches_but_unauthorized_callback_cannot(tmp_path: Path) -> None:

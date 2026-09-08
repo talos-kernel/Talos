@@ -805,8 +805,11 @@ class Conductor:
         except Exception as error:
             # Der Lauf ist tot — eine Frage, auf die er noch wartete, auch.
             self.questions.cancel(update.conversation)
+            from .provider_errors import ReasonerFailure
+            provider_detail = error.event_data() if isinstance(error, ReasonerFailure) else {}
             self.log.append(
-                Event(run_id, "conductor", "error", {"stage": "reason", "error": str(error)})
+                Event(run_id, "conductor", "error", {"stage": "reason", "error": str(error),
+                                                      **provider_detail})
             )
             if activity is not None:
                 activity.fail(str(error))
@@ -980,7 +983,13 @@ class Conductor:
             self.log.append(Event(d_run_id, "conductor", "distill.started", {}))
             run_agent(propose, self.executor, update.principal, d_run_id)
             bilanz = distill.counted(self.log.by_run(d_run_id))
-        except Exception:
+        except Exception as error:
+            from .provider_errors import ReasonerFailure
+            detail = error.event_data() if isinstance(error, ReasonerFailure) else {"kind": type(error).__name__}
+            try:
+                self.log.append(Event(d_run_id, "conductor", "distill.failed", detail))
+            except Exception:
+                pass  # A broken log must not undo an already delivered answer.
             return
         # Auch die Null-Bilanz gehoert ins Protokoll: ein Destill-Lauf, der nichts
         # schreibt, erzeugt sonst kein einziges Ereignis — ein unsichtbarer,

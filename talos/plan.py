@@ -17,10 +17,10 @@ Einschraenkungen:
 
   1. **Angekuendigte Reihenfolge.** Was der Lauf vorhat, bevor er es tut — sichtbar fuer
      den Betreiber, waehrend er noch eingreifen kann. Das ist Transparenz, kein Recht.
-  2. **Eine Abbruchbedingung.** Der erste Schritt, der scheitert, beendet den Lauf mit
-     einem Bericht, statt das Modell um den Fehler herum improvisieren zu lassen. Dieses
-     Improvisieren ist der Weg, auf dem Agenten Schaden anrichten: der Befehl geht nicht
-     durch, also wird der naechste Versuch groesser.
+  2. **Eine Abbruchbedingung.** Ein fehlgeschlagener Schritt beendet den Lauf mit
+     einem Bericht. Die Agentenschleife erlaubt nur fuer erkannte transiente READ-Fehler
+     hoechstens zwei Alternativen innerhalb des bestehenden Budgets. Refusals und
+     schreibende Fehler bleiben Abbruchgruende; keine Alternative erhaelt neue Rechte.
 
 Und ein Plan **kauft nichts**: das Schritt-Budget des Laufs sinkt auf das, was das Modell
 selbst angekuendigt hat. Wer drei Schritte plant, bekommt kein Fenster fuer vierzig.

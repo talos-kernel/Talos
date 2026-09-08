@@ -744,7 +744,7 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
                 angehaengt = _queued_on_purpose(update)
                 if angehaengt is not None:
                     if worker.submit(angehaengt):
-                        _notify_queued(registry, update.conversation, worker)
+                        _notify_queued(registry, update.conversation, worker, angehaengt)
                     else:
                         _notify_full(registry, update.conversation)
                 elif once or conductor.is_inline(update):
@@ -754,7 +754,7 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
                 elif not worker.submit(update):
                     _notify_full(registry, update.conversation)
                 else:
-                    _notify_queued(registry, update.conversation, worker)
+                    _notify_queued(registry, update.conversation, worker, update)
             if once:
                 return
     finally:
@@ -857,11 +857,18 @@ def _notify_full(registry: ChannelRegistry, conversation: str) -> None:
         pass  # Zustellung des Hinweises darf den Poll-Loop nicht killen
 
 
-def _notify_queued(registry: ChannelRegistry, conversation: str, worker: Worker) -> None:
+def _notify_queued(registry: ChannelRegistry, conversation: str, worker: Worker, item=None) -> None:
     """Sagt Bescheid, dass gewartet wird — nur, wenn wirklich schon etwas laeuft."""
     seit = worker.busy_since()
     if seit is None:
         return  # der Auftrag startet sofort; ein Wartehinweis waere schlicht falsch
+    if item is not None:
+        channel = registry.get(conversation.partition(":")[0])
+        begin = getattr(channel, "begin_queue_notice", None)
+        if callable(begin):
+            notice = begin(conversation)
+            worker.watch(item, notice.update)
+            return
     try:
         registry.send(
             conversation,

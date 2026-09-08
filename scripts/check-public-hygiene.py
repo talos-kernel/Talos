@@ -15,6 +15,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # Private-address fixtures are allowlisted by exact file and host. A new host in the same
 # test or example still fails instead of inheriting a broad path exemption.
 ALLOWED_ENDPOINT_FIXTURE_HOSTS = {
+    # QEMU SLIRP guest-only proxy address; no operator machine endpoint.
+    "deploy/computer-cloud-init.json": frozenset({"10.0.2.100"}),
+    "deploy/talos-guest-browser.service": frozenset({"10.0.2.100"}),
+    "talos/computer/guest.py": frozenset({"10.0.2.100"}),
+    # The browser's fixed guest-loopback CDP endpoint and its local test fixture.
+    "talos/computer/browser.py": frozenset({"127.0.0.1"}),
+    # Distinct loopback origins simulate an earlier third-party telemetry POST.
+    "tests/computer_browser_e2e.py": frozenset({"127.0.0.1", "localhost"}),
+    "tests/test_computer.py": frozenset({"127.0.0.1"}),
     "redteam.py": frozenset({"100.64.0.1", "127.0.0.1", "169.254.169.254", "192.168.1.1"}),
     "talos/catalog.py": frozenset({"localhost"}),
     "talos/web.py": frozenset({"169.254.169.254"}),

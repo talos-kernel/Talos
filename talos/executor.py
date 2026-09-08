@@ -52,6 +52,8 @@ def done_detail(decision: Decision) -> str:
     Modell Prosa, nicht `status`, und erzaehlte the operator anschliessend, es warte noch auf
     eine Freigabe, die er eine Sekunde vorher erteilt hatte.
     """
+    if is_auto_attended(decision):
+        return "ran under your attended auto-approval setting"
     return APPROVED_DETAIL if decision.verdict is Verdict.NEEDS_HUMAN else decision.reason
 
 
@@ -126,7 +128,10 @@ class Executor:
         # Sonst haengt das Undo an einem Feld, das der Reasoner weglassen kann.
         targets = self.policy.guard_targets(req)
         bindings = verifier.bind(targets)
-        token = self.snapshotter.take(targets)
+        # A failed read must never rewrite its source (which may be read-only or
+        # have changed independently). Binding checks still cover every target.
+        spec = self.policy.manifest.get(req.tool)
+        token = self.snapshotter.take(() if spec and spec.effect is Effect.READ else targets)
 
         if not verifier.recheck(bindings):
             self.snapshotter.restore(token)

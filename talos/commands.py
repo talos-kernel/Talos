@@ -115,6 +115,7 @@ Control
   pending approvals. Schedules are not touched.
 /queue — what is running, what is waiting
 /status — runtime, queue, pending approval, usage, background jobs, next schedules
+/computer — open your private desktop, live jobs and project files
 /new — clear the active context (log and searchable archive stay)
 /retry — ask the last question again
 /background <task> (also /bg, /btw) — run it beside this conversation; unattended, so anything
@@ -279,6 +280,16 @@ class CommandCenter:
             return CommandResult(reply=self._unschedule(rest, conversation))
         if name in ("blueprint", "blueprints"):
             return CommandResult(reply=self._blueprints(rest, principal, conversation))
+        if name == "computer":
+            from .computer.presentation import chat_authorized
+            if (principal not in self.policy.allowed_identities
+                    or not chat_authorized(principal, conversation, self.channels)):
+                return CommandResult(reply="Computer access requires its configured owner in a private, trusted Telegram chat.")
+            if rest.strip() in {"pause", "resume", "stop"}:
+                return CommandResult(request=ToolRequest(tool="computer_run", identity=principal,
+                                                        args={"op": rest.strip()}))
+            from .computer.presentation import entry
+            return CommandResult(structured=entry())
         if name == "skills":
             return CommandResult(reply=self._skills())
         if name == "tools":
@@ -618,6 +629,13 @@ class CommandCenter:
             f"Ereignisse gesamt: {self.log.count()}",
             f"Code: {self._version()}",
         ]
+        readiness = getattr(self.reasoner, "readiness", None)
+        if callable(readiness):
+            state = readiness()
+            lines.append(f"Model readiness: {state['state']}" +
+                         (f" · {state['kind']} · retry in {state['retry_in_s']}s" if state['kind'] else ""))
+            if state['reset_hint']:
+                lines.append(f"Provider reset: {state['reset_hint']} (reported by provider)")
         if self.governor is not None:
             lines.insert(1, f"Autonomie: {self.governor.describe()}")
         if self.memory is not None:
@@ -737,6 +755,8 @@ class CommandCenter:
     def _stop(self) -> str:
         dropped = self.worker.drain()
         killed = self.reasoner.cancel()
+        if killed and hasattr(self.worker, "mark_cancelled"):
+            self.worker.mark_cancelled()
         if not killed and dropped == 0:
             return "Nichts abzubrechen — es lief nichts und es wartete nichts."
         parts = []
@@ -768,6 +788,8 @@ class CommandCenter:
         """
         killed = self.reasoner.cancel()
         dropped = self.worker.drain()
+        if killed and hasattr(self.worker, "mark_cancelled"):
+            self.worker.mark_cancelled()
         jobs: tuple = ()
         if self.background is not None:
             jobs = tuple(self.background.cancel_all())

@@ -58,6 +58,7 @@ HELP = f"""
   status                             what it did last
   health [--json]                    is it well — runs, errors, schedules, anchor
   dashboard                          live view — observing only, localhost only
+  computer [status|open|setup]        your private desktop and verified project work
   events [--limit n] [--tool t] [--since 4h]    what happened — filterable, read-only
   why <event-id>                     why that was allowed or refused
 
@@ -284,6 +285,7 @@ TABLE: dict[str, object] = {
     "status": lambda _rest: cmd_status(),
     "health": _lazy("health", "run_health"),
     "dashboard": _lazy("dashboard", "run_dashboard"),
+    "computer": _lazy("computer.cli", "run_computer"),
     "events": _lazy("eventscli", "run_events"),
     "why": _lazy("eventscli", "run_why"),
     "verify": lambda _rest: cmd_verify(),

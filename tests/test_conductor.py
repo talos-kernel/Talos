@@ -190,6 +190,38 @@ def test_reasoner_failure_finalizes_activity_without_dirty_result(tmp_path):
     assert sent == []
 
 
+def test_empty_model_retry_after_real_write_executes_the_tool_once(tmp_path):
+    from talos.provider import ModelRouter, ModelSelection, Provider, ProviderRegistry
+    from talos.provider_errors import cli_failure
+
+    target = tmp_path / "receipt.txt"
+    prompts = []
+    class ProviderFixture:
+        timeout_s = 10
+        def reason_strict(self, prompt, *, timeout_s):
+            prompts.append(prompt)
+            if len(prompts) == 1:
+                return _tool_call("write_file", {"path": str(target), "content": "verified"}, [])
+            if len(prompts) == 2:
+                raise cli_failure("The API returned an empty response.", "", 75,
+                                  provider="kimi-cli", model="fixture")
+            return "Saved and verified."
+    registry = ProviderRegistry([Provider("fixture", "Fixture", ("one",))])
+    router = ModelRouter(registry, ModelSelection("fixture", "one"),
+                         lambda _: ProviderFixture(), EventLog(tmp_path / "provider.db"))
+    conductor, sent = _build(tmp_path, router)
+    assert conductor.handle(msg(700, OWNER, "Save the fixture."))
+    assert target.read_text() == "verified"
+    executions = [e for e in conductor.log.recent(100) if e["type"] == "exec.result"]
+    assert len(executions) == 1
+    assert executions[0]["payload"]["tool"] == "write_file"
+    assert executions[0]["payload"]["status"] == "done"
+    assert len(prompts) == 3 and prompts[1] == prompts[2]
+    assert "Saved and verified." in sent[-1][1]
+    assert not conductor.handle(msg(700, OWNER, "Save the fixture."))
+    assert len(prompts) == 3  # Duplicate inbound delivery cannot replay the job either.
+
+
 def test_unauthorized_and_commands_never_create_activity(tmp_path):
     began: list[str] = []
 

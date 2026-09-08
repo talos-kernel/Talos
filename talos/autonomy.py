@@ -147,8 +147,16 @@ def attended_routine(req: ToolRequest, spec: ToolSpec | None, kernel: PolicyKern
         # `outward` zuerst: eine Wirkung jenseits der Aussengrenze (ferne Maschine,
         # fremde API) ist per Bauart keine Routine — sie kann nicht eingesperrt
         # werden, und genau das war die Voraussetzung der Auto-Freigabe.
-        if spec.outward:
-            return False
+        if spec.outward or req.tool == "remote_exec":
+            # Explicit operator opt-ins, scoped to this VM or a closed diagnostic
+            # grammar. These do not change the raw kernel or other outward tools.
+            from .routine import operator_routine
+            try:
+                targets = set(req.targets) | set(_derived_targets(req, kernel.vault_dir))
+            except VaultPathError:
+                return False
+            return (not any(_is_secret(t) or _hits(t, PERSISTENCE_PREFIXES) for t in targets)
+                    and operator_routine(req))
         return spec.sandbox_required or not spec.requires_env
     if not spec.reversible:
         return False
@@ -335,6 +343,7 @@ class GovernedKernel:
         # an dem der Executor seinen Log-Beleg erkennt.
         if (
             self.attended_autoapprove
+            and self.trust_of(req.identity.channel) is channel_trust.Trust.FULL
             and base.verdict is Verdict.NEEDS_HUMAN
             and decision.verdict is Verdict.NEEDS_HUMAN
             and ceiling(self.governor.level, req, spec).verdict is Verdict.ALLOW

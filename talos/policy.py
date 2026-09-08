@@ -454,6 +454,8 @@ TARGET_EXTRACTORS = {
     # Wurzel, unter der jeder Job-Workspace liegt — nie ein Modellpfad. Der
     # Floor greift also, bevor ein einziger Byte des fremden Agenten faellt.
     "delegate_code": lambda args: (claude_work_root(),),
+    "computer_status": lambda args: (),
+    "computer_run": lambda args: (os.environ.get("TALOS_COMPUTER_ROOT", "/var/lib/talos-computer"),),
     # DAG-Delegation: dasselbe Ziel wie `delegate_code` — jeder Knoten wird ein
     # eigener Job in einem kernel-abgeleiteten Workspace unter dieser Wurzel.
     # Der Floor greift also, bevor ein einziger Frame den Prozess verlaesst.
@@ -597,7 +599,9 @@ def _is_secret(target: str) -> bool:
 # Kommandos staendig. Wer wirklich in ein Secret schreiben soll, nimmt write_file:
 # dort greift des Betreibers Regel (NEEDS_HUMAN) mit sauberem Ziel und Snapshot.
 SHELL_FORBIDDEN_PREFIXES: tuple[str, ...] = (
-    _both_forms("/etc", "/boot", "/root") + SECRET_PREFIXES
+    _both_forms("/etc", "/boot", "/root", "/run/talos-computer-api", "/run/talos-computer-vm",
+                os.path.dirname((os.environ.get("TALOS_COMPUTER_SOCKET") or "/run/talos-computer-api/control.sock")))
+    + SECRET_PREFIXES
 )
 
 # Pfad-artige Tokens im Kommando. Grob nach oben abgesichert, nie nach unten:
@@ -708,6 +712,15 @@ class PolicyKernel:
         if fehlend:
             return Decision(Verdict.DENY, f"required env not set: {', '.join(fehlend)}")
 
+        if req.tool in {"computer_run", "computer_status"}:
+            from .computer.contract import validate, DESKTOP_OPS
+            try:
+                op = validate(req.args, read=req.tool == "computer_status")
+                if os.environ.get("TALOS_COMPUTER_DESKTOP", "1") != "1" and op in DESKTOP_OPS:
+                    return Decision(Verdict.DENY, "desktop is disabled; use the headless computer tools")
+            except (ValueError, TypeError):
+                return Decision(Verdict.DENY, "invalid computer request")
+
         # 0.5 Target-Extraktion: Wir glauben nicht dem LLM (req.targets), wir leiten ab.
         if req.tool not in TARGET_EXTRACTORS and req.tool not in {"vault_get", "vault_write_note"}:
             return Decision(Verdict.DENY, f"unknown tool without target extractor: {req.tool}")
@@ -761,6 +774,10 @@ class PolicyKernel:
         # die lokale Shell — kein Pfad-Floor (die Pfade meinen die ferne Maschine),
         # kein SHELL_NEEDS_HUMAN=0-Komfort (die Sandbox reicht nicht ueber
         # Maschinengrenzen), Hardline trotzdem (Systemzerstoerung ist ortlos).
+        if req.tool == "computer_run":
+            # The VM contains filesystem effects, but browsing can affect external
+            # accounts. Never inherit shell auto-approval or unattended rights.
+            return Decision(Verdict.NEEDS_HUMAN, "computer action — needs your approval")
         if req.tool == "remote_exec":
             return self._decide_remote(req)
         # API-Connector: die METHODE entscheidet ueber die Vertrauensform —

@@ -12,9 +12,9 @@ preferences live in `USER.md`. All three are operator-owned prompt state and rel
 
 | | |
 |---|---|
-| Gate path | `policy.py`, **896 lines** — has to stay readable in one sitting |
-| Tools | **29**, every one gated |
-| Suites | **2424** tests · **210** adversarial · 44 end-to-end |
+| Gate path | `policy.py`, **913 lines** — has to stay readable in one sitting |
+| Tools | **31**, every one gated |
+| Suites | **2587** tests · **217** adversarial · 44 end-to-end |
 | Home | <https://talos-agent.ch> · docs at `/docs/` |
 | Repository | `talos-kernel/talos` is the public source tree |
 
@@ -51,9 +51,10 @@ In practice:
   reading into `DENY`, including anything that would need approval — a question reaching
   the operator out of the context it came from is how reflexive clicking starts. A
   subagent is born from model text; it must be able to do *less* than its caller.
-- **Never let the browser operate a page.** `browse` renders and reads. Clicking, typing
-  and form submission have no derivable target, so they cannot be gated — and a tool
-  without a target is `DENY` by construction. Rendering also stays inside the resolver
+- **Keep `browse` read-only.** That renderer reads public pages. Interactions belong
+  to the separately provisioned Computer, whose `computer_run` action has a fixed
+  operator-derived target, a kernel decision and a durable job receipt.
+  Read-only rendering stays inside the resolver
   cage (`browser.resolver_rules`), so a redirect cannot leave the host `guard_url` checked.
 - **Never add a second source of permission.** The autonomy dial and the channel ceiling
   can only tighten. Anything that grants rights next to the kernel reintroduces the exact
@@ -238,8 +239,8 @@ In practice:
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install --require-hashes -r requirements.lock -r requirements-dev.lock
 
-python -m pytest tests/ -q   # 2424 tests, ~30s
-python redteam.py            # 210 adversarial cases — mandatory for any kernel change
+python -m pytest tests/ -q   # 2587 tests, ~30s
+python redteam.py            # 217 adversarial cases — mandatory for any kernel change
 python e2e.py                # 44 cases against a real model (costs tokens and time)
 python -m talos --once       # single cycle, for diagnosis
 python -m talos              # run
@@ -258,6 +259,24 @@ python -m talos why <id>     # why that was allowed or refused, and what came of
 python -m talos verify       # prove the event log was not edited after the fact (exit 1 if it was)
 python -m talos anchor       # pin the chain head — exit 1 if the log shrank (--send mails the digest)
 ```
+
+## Provider failures and control commands
+
+Construct model routes without a remote readiness probe at service startup. A provider
+limit must leave `/model`, `/status`, `/queue` and `/stop` reachable. Explicit model
+switches still validate before persisting; failures preserve the selected route.
+
+CLI errors use `provider_errors.py`: accept known structured diagnostics from either
+stream, retain the exit code and declared error category, and discard arbitrary output.
+Never log a whole CLI response, private prompt or credential as a diagnostic. An
+`empty_response` means no usable answer; it does not prove why the provider produced it.
+
+Only that category may retry the exact model call once, inside its original deadline,
+before any partial output is delivered. Cancellation interrupts the retry wait. Never
+replay tools or the whole job, and never silently switch providers. Exhausted failures
+back off for 30–300 seconds; `/status` reports availability separately from service state.
+Queue notices follow worker lifecycle events, including failure and cancellation.
+Learning failures must end with `distill.failed`, without retracting the user's answer.
 
 ## Dependencies: intent vs. what gets installed
 
@@ -324,7 +343,7 @@ covers the packages only through it. `pip` is never upgraded unpinned first.
 
 - Comments and docstrings explain **why**, especially where a rule looks counterintuitive.
   Those are the ones that get argued away six months later.
-- Small modules. The gate path (`policy.py`, 896 lines) must stay readable in one sitting.
+- Small modules. The gate path (`policy.py`, 913 lines) must stay readable in one sitting.
 - Glyphs come from `talos/ux.py` only, one meaning each, **never inside an answer's prose**.
 - Telegram edit interval stays ≥ 1.2 s; the API tolerates roughly one edit per second
   per chat.

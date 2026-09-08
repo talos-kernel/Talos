@@ -1,0 +1,120 @@
+{
+  "hostname": "talos-computer",
+  "manage_etc_hosts": true,
+  "users": [
+    {
+      "name": "desk",
+      "gecos": "Talos Computer",
+      "shell": "/bin/bash",
+      "lock_passwd": true,
+      "groups": [
+        "audio",
+        "video"
+      ],
+      "ssh_authorized_keys": []
+    },
+    {
+      "name": "root",
+      "ssh_authorized_keys": []
+    }
+  ],
+  "ssh_pwauth": false,
+  "disable_root": false,
+  "package_update": true,
+  "package_upgrade": true,
+  "packages": [
+    "xfce4",
+    "xfce4-terminal",
+    "xvfb",
+    "x11vnc",
+    "chromium",
+    "dbus-user-session",
+    "python3",
+    "python3-pil",
+    "python3-tk",
+    "xdotool",
+    "scrot",
+    "curl",
+    "git",
+    "ca-certificates",
+    "fonts-noto-color-emoji"
+  ],
+  "write_files": [
+    {
+      "path": "/etc/apt/apt.conf.d/90talos-proxy",
+      "content": "Acquire::http::Proxy \"http://10.0.2.100:3128\";\nAcquire::https::Proxy \"http://10.0.2.100:3128\";\n"
+    },
+    {
+      "path": "/etc/environment",
+      "content": "http_proxy=http://10.0.2.100:3128\nhttps_proxy=http://10.0.2.100:3128\nHTTP_PROXY=http://10.0.2.100:3128\nHTTPS_PROXY=http://10.0.2.100:3128\nNO_PROXY=localhost,127.0.0.1\n"
+    },
+    {
+      "path": "/etc/systemd/system/talos-screen.service",
+      "content": "[Unit]\nAfter=network.target\n[Service]\nUser=desk\nEnvironment=DISPLAY=:0\nEnvironment=HTTP_PROXY=http://10.0.2.100:3128\nEnvironment=HTTPS_PROXY=http://10.0.2.100:3128\nEnvironment=http_proxy=http://10.0.2.100:3128\nEnvironment=https_proxy=http://10.0.2.100:3128\nExecStart=/usr/bin/Xvfb :0 -screen 0 1440x900x24 -nolisten tcp -ac\nRestart=on-failure\n[Install]\nWantedBy=multi-user.target\n"
+    },
+    {
+      "path": "/etc/systemd/system/talos-desktop.service",
+      "content": "[Unit]\nAfter=talos-screen.service\n[Service]\nUser=desk\nEnvironment=DISPLAY=:0\nEnvironment=HTTP_PROXY=http://10.0.2.100:3128\nEnvironment=HTTPS_PROXY=http://10.0.2.100:3128\nEnvironment=http_proxy=http://10.0.2.100:3128\nEnvironment=https_proxy=http://10.0.2.100:3128\nExecStart=/usr/bin/dbus-run-session -- /usr/bin/xfce4-session\nRestart=on-failure\n[Install]\nWantedBy=multi-user.target\n"
+    },
+    {
+      "path": "/etc/systemd/system/talos-vnc.service",
+      "content": "[Unit]\nAfter=talos-screen.service\n[Service]\nUser=desk\nEnvironment=DISPLAY=:0\nEnvironment=HTTP_PROXY=http://10.0.2.100:3128\nEnvironment=HTTPS_PROXY=http://10.0.2.100:3128\nEnvironment=http_proxy=http://10.0.2.100:3128\nEnvironment=https_proxy=http://10.0.2.100:3128\nExecStart=/usr/bin/x11vnc -display :0 -forever -shared -rfbport 5900 -nopw -quiet\nRestart=on-failure\n[Install]\nWantedBy=multi-user.target\n"
+    },
+    {
+      "path": "/etc/ssh/sshd_config.d/80-talos.conf",
+      "content": "PasswordAuthentication no\nPermitRootLogin prohibit-password\nAllowUsers root desk\nAllowTcpForwarding no\nX11Forwarding no\nPermitTunnel no\n"
+    },
+    {
+      "path": "/etc/skel/.config/autostart/talos-browser.desktop",
+      "content": "[Desktop Entry]\nType=Application\nName=Talos Computer\nExec=chromium --start-maximized --proxy-server=http://10.0.2.100:3128 --no-first-run --disable-sync --disable-background-networking --password-store=basic file:///opt/talos/welcome.html\n"
+    },
+    {
+      "path": "/opt/talos/welcome.html",
+      "content": "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Talos Computer</title><style>body{margin:0;background:#101319;color:#edf0f6;font:20px system-ui;padding:12vh 9vw}small{color:#e5b769;letter-spacing:3px;font-size:12px}h1{font-size:clamp(45px,6vw,84px);font-weight:500;letter-spacing:-4px;max-width:850px;line-height:1.1}p{color:#a6b0c1;max-width:650px;line-height:1.8;font-size:18px}code{color:#a5dbc3}footer{margin-top:70px;font-size:13px;color:#a6b0c1}</style><small>TALOS COMPUTER</small><h1>A place to turn<br>ideas into work.</h1><p>Your browser, terminal and project files, together in one persistent workspace.</p><p>Projects live in <code>~/Projects</code>.<br>Take over whenever you need to.</p><footer>Your machine. Your work. Your control.</footer></html>"
+    },
+    {
+      "path": "/etc/chromium/policies/managed/talos.json",
+      "permissions": "0644",
+      "content": "{\"TranslateEnabled\": false, \"PasswordManagerEnabled\": false}"
+    }
+  ],
+  "runcmd": [
+    [
+      "install",
+      "-d",
+      "-m",
+      "0700",
+      "-o",
+      "desk",
+      "-g",
+      "desk",
+      "/home/desk/Projects"
+    ],
+    [
+      "bash",
+      "-c",
+      "mkdir -p /home/desk/.config/autostart; cp /etc/skel/.config/autostart/talos-browser.desktop /home/desk/.config/autostart/; chown -R desk:desk /home/desk/.config"
+    ],
+    [
+      "loginctl",
+      "enable-linger",
+      "desk"
+    ],
+    [
+      "systemctl",
+      "daemon-reload"
+    ],
+    [
+      "systemctl",
+      "enable",
+      "--now",
+      "talos-screen.service",
+      "talos-desktop.service",
+      "talos-vnc.service"
+    ],
+    [
+      "touch",
+      "/var/lib/talos-ready"
+    ]
+  ]
+}

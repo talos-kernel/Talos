@@ -1,0 +1,30 @@
+[Unit]
+Description=Talos computer jobs and control
+After=talos-computer-vm.service
+Requires=talos-computer-vm.service
+JoinsNamespaceOf=talos-computer-vm.service
+PartOf=talos-computer-vm.service
+
+[Service]
+User=talos-computer
+Group=talos-computer-client
+SupplementaryGroups=talos-computer
+PrivateNetwork=yes
+WorkingDirectory=/opt/talos-computer
+ExecStart=/usr/bin/python3 -m talos.computer.service
+RuntimeDirectory=talos-computer-api
+RuntimeDirectoryMode=0750
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/talos-computer /var/lib/talos-computer-captures
+RestrictAddressFamilies=AF_UNIX AF_INET
+MemoryMax=384M
+TasksMax=64
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

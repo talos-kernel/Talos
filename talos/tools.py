@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Callable
 
 from .manifest import Effect, ToolManifest, ToolSpec
+from .computer.client import runner as computer_runner
 from .policy import ToolRequest, claude_job_workspace
 from .question import Answer, AnswerReason, QuestionDesk
 from .skillwrite import skill_write
@@ -150,9 +151,9 @@ def make_ask_operator_runner(
     stünden sie in den Argumenten, könnte das Modell wählen, wen es fragt und mit
     welcher Stufe. Der Conductor hinterlegt sie am ausführenden Thread.
 
-    Weniger als zwei verwertbare Möglichkeiten wirft `ValueError` — bewusst
-    durchgereicht: das ist ein gewöhnlicher Werkzeugfehler und geht als solcher an das
-    Modell zurück, statt hier zu einer stillen „keine Antwort" zu werden.
+    Malformed questions raise `ValueError` without opening a ticket. The agent loop
+    uses the same validator for bounded proposal repair before this runner is called;
+    direct callers still receive the error instead of a fabricated answer.
     """
 
     def ask_operator(req: ToolRequest) -> str:
@@ -243,6 +244,8 @@ def make_session_search_runner(
 # und den Rückweg in den Chat. `session_search` fehlt ebenfalls: es braucht den
 # geteilten TranscriptStore und den Thread-Kontext des Conductors.
 RUNNERS = {
+    "computer_run": computer_runner,
+    "computer_status": computer_runner,
     "read_file": read_file,
     "write_file": write_file,
     "run_shell": run_shell,
@@ -290,6 +293,11 @@ def default_manifest(*, agy_backend: bool = True, codex_backend: bool = True) ->
     """
     manifest = (
         ToolManifest()
+        .with_tool(ToolSpec("computer_run", Effect.EXEC, reversible=False,
+                            requires_env=frozenset({"TALOS_COMPUTER_SOCKET"}),
+                            sandbox_required=True, outward=True))
+        .with_tool(ToolSpec("computer_status", Effect.READ, reversible=True,
+                            requires_env=frozenset({"TALOS_COMPUTER_SOCKET"})))
         .with_tool(ToolSpec("read_file", Effect.READ, reversible=True))
         .with_tool(ToolSpec("write_file", Effect.WRITE, reversible=True))
         .with_tool(ToolSpec("run_shell", Effect.EXEC, reversible=False))

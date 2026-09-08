@@ -16,6 +16,7 @@ from typing import Callable, Iterable
 from .channel import Button, Principal, StructuredMessage
 from .eventlog import Event, EventLog, new_run_id
 from .stream import OnText
+from .provider_errors import ReasonerFailure
 
 MODEL_PAGE_SIZE = 8
 CALLBACK_MAX_BYTES = 64
@@ -109,24 +110,22 @@ class ModelRouter:
         self._switch_cancelled = False
         self._active_reasoner: object | None = None
         self._validating_reasoner: object | None = None
+        self._retry_cancel = threading.Event()
+        self._failure: ReasonerFailure | None = None
+        self._failure_count = 0
+        self._next_attempt = 0.0
+        self._ready = "unchecked"
 
         selected = registry.selection(initial.provider, initial.model)
         try:
-            reasoner = self._build_validated(selected)
-        except Exception as error:
-            if fallback is None:
-                raise
-            safe = registry.selection(fallback.provider, fallback.model)
-            if safe == selected:
-                raise
-            self._log.append(
-                Event(
-                    new_run_id(), "system", "model.restore_failed",
-                    {"provider": selected.provider, "model": selected.model, "error": str(error)[:240]},
-                )
-            )
-            selected = safe
-            reasoner = self._build_validated(selected)
+            # Boot constructs a route, never waits for a provider's model probe.
+            # /model and /stop must exist before any remote model can fail.
+            reasoner = self._build(selected)
+        except Exception:
+            reasoner = None
+            self._ready = "unavailable"
+            self._failure = ReasonerFailure("Model route unavailable; use /model or doctor.",
+                                           kind="unknown", fallback_allowed=False)
         self._current = selected
         self._reasoner = reasoner
 
@@ -146,6 +145,13 @@ class ModelRouter:
         with self._lock:
             return self._active_reasoner is None and not self._switching
 
+    def readiness(self) -> dict:
+        with self._lock:
+            return {"state": self._ready,
+                    "retry_in_s": max(0, round(self._next_attempt - time.monotonic())),
+                    "kind": self._failure.kind if self._failure else "",
+                    "reset_hint": self._failure.reset_hint if self._failure else ""}
+
     def reason(self, prompt: str, on_text: OnText | None = None) -> str:
         """Reicht die Text-Senke an den aktiven Reasoner durch — falls der sie kennt.
 
@@ -163,8 +169,18 @@ class ModelRouter:
                 self._condition.wait()
             if self._active_reasoner is not None:
                 raise RuntimeError("Reasoner laeuft bereits")
+            if self._failure is not None and time.monotonic() < self._next_attempt:
+                raise self._failure
             reasoner = self._reasoner
+            if reasoner is None:
+                try:
+                    reasoner = self._build(self._current)
+                    self._reasoner = reasoner
+                except Exception:
+                    raise self._failure from None
             self._active_reasoner = reasoner
+            self._retry_cancel.clear()
+            self._ready = "checking"
         try:
             # `reason_strict` zuerst: ein Reasoner, der seine Fehler klassifiziert
             # (ApiReasoner), soll sie als Ausnahme nach oben geben, damit eine davor
@@ -172,17 +188,63 @@ class ModelRouter:
             # und liefert exakt denselben Text wie bisher — der Vertrag aendert sich
             # nur fuer den, der ihn brauchen kann.
             method = getattr(reasoner, "reason_strict", None) or getattr(reasoner, "reason")
-            if on_text is not None and _takes_sink(method):
-                return str(method(prompt, on_text=on_text))
-            return str(method(prompt))
+            budget = float(getattr(reasoner, "timeout_s", getattr(reasoner, "_timeout_s", 180)))
+            deadline = time.monotonic() + budget
+            emitted = False
+            call_id = new_run_id()
+            def sink(text):
+                nonlocal emitted
+                emitted = emitted or bool(text)
+                if on_text is not None:
+                    on_text(text)
+            for attempt in (1, 2):
+                if self._retry_cancel.is_set():
+                    from .reasoner import CANCELLED_TEXT
+                    return CANCELLED_TEXT
+                kwargs = {"on_text": sink} if on_text is not None and _takes_sink(method) else {}
+                if "timeout_s" in inspect.signature(method).parameters:
+                    kwargs["timeout_s"] = max(0.001, deadline - time.monotonic())
+                try:
+                    result = str(method(prompt, **kwargs))
+                    with self._lock:
+                        if self._retry_cancel.is_set():
+                            from .reasoner import CANCELLED_TEXT
+                            return CANCELLED_TEXT
+                        self._failure = None
+                        self._failure_count = 0
+                        self._next_attempt = 0
+                        self._ready = "ready"
+                    return result
+                except ReasonerFailure as error:
+                    self._log.append(Event(call_id, "provider", "model.attempt_failed",
+                                           {**error.event_data(), "attempt": attempt}))
+                    retry = (attempt == 1 and error.kind == "empty_response"
+                             and not emitted and "timeout_s" in inspect.signature(method).parameters
+                             and deadline - time.monotonic() > 1)
+                    if retry:
+                        if self._retry_cancel.wait(1):
+                            from .reasoner import CANCELLED_TEXT
+                            return CANCELLED_TEXT
+                        continue
+                    with self._lock:
+                        self._failure = error
+                        self._failure_count += 1
+                        self._next_attempt = time.monotonic() + min(300, 30 * 2 ** min(4, self._failure_count - 1))
+                        self._ready = "unavailable"
+                    raise
         finally:
             with self._condition:
+                if self._ready == "checking":
+                    self._ready = "unchecked"
                 if self._active_reasoner is reasoner:
                     self._active_reasoner = None
                 self._condition.notify_all()
 
     def cancel(self) -> bool:
         with self._lock:
+            active = self._active_reasoner is not None
+            if active:
+                self._retry_cancel.set()
             switching = self._switching
             if switching:
                 self._switch_cancelled = True
@@ -191,7 +253,7 @@ class ModelRouter:
             return switching
         method = getattr(reasoner, "cancel", None)
         stopped = bool(method()) if method is not None else False
-        return stopped or switching
+        return stopped or switching or active
 
     def select(self, provider: str, model: str, *, principal: Principal) -> SwitchResult:
         try:
@@ -238,6 +300,10 @@ class ModelRouter:
                 )
                 self._reasoner = candidate
                 self._current = target
+                self._failure = None
+                self._failure_count = 0
+                self._next_attempt = 0
+                self._ready = "ready"
                 self._validating_reasoner = None
                 self._switching = False
                 self._switch_cancelled = False
@@ -640,7 +706,16 @@ class HermesCatalogLoader:
         for entry in catalog_fn():
             slug = str(getattr(entry, "slug", "") or (entry.get("slug", "") if isinstance(entry, dict) else ""))
             label = str(getattr(entry, "label", "") or (entry.get("label", "") if isinstance(entry, dict) else "") or slug)
-            models = tuple(dict.fromkeys(str(model) for model in models_fn(slug) if str(model)))
+            # A catalog is metadata, not a request to initialize every optional
+            # cloud SDK. Hermes' Bedrock discovery logs an installation error
+            # without boto3 even for an unrelated Claude-only setup. Retain its
+            # published snapshot; the selected route still has to pass a probe.
+            if slug == "bedrock" and importlib.util.find_spec("boto3") is None:
+                snapshot = getattr(models_module, "_PROVIDER_MODELS", {})
+                names = snapshot.get(slug, ()) if isinstance(snapshot, dict) else ()
+            else:
+                names = models_fn(slug)
+            models = tuple(dict.fromkeys(str(model) for model in names if str(model)))
             if slug and models:
                 providers.append(Provider(slug, label, models))
         return ProviderRegistry(providers)

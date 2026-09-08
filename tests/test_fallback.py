@@ -76,7 +76,7 @@ def registry() -> ProviderRegistry:
 
 def failing_primary(tmp_path: Path, status: int, meter: UsageMeter | None = None):
     """Router + ApiReasoner, dessen Probe gelingt und dessen Lauf mit `status` endet."""
-    http = QueueHttp(READY, FakeResponse([], status_code=status, text="fehler"))
+    http = QueueHttp(FakeResponse([], status_code=status, text="fehler"))
 
     def build(selection: ModelSelection) -> ApiReasoner:
         return ApiReasoner(
@@ -228,7 +228,7 @@ def test_each_attempt_is_its_own_measured_run(tmp_path: Path) -> None:
     kette.reason("x")
 
     stand = meter.snapshot()
-    assert stand.runs == 3   # Probe (ok) + Primaer (fehlgeschlagen) + Hop (ok)
+    assert stand.runs == 2   # Primary + explicitly configured hop; no boot inference.
     assert stand.failed == 1
     assert stand.last is not None and stand.last.ok
 

@@ -120,6 +120,12 @@ def _model_overrides(value: str) -> str:
 
 
 KEYS: tuple[Key, ...] = (
+    Key("TALOS_COMPUTER_AUTOAPPROVE", POLICY,
+        "allow work inside the operator computer without per-action prompts in trusted "
+        "attended sessions at autonomy 5; external account effects are included", "0", _bool01),
+    Key("TALOS_REMOTE_READONLY_AUTOAPPROVE", POLICY,
+        "allow a closed set of status commands on configured SSH aliases in trusted "
+        "attended sessions; administration still asks", "0", _bool01),
     Key("TALOS_CLAUDE_BIN", POLICY,
         "the Claude executable; setup model saves the detected path", validate=_one_line),
     # --- Politik: die drei, mit denen man den Kernel umstellt statt ihn zu ueberreden.

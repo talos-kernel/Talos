@@ -19,8 +19,10 @@ from typing import Callable
 from .background import SteerInbox
 from .channel import Principal
 from .executor import Executor, Status
+from .eventlog import Event
 from .plan import BUDGET_REASON, PlanRun, parse_plan
 from .policy import ToolRequest, guard_targets
+from .question import clean_question
 from .redirect import Redirect
 from .ux import SYM_FAIL, SYM_OK
 
@@ -98,6 +100,7 @@ def looks_foreign(text: str) -> bool:
 # Verweis auf die eigene Prozess-Schranke macht daraus den Fehler.
 _SELF_BLOCK_REFUSAL = re.compile(
     r"\b(?:kann|darf|werde|geht)\s+(?:ich\s+)?(?:das\s+|dies\s+|es\s+)?nicht\b"
+    r"|\b(?:ich\s+(?:kann|darf|werde)|(?:kann|darf|werde)\s+ich)\b[^\n.!?]{0,100}\bnicht\b"
     r"|\bfuehre\s+.{0,40}\bnicht\s+aus\b"
     r"|\bführe\s+.{0,40}\bnicht\s+aus\b"
     r"|\b(?:i\s+)?(?:can(?:no|')t|cannot|am\s+unable\s+to|will\s+not|won't)\b"
@@ -125,7 +128,24 @@ SELF_BLOCK_NOTE = (
     "which is exactly why asking is safe. It does not limit what you may REQUEST. Emit "
     "the TOOL_CALL line for the tool you need — a separate security kernel judges it and "
     "asks the operator where required. If you genuinely need no tool, answer the task in "
-    "prose, but do not refuse because of your own sandbox.]"
+    "prose, but do not refuse because of your own sandbox. Do not repeat an action the "
+    "operator declined, and do not write a CLI plan file. Request the next authorized "
+    "task action through Talos instead.]"
+)
+
+# Malformed questions have no effect and cannot obtain approval. Repair only the
+# proposal, before delivery; retries still consume the existing step/plan budget.
+MAX_QUESTION_RETRIES = 2
+QUESTION_REPAIR_NOTE = (
+    '[Question format invalid; this proposal sent no question and ran no action. '
+    'Use ask_operator only for genuinely missing information, with '
+    '{"question":"a specific non-empty question","options":["choice one","choice two"]}. '
+    'Do not invent missing user facts or choices. If the task is already clear, continue '
+    'it with the next ordinary TOOL_CALL instead of asking for reassurance. '
+    'Every requested action still passes the same security kernel.]'
+)
+QUESTION_REPAIR_FAILED = (
+    "The question format could not be repaired. This proposal sent no question; the task remains unfinished."
 )
 
 # A final-answer checker is deliberately allowed one correction round. It can make the
@@ -137,10 +157,10 @@ MAX_REVIEW_NOTE_CHARS = 800
 
 def looks_self_blocked(text: str) -> bool:
     """Lehnt diese Antwort die Aufgabe mit einer Schranke des eigenen Prozesses ab?"""
-    stripped = text.strip()
-    if not stripped or len(stripped) > MAX_SELF_BLOCK_CHARS:
-        return False
-    return bool(_SELF_BLOCK_REFUSAL.search(stripped) and _SELF_BLOCK_REASON.search(stripped))
+    # Inspect the opening, not the total length. A refusal followed by a long
+    # proposed plan is still a refusal; an incidental mention at a report's end is not.
+    opening = text.strip()[:MAX_SELF_BLOCK_CHARS]
+    return bool(_SELF_BLOCK_REFUSAL.search(opening) and _SELF_BLOCK_REASON.search(opening))
 
 
 class AgentStatus(str, Enum):
@@ -243,6 +263,10 @@ def run_agent(
     foreign_retries = 0
     self_block_retries = 0
     final_review_retries = 0
+    question_retries = 0
+    proposal_repairs = 0
+    empty_repairs = 0
+    recovery_attempts = 0
     if steps_used >= max_steps:
         return AgentResult(
             AgentStatus.STEP_LIMIT,
@@ -320,6 +344,24 @@ def run_agent(
 
         call = parse_tool_call(text)
         if call is None:
+            if text.strip() in {"", "(leere Antwort)", "(Empty answer.)"}:
+                executor.log.append(Event(run_id, "agent", "protocol.repair", {
+                    "reason":"empty model answer", "attempt":empty_repairs + 1,
+                    "exhausted":empty_repairs >= 1,
+                }))
+                if empty_repairs >= 1:
+                    return AgentResult(
+                        AgentStatus.STEP_LIMIT,
+                        "The model returned no usable answer. No further action was run.",
+                        steps=step, history=tuple(history), plan=active,
+                    )
+                empty_repairs += 1
+                history.append(
+                    "[Your last reply was empty. Use the existing tool receipts to answer "
+                    "the task, or request the next necessary tool with complete arguments. "
+                    "Do not repeat completed, declined or uncertain effects.]"
+                )
+                continue
             # Eine Ankuendigung ohne ersten Schritt ist keine Antwort — sonst bekaeme der
             # Betreiber den Plan als Ergebnis vorgelegt, waehrend nichts davon geschah.
             if declared_now:
@@ -370,6 +412,45 @@ def run_agent(
             )
 
         tool, args, targets = call
+        from . import proposal
+        issue = proposal.problem(tool, args)
+        if issue:
+            exhausted = proposal_repairs >= proposal.MAX_REPAIRS
+            executor.log.append(Event(run_id, "agent", "protocol.repair", {
+                "tool": tool, "reason": "incomplete arguments",
+                "attempt": proposal_repairs + 1, "exhausted": exhausted,
+            }))
+            if exhausted:
+                message = "Tool arguments could not be completed. Nothing ran from these proposals."
+                stopped = active.abort(message) if active else None
+                return AgentResult(
+                    AgentStatus.PLAN_ABORTED if stopped else AgentStatus.STEP_LIMIT,
+                    stopped.report() if stopped else message,
+                    steps=step, history=tuple(history), plan=stopped,
+                )
+            proposal_repairs += 1
+            history.append(proposal.note(tool, issue))
+            continue
+        if tool == "ask_operator":
+            try:
+                clean_question(args.get("question"), args.get("options"))
+            except ValueError:
+                # Record only fixed metadata, never model question text or arguments.
+                exhausted = question_retries >= MAX_QUESTION_RETRIES
+                executor.log.append(Event(run_id, "agent", "protocol.repair", {
+                    "tool": tool, "reason": "invalid question format",
+                    "attempt": question_retries + 1, "exhausted": exhausted,
+                }))
+                if exhausted:
+                    stopped = active.abort(QUESTION_REPAIR_FAILED) if active else None
+                    return AgentResult(
+                        AgentStatus.PLAN_ABORTED if stopped else AgentStatus.STEP_LIMIT,
+                        stopped.report() if stopped else QUESTION_REPAIR_FAILED,
+                        steps=step, history=tuple(history), plan=stopped,
+                    )
+                question_retries += 1
+                history.append(QUESTION_REPAIR_NOTE)
+                continue
         summary = _safe_tool_summary(tool, args, targets)
         _emit(
             progress,
@@ -405,6 +486,12 @@ def run_agent(
 
         history.append(tool_history_entry(tool, outcome.status.value, outcome.detail, outcome.result))
 
+        from .recovery import advice
+        recovery_note = advice(tool, outcome, recovery_attempts)
+        if recovery_note:
+            recovery_attempts += 1
+            history.append(recovery_note)
+
         if active is not None:
             active = active.record_call().observe(
                 ok=outcome.status is Status.DONE,
@@ -412,9 +499,9 @@ def run_agent(
                 targets=guard_targets(req),
             )
             # Die Abbruchbedingung. Ohne Plan improvisiert das Modell um einen
-            # Fehlschlag herum — beim naechsten Versuch meist groesser als beim
-            # ersten. Mit Plan endet der Lauf hier und sagt, woran.
-            if outcome.status is not Status.DONE:
+            # Fehlschlag herum. Ein enger transienter READ-Fallback darf innerhalb
+            # des unveraenderten Budgets weitergehen; jede andere Wirkung bricht ab.
+            if outcome.status is not Status.DONE and not recovery_note:
                 stopped = active.abort(
                     f"{tool} — {outcome.status.value}: {outcome.detail}"
                 )
@@ -489,6 +576,9 @@ def _safe_tool_summary(tool: str, args: dict, targets: tuple[str, ...]) -> str:
         "vault_get": "read vault note",
         "vault_write_note": "write vault note",
         "agent_consult": "consult second agent",
+        "computer_run": "computer action",
+        "computer_status": "computer status",
+        "ask_operator": "clarifying question",
     }
     label = labels.get(tool, "run tool")
     if tool not in {"read_file", "write_file", "undo_last"}:

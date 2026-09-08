@@ -1181,6 +1181,56 @@ def chat_id_of(conversation: str) -> int:
     return int(raw)
 
 
+class QueueNotice:
+    """One bounded notice; late network replies cannot revive a finished turn."""
+    TEXT = {"queued": "⏸ Queued — waiting for the current turn. /queue · /stop",
+            "running": "▶ Your queued message is being processed.",
+            "ended": "✓ This queued turn ended. See its reply or approval request.",
+            "failed": "⚠ This queued turn failed. See the error above.",
+            "cancelled": "⏹ This queued turn was cancelled.",
+            "refused": "⚠ Queue full — this message was not queued."}
+    TERMINAL = {"ended", "failed", "cancelled", "refused"}
+
+    def __init__(self, client, chat, interval=1.2):
+        self.client, self.chat, self.interval = client, chat, interval
+        self._lock = threading.Lock()
+        self._changed = threading.Event()
+        self._state = "queued"
+        self._thread = threading.Thread(target=self._run, daemon=True, name="talos-queue-notice")
+        self._thread.start()
+
+    def update(self, state):
+        with self._lock:
+            if self._state in self.TERMINAL or (self._state == "running" and state == "queued"):
+                return
+            self._state = state
+            self._changed.set()
+
+    def _run(self):
+        message_id, shown, failures = None, None, 0
+        while True:
+            self._changed.wait()
+            self._changed.clear()
+            with self._lock:
+                state = self._state
+            try:
+                if state != shown:
+                    if message_id is None:
+                        message_id = self.client.send_message(self.chat, self.TEXT[state])
+                    else:
+                        self.client.edit_message_text(self.chat, message_id, self.TEXT[state])
+                    shown = state
+                    failures = 0
+            except Exception:
+                failures += 1
+                if failures >= 3:
+                    return
+                self._changed.set()
+            if shown in self.TERMINAL:
+                return
+            time.sleep(self.interval)
+
+
 class TelegramChannel:
     """`Channel`-Implementierung. Hält Offset und Telegram-spezifische UX lokal."""
 
@@ -1282,6 +1332,9 @@ class TelegramChannel:
         return TelegramActivity(
             self._client, chat_id_of(conversation), name=agent_name(), style=self._style
         )
+
+    def begin_queue_notice(self, conversation: str) -> QueueNotice:
+        return QueueNotice(self._client, chat_id_of(conversation))
 
     def begin_reply(self, conversation: str) -> TelegramReply:
         """Die mitwachsende Antwort. Getrennt von `begin_activity`, weil sie etwas

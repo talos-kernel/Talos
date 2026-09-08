@@ -1,0 +1,25 @@
+[Unit]
+Description=Talos private computer workbench
+After=talos-computer-api.service
+Requires=talos-computer-api.service
+
+[Service]
+User=talos-computer
+Group=talos-computer
+WorkingDirectory=/opt/talos-computer
+ExecStart=/usr/bin/python3 -m talos.computer.web
+StateDirectory=talos-computer-web
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=384M
+TasksMax=64
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

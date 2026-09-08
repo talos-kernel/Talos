@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Ctext y=%2726%27 font-size=%2728%27%3E✦%3C/text%3E%3C/svg%3E"><title>Talos · Your Computer</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
+<body>
+<header><a class="brand" href="/"><span class="mark">✦</span> TALOS <span class="sub">COMPUTER</span></a><span id="connection" class="pill">Connecting…</span></header>
+<main>
+<section class="intro"><div><div class="eyebrow">YOUR WORKSPACE</div><h1>A computer of your own.<br><span>Work you can follow.</span></h1></div><p>Code, project files and a clear record of every job. An optional desktop when your work needs one.</p></section>
+<section id="login" class="login hidden"><h2>Welcome to your workspace.</h2><p>Open your personal link with <code>/computer</code> in Talos.</p><form id="login-form"><label for="access">Access code</label><div class="formrow"><input id="access" type="password" autocomplete="off" required><button>Open workspace</button></div></form></section>
+<div id="workspace" class="hidden">
+<div class="toolbar"><div><span class="dot"></span><strong id="control-state">Ready</strong><span id="screen-note" class="muted"></span></div><nav aria-label="Computer controls"><button id="takeover" class="primary">↗ Take over</button><button id="release" class="hidden">Return to Talos</button><button id="pause">Ⅱ Pause</button><button id="resume">▶ Resume</button><button id="stop" class="danger">■ Stop</button></nav></div>
+<div class="grid">
+<section class="desktop card"><div class="cardhead screen-head"><div><span id="screen-heading">Live desktop</span><span id="screen-time" class="muted">Waiting for a frame</span></div><div class="view-controls" role="group" aria-label="Desktop size"><select id="screen-zoom" aria-label="Desktop zoom"><option value="fit">Fit to window</option><option value="100">100% · actual size</option><option value="125">125%</option><option value="150">150%</option><option value="200">200%</option></select><button id="expand" aria-pressed="false" title="Use the whole window">↗ Expand</button><button id="fullscreen" aria-pressed="false" title="Enter fullscreen">⛶ Fullscreen</button></div></div><div id="screen"><div id="screen-content"><img id="capture" alt="Current view of the Talos Computer" class="hidden"><div id="vnc" class="hidden"></div><div id="headless" class="hidden"><p class="eyebrow">HEADLESS COMPUTER</p><h2>Your work, without a desktop.</h2><p>Ask Talos to run code or a script. Its output and saved files appear here.</p><pre id="terminal-output">Waiting for the first job.</pre></div><div id="empty-screen"><span>✦</span><h2>Space for your next idea.</h2><p>Resume the computer to see your desktop.</p></div></div></div><div class="desktop-foot"><span id="view-mode">Watching · refreshes automatically</span><span id="zoom-note">Private workspace</span></div></section>
+<aside class="card"><div class="cardhead"><span>Jobs</span><span id="job-count" class="counter">0</span></div><div id="jobs" class="jobs"><p class="empty">No jobs yet. Ask Talos to use its computer.</p></div></aside>
+</div>
+<div class="bottom-grid">
+<section class="card"><div class="cardhead"><span>Project files</span><select id="project" aria-label="Select project"><option value="">Select project</option></select></div><div id="files" class="files"><p class="empty">Results stay saved in their project.</p></div></section>
+<section class="card"><div class="cardhead"><span>Saved routines</span><span class="muted">Stored privately</span></div><div id="routines" class="files"><p class="empty">Save a job with passed file checks as a reusable routine.</p></div></section>
+</div>
+<footer>✦ Talos Computer <span>A successful call still needs a checked result.</span></footer>
+</div>
+<div id="notice" role="status" aria-live="polite" class="hidden"></div>
+</main>
+</body></html>

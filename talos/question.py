@@ -187,12 +187,22 @@ def _tame(raw: object, limit: int) -> str:
     return text
 
 
-def _clean_options(options: Sequence[object]) -> tuple[tuple[str, ...], int]:
-    """Gebändigte Auswahl + Gesamtzahl vor dem Deckel. Leere Einträge fallen weg."""
-    cleaned = tuple(text for text in (_tame(o, MAX_OPTION_CHARS) for o in options) if text)
+def clean_question(question: object, options: object) -> tuple[str, tuple[str, ...], int]:
+    """Validate without opening a ticket; shared by proposal repair and delivery.
+
+    Invalid model data must not replace a pending question or consume a reply.
+    JSON arrays are accepted; text and mappings are not lists of choices.
+    """
+    if not isinstance(question, str) or not (text := _tame(question, MAX_QUESTION_CHARS)):
+        raise ValueError("question must be non-empty text")
+    if not isinstance(options, (list, tuple)) or any(
+        not isinstance(option, str) for option in options
+    ):
+        raise ValueError("options must be an array of text choices")
+    cleaned = tuple(value for value in (_tame(o, MAX_OPTION_CHARS) for o in options) if value)
     if len(cleaned) < MIN_OPTIONS:
-        raise ValueError(f"eine Rückfrage braucht mindestens {MIN_OPTIONS} Auswahlmöglichkeiten")
-    return cleaned[:MAX_OPTIONS], len(cleaned)
+        raise ValueError(f"a question needs at least {MIN_OPTIONS} non-empty choices")
+    return text, cleaned[:MAX_OPTIONS], len(cleaned)
 
 
 class QuestionDesk:
@@ -235,8 +245,7 @@ class QuestionDesk:
         """
         if not can_ask(trust):
             return None
-        text = _tame(question, MAX_QUESTION_CHARS)
-        shown, total = _clean_options(options)
+        text, shown, total = clean_question(question, options)
         entry = _Open(
             question_id=self._new_token(),
             principal=principal,

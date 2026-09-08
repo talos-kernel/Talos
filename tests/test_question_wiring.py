@@ -357,27 +357,49 @@ def test_a_crashing_run_releases_its_question(tmp_path):
 
 
 # --- fehlerhafte Rückfrage ---------------------------------------------------------------
-def test_fewer_than_two_options_is_an_ordinary_tool_error(tmp_path):
-    reasoner = AskThenAnswer({"question": QUESTION, "options": ["only one"]})
+@pytest.mark.parametrize("args", [{}, {"question": QUESTION, "options": ["only one"]}])
+def test_malformed_question_is_repaired_before_delivery(tmp_path, args):
+    reasoner = AskThenAnswer(args)
     conductor, desk, sent, structured = _build(tmp_path, reasoner)
-
     assert conductor.handle(msg(1, "which log?")) is True
-
-    assert structured == [], "eine unbrauchbare Frage wurde trotzdem gestellt"
+    assert structured == []
     assert desk.pending(CHAT) is None
-    # Der Fehler geht als Werkzeug-Ergebnis an das MODELL zurück, damit es die Frage
-    # reparieren kann — das ist unverändert.
-    assert "[ask_operator -> error]" in reasoner.prompts[1]
-    # ⚠️ Der Betreiber erfährt es seit 2026-08-06 TROTZDEM, als nüchterne Zeile unter der
-    # Antwort. Bis dahin galt hier „nicht an den Betreiber"; geändert hat das ein
-    # gemessener Fall: eine Installation meldete „die Notiz wurde angelegt", während das
-    # Protokoll zwei gescheiterte Schreibversuche und keinen erfolgreichen zeigte. Ob ein
-    # Fehlschlag ein harmloser Zwischenschritt war oder verschwiegen wurde, ist von aussen
-    # nicht unterscheidbar — also wird die Tatsache genannt und die Deutung dem Betreiber
-    # gelassen. Dass eine Rückfrage nicht zustande kam, will er ohnehin wissen.
-    antwort = sent[-1][1]
-    assert antwort.startswith("done")
-    assert "ask_operator" in antwort and "failed in this run" in antwort
+    assert "Question format invalid" in reasoner.prompts[1]
+    assert "[ask_operator -> error]" not in reasoner.prompts[1]
+    assert sent[-1][1].startswith("done")
+    assert "failed in this run" not in sent[-1][1]
+
+
+def test_empty_question_inside_plan_recovers_and_receives_real_chat_answer(tmp_path):
+    class Repaired:
+        def __init__(self):
+            self.prompts = []
+
+        def reason(self, prompt):
+            self.prompts.append(prompt)
+            if len(self.prompts) == 1:
+                return ('PLAN: {"goal":"Inspect selected log","steps":["Choose log","Report"]}\n'
+                        'TOOL_CALL: {"tool":"ask_operator","args":{}}')
+            if len(self.prompts) == 2:
+                return "TOOL_CALL: " + json.dumps({
+                    "tool": "ask_operator", "args": {"question": QUESTION, "options": OPTIONS}
+                })
+            return "done"
+
+    reasoner = Repaired()
+    conductor, desk, sent, structured = _build(tmp_path, reasoner)
+    thread = _run_in_background(conductor, msg(1, "inspect a log"))
+    ticket = _await_question(desk)
+    assert len(structured) == 1
+    assert QUESTION in structured[0].text
+    assert conductor.handle(msg(2, "2")) is True
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert desk.pending(CHAT) is None
+    assert "option 2" in reasoner.prompts[-1]
+    assert OPTIONS[1] in reasoner.prompts[-1]
+    assert sent[-1][1].startswith("done")
+    assert "failed in this run" not in sent[-1][1]
 
 
 def test_every_tool_in_the_manifest_is_named_in_the_prompt() -> None:

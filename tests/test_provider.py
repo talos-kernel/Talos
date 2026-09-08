@@ -92,6 +92,26 @@ def test_catalog_loader_without_hermes_files_is_absent_not_fatal(tmp_path: Path)
         loader.load()
 
 
+@pytest.mark.parametrize("sdk_available", [False, True])
+def test_optional_bedrock_discovery_does_not_pollute_other_model_startup(tmp_path, monkeypatch, capsys, sdk_available):
+    import talos.provider as provider_module
+    catalog = tmp_path / "provider_catalog.py"
+    catalog.write_text("def provider_catalog(): return [{'slug':'alpha'}, {'slug':'bedrock'}]\n")
+    models = tmp_path / "models.py"
+    models.write_text(
+        "_PROVIDER_MODELS = {'bedrock': ['snapshot-model']}\n"
+        "def provider_model_ids(slug):\n"
+        "    if slug == 'bedrock':\n"
+        "        print('live-bedrock-discovery')\n"
+        "        return ['live-model']\n"
+        "    return ['working-model']\n")
+    monkeypatch.setattr(provider_module.importlib.util, "find_spec", lambda name: object() if sdk_available else None)
+    loaded = HermesCatalogLoader(catalog, models).load()
+    assert loaded.selection("alpha", "working-model")
+    assert loaded.get("bedrock").models == (("live-model",) if sdk_available else ("snapshot-model",))
+    assert ("live-bedrock-discovery" in capsys.readouterr().out) == sdk_available
+
+
 def test_safe_registry_without_hermes_still_has_the_built_in_ways() -> None:
     """Die API-Wege und die Claude-CLI stehen auch ohne Hermes-Katalog im Katalog —
     das war immer die Absicht, kam aber nie an die Reihe, weil der Loader vorher warf."""
@@ -245,7 +265,7 @@ def test_persistence_failure_keeps_old_runtime_selection() -> None:
     assert router.reason("still old").startswith("beta/small")
 
 
-def test_invalid_restored_reasoner_validates_and_falls_back_at_startup(tmp_path: Path) -> None:
+def test_restored_reasoner_does_not_probe_or_change_provider_at_startup(tmp_path: Path) -> None:
     class Probe(FakeReasoner):
         def validate(self) -> None:
             if self.selection == ModelSelection("alpha", "model-1"):
@@ -259,9 +279,9 @@ def test_invalid_restored_reasoner_validates_and_falls_back_at_startup(tmp_path:
         log,
         fallback=ModelSelection("beta", "small"),
     )
-    assert router.current == ModelSelection("beta", "small")
-    event = log.recent(1, ("model.restore_failed",))[0]
-    assert event["payload"]["model"] == "model-1"
+    assert router.current == ModelSelection("alpha", "model-1")
+    assert not log.recent(1, ("model.restore_failed",))
+    assert router.can_select()
 
 
 def test_failed_validation_is_a_noop(tmp_path: Path) -> None:

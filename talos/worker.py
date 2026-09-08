@@ -43,6 +43,11 @@ class Worker:
         self._clock = clock
         self._on_error = on_error
         self._thread = threading.Thread(target=self._loop, name="talos-worker", daemon=True)
+        self._state_lock = threading.RLock()
+        self._states: dict[int, str] = {}
+        self._items: dict[int, object] = {}
+        self._listeners: dict[int, Callable[[str], None]] = {}
+        self._current: object | None = None
 
     def start(self) -> None:
         self._thread.start()
@@ -50,10 +55,43 @@ class Worker:
     def submit(self, item: object) -> bool:
         """False, wenn die Warteschlange voll ist — der Aufrufer sagt the operator dann Bescheid."""
         try:
+            self._transition(item, "queued")
             self._queue.put_nowait(item)
             return True
         except queue.Full:
+            self._transition(item, "refused")
             return False
+
+    def watch(self, item: object, listener: Callable[[str], None]) -> None:
+        with self._state_lock:
+            self._listeners[id(item)] = listener
+            state = self._states.get(id(item), "ended")
+        listener(state)
+
+    def _transition(self, item: object, state: str) -> None:
+        with self._state_lock:
+            key = id(item)
+            self._items[key] = item
+            if self._states.get(key) == "cancelled":
+                state = "cancelled"
+            self._states[key] = state
+            listener = self._listeners.get(key)
+            # Keep a small terminal history for a notice registered after a fast turn.
+            terminal = {"ended", "failed", "cancelled", "refused"}
+            for old in list(self._states):
+                if len(self._states) <= MAX_QUEUE + 32:
+                    break
+                if self._states[old] in terminal and old != key:
+                    self._states.pop(old, None); self._listeners.pop(old, None); self._items.pop(old, None)
+        if listener is not None:
+            try:
+                listener(state)  # listeners only enqueue display updates; no network IO
+            except Exception:
+                pass
+
+    def mark_cancelled(self) -> None:
+        if self._current is not None:
+            self._transition(self._current, "cancelled")
 
     def pending(self) -> int:
         return self._queue.qsize()
@@ -76,10 +114,11 @@ class Worker:
         dropped = 0
         while True:
             try:
-                self._queue.get_nowait()
+                item = self._queue.get_nowait()
             except queue.Empty:
                 return dropped
             self._queue.task_done()
+            self._transition(item, "cancelled")
             dropped += 1
 
     def stop(self, timeout: float = 5.0) -> None:
@@ -94,11 +133,18 @@ class Worker:
                 return
             self._busy_since = self._clock()
             self._busy.set()
+            self._current = item
+            self._transition(item, "running")
+            state = "ended"
             try:
-                self._handle(item)
+                if self._handle(item) is False:
+                    state = "failed"
             except Exception as error:  # ein kaputter Lauf darf den Worker nicht killen
+                state = "failed"
                 if self._on_error is not None:
                     self._on_error(error)
             finally:
                 self._busy.clear()
+                self._current = None
+                self._transition(item, state)
                 self._queue.task_done()

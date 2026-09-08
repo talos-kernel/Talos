@@ -1,0 +1,14 @@
+[Unit]
+Description=Talos persistent browser inside the isolated computer
+After=network.target talos-screen.service
+
+[Service]
+User=desk
+Environment=DISPLAY=:0
+ExecStart=/usr/bin/chromium --user-data-dir=/home/desk/.config/talos-browser --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --proxy-server=http://10.0.2.100:3128 --no-first-run --disable-sync --disable-background-networking --password-store=basic --start-maximized about:blank
+Restart=on-failure
+RestartSec=3
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

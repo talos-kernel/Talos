@@ -8,6 +8,37 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ## [Unreleased]
 
+### Security
+
+- Optional attended Computer automation and a closed set of remote status commands
+  can use operator-configured auto-approval. Both settings default off and preserve
+  identity, trust, autonomy, unattended ceilings and single-use capabilities.
+- Read-only snapshots no longer attempt a filesystem rollback after a failed read.
+
+### Added
+
+- Experimental persistent ARM64 Linux Computer with headless Chromium form actions,
+  submission receipts, an optional desktop, live takeover and a larger zoomable view.
+- Native macOS dashboard preview with guided connections and persistent settings.
+- Redesigned English website across all pages, with guided setup, Computer modes,
+  a cinematic introduction and reduced-motion support.
+
+### Fixed
+
+- Provider availability no longer gates service startup. Telegram control commands
+  remain reachable after a model limit, with explicit model switching and bounded
+  availability backoff instead of repeated startup probes.
+- CLI failures are classified from stdout and stderr without exposing arbitrary
+  response text. Empty responses can retry only the model call once within the
+  original deadline; cancellation and partial output prevent that retry. No tools,
+  jobs or providers are replayed or silently substituted.
+- Queue messages follow actual starts and terminal states. Failed learning turns
+  record a sanitized terminal event without losing an already delivered answer.
+- Malformed questions can be repaired before delivery. Reasoner isolation no longer
+  gives false plan-only instructions, while native provider tools remain disabled.
+- Claude workers use the configured executable. macOS Python bytecode output no
+  longer invalidates the app signature.
+
 ## [0.18.1-alpha] — 2026-09-06
 
 ### Security
