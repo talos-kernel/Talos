@@ -63,6 +63,30 @@ def test_failed_cli_does_not_expose_unknown_output():
     assert 'private entire prompt' not in str(e)
 
 
+@pytest.mark.parametrize('backend', ['claude', 'hermes'])
+def test_probe_timeout_never_exposes_the_subprocess_prompt(tmp_path, monkeypatch, backend):
+    import subprocess
+    from talos.reasoner import ClaudeCliReasoner, HermesCliReasoner
+    binary = tmp_path / 'fixture-provider'
+    binary.write_text('#!/bin/sh\n[ "$1" = tools ] && echo "✗ disabled web"\n')
+    binary.chmod(0o700)
+    reasoner = (ClaudeCliReasoner(str(binary), 2) if backend == 'claude'
+                else HermesCliReasoner(str(binary), 2, provider='fixture', model='one'))
+    class TimedOut:
+        calls = 0
+        def communicate(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired(['provider', '-z', 'secret-fixture-prompt'], 2)
+            return '', ''
+    monkeypatch.setattr('talos.reasoner.subprocess.Popen', lambda *a, **kw: TimedOut())
+    monkeypatch.setattr('talos.reasoner._kill_group', lambda _: None)
+    with pytest.raises(ReasonerFailure) as caught:
+        reasoner.validate()
+    assert caught.value.kind == 'timed_out'
+    assert 'secret-fixture-prompt' not in str(caught.value)
+
+
 def test_model_retry_never_replays_completed_tool(tmp_path):
     calls, tools, budgets = [], [], []
     class Fake:

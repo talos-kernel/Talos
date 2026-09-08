@@ -14,11 +14,12 @@ def test_worker_uses_operator_binary_not_frame_or_global_fallback(monkeypatch):
     assert selected==['/opt/worker/claude']
 
 
-def test_daemon_carries_binary_from_env_file_to_request_handler(tmp_path,monkeypatch):
+def test_daemon_carries_binary_from_env_file_to_request_handler(tmp_path,tmp_path_factory,monkeypatch):
     selected=[]
     monkeypatch.setattr(worker,'make_spawn',lambda binary:selected.append(binary))
     env=tmp_path/'worker.env';env.write_text(f'TALOS_CLAUDE_WORKER_HOME={tmp_path}/home\nTALOS_CLAUDE_WORKER_BIN=/opt/worker/private-cli\n')
-    path=str(tmp_path/'worker.sock');stop=threading.Event()
+    # Keep socket paths independent of pytest's long per-test directory name.
+    path=str(tmp_path_factory.mktemp('ipc')/'w.sock');stop=threading.Event()
     thread=threading.Thread(target=worker.serve,args=(path,str(env)),kwargs={'environ':{},'stop':stop},daemon=True)
     thread.start()
     try:

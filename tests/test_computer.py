@@ -155,10 +155,11 @@ def test_saved_routine_is_a_private_template_without_reused_key(tmp_path):
         store.routine("stranger","report")
 
 
-def test_proxy_denial_is_not_reported_as_transient_network_error(tmp_path):
+def test_proxy_denial_is_not_reported_as_transient_network_error(tmp_path_factory):
     import threading
     from talos.computer.egress import Server,Proxy
-    endpoint=str(tmp_path / "proxy.sock")
+    # macOS counts the whole path against a small AF_UNIX address limit.
+    endpoint=str(tmp_path_factory.mktemp("ipc") / "p.sock")
     server=Server(endpoint,Proxy)
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:

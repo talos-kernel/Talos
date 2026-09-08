@@ -560,10 +560,12 @@ class ClaudeCliReasoner:
             self._proc = proc
         try:
             stdout, stderr = proc.communicate(timeout=min(self._timeout_s, 60))
-        except subprocess.TimeoutExpired as error:
+        except subprocess.TimeoutExpired:
             _kill_group(proc)
             proc.communicate()
-            raise RuntimeError(f"Claude-CLI-Modellprobe fehlgeschlagen: {error}") from error
+            raise ReasonerFailure("Model probe timed out.", kind="timed_out",
+                                  provider="claude-cli", model=self._model or "",
+                                  fallback_allowed=False) from None
         finally:
             with self._lock:
                 cancelled = self._cancelled
@@ -842,10 +844,12 @@ class HermesCliReasoner:
             self._active = proc
         try:
             stdout, stderr = proc.communicate(timeout=min(45, self.timeout_s))
-        except subprocess.TimeoutExpired as error:
+        except subprocess.TimeoutExpired:
             _kill_group(proc)
             proc.communicate()
-            raise RuntimeError(f"Modell-Probe fehlgeschlagen: {error}") from error
+            raise ReasonerFailure("Model probe timed out.", kind="timed_out",
+                                  provider=self.provider, model=self.model,
+                                  fallback_allowed=False) from None
         finally:
             with self._lock:
                 cancelled = self._cancel_requested
