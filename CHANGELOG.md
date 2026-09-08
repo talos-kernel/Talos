@@ -25,6 +25,8 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ### Fixed
 
+- Computer provisioning grants the exact agent UID inherited read access to
+  screenshots, even when a running user service has stale supplementary groups.
 - Provider availability no longer gates service startup. Telegram control commands
   remain reachable after a model limit, with explicit model switching and bounded
   availability backoff instead of repeated startup probes.

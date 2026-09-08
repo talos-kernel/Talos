@@ -17,6 +17,41 @@ def computer(tmp_path, monkeypatch):
     result.store.control("agent")
     return result
 
+
+def test_captures_inherit_exact_agent_read_access_after_final_chmod(computer, tmp_path, monkeypatch):
+    import base64
+    import os
+    import runpy
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    if not shutil.which("setfacl") or not shutil.which("getfacl"):
+        pytest.skip("Linux POSIX ACL tools required")
+    installer = runpy.run_path(str(Path(__file__).resolve().parents[1] / "deploy/computer-setup.py"))
+    captures = tmp_path / "captures"
+    captures.mkdir(mode=0o750)
+    agent_uid = 12345 if os.getuid() != 12345 else 12346
+    installer["allow_capture_reads"](captures, agent_uid)
+    monkeypatch.setattr(service, "CAPTURES", captures)
+    monkeypatch.setattr(service, "guest", lambda *a, **k: {
+        "png": base64.b64encode(b"\x89PNG\r\n\x1a\nneutral fixture").decode(),
+        "captured_at": "2026-01-01T00:00:00Z",
+    })
+    computer.config["desktop"] = True
+    directory_acl = subprocess.check_output(["getfacl", "-cpn", str(captures)], text=True)
+    assert f"user:{agent_uid}:r-x" in directory_acl.splitlines()
+    assert f"default:user:{agent_uid}:r--" in directory_acl.splitlines()
+    assert "other::---" in directory_acl.splitlines()
+    for _ in range(2):
+        capture = Path(computer.capture()["image_path"])
+        acl = subprocess.check_output(["getfacl", "-cpn", str(capture)], text=True).splitlines()
+        assert f"user:{agent_uid}:r--" in acl
+        assert "mask::r--" in acl
+        assert "other::---" in acl
+        assert capture.stat().st_uid == os.getuid()
+        assert capture.stat().st_mode & 0o777 == 0o640
+
 def test_agent_cannot_claim_human_control(computer):
     with pytest.raises(ValueError, match="trusted web service"):
         computer.handle({"kind":"human","owner":"owner","args":{"op":"takeover"}},12345)

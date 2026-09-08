@@ -162,6 +162,15 @@ restart, invalidates all existing access links and cookies.
 
 ## Verification
 
+Desktop screenshots use a separate capture directory. Provisioning grants the
+configured agent UID read access, including an inherited ACL for future captures;
+the agent cannot write these files and other users cannot read them. This also
+works when an existing systemd user manager has not picked up new group membership.
+The control socket being reachable does not prove that screenshot files are readable.
+When diagnosing `Permission denied`, compare the running process's `/proc/<pid>/status`
+groups with `getfacl` on the capture directory and file, rather than relying on a
+fresh login's `id`. Keep screenshot contents private during these checks.
+
 Run the repository tests, adversarial suite and real-model E2E tests. For an actual
 deployment also prove: guest file read-back and checksum, duplicate key non-replay,
 private-network denial, peer-role denial, takeover cancelling a long-running job,

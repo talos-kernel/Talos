@@ -30,6 +30,11 @@ def write_private(path, content, group):
     os.chown(path, 0, group)
 
 
+def allow_capture_reads(captures, agent_uid):
+    """Keep new screenshots readable even by a user manager with stale groups."""
+    run("setfacl", "-m", f"u:{agent_uid}:r-x,d:u:{agent_uid}:r--", str(captures))
+
+
 def profile_cloud(cloud, desktop=False):
     """Select installed capabilities before cloud-init ever sees credentials."""
     import copy
@@ -97,6 +102,7 @@ def main():
     captures = Path("/var/lib/talos-computer-captures")
     captures.mkdir(mode=0o750)
     os.chown(captures, service.pw_uid, client_group)
+    allow_capture_reads(captures, user.pw_uid)
     package = Path("/opt/talos-computer/talos")
     package.mkdir(parents=True, exist_ok=True)
     shutil.copy2(ROOT / "talos/__init__.py", package / "__init__.py")
