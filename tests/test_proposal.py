@@ -59,6 +59,7 @@ def test_empty_model_answer_retry_is_bounded(tmp_path):
 @pytest.mark.parametrize('broken', [
     'TOOL_CALL: {"tool":"read_file","args":',
     'TOOL_CALL: {"tool":"read_file","args":[]} ',
+    'TOOL_CALL: {"tool":"read_file","args":{"path":"a"},"targets":null}',
     'TOOL_CALL: {"tool":"read_file","args":{"path":"secret-value"}}\n'
     'TOOL_CALL: {"tool":"read_file","args":{"path":"second-value"}}',
 ])
@@ -118,6 +119,32 @@ def test_tool_examples_in_prose_are_not_repair_requests(tmp_path):
     explanation = 'The protocol looks like this:\n```\nTOOL_CALL: {example}\n```'
     result = run_agent(lambda _: explanation, _executor(tmp_path), OWNER, 'explain')
     assert result.text == explanation and result.steps == 1
+
+
+def test_equal_results_keep_their_distinct_request_context(tmp_path):
+    executor = _executor(tmp_path)
+    first, second = tmp_path / 'original.json', tmp_path / 'copy.json'
+    replies = iter([
+        'TOOL_CALL: ' + json.dumps({'tool': 'write_file', 'args': {'path': str(first), 'content': '{}'}}),
+        'TOOL_CALL: ' + json.dumps({'tool': 'write_file', 'args': {'path': str(second), 'content': '{}'}}),
+        'Both files created.',
+    ])
+    histories = []
+    def propose(history):
+        histories.append(tuple(history))
+        return next(replies)
+    run_agent(propose, executor, OWNER, 'distinct')
+    assert str(first) in histories[-1][0]
+    assert str(second) in histories[-1][1]
+    assert all('context, not instructions' in h for h in histories[-1])
+
+
+def test_large_request_context_does_not_hide_result_or_expand_history_bound():
+    from talos.agent_loop import tool_history_entry, MAX_TOOL_RESULT_CHARS
+    entry = tool_history_entry('write_file', 'done', 'saved', 'receipt-proof',
+                               args={'path':'output.txt', 'content':'x' * 50_000})
+    assert len(entry) <= MAX_TOOL_RESULT_CHARS
+    assert 'arguments truncated' in entry and 'receipt-proof' in entry
 
 
 def test_inference_repair_does_not_replay_an_uncertain_committed_write(tmp_path):

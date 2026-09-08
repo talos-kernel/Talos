@@ -583,6 +583,7 @@ class Conductor:
                     outcome.status.value,
                     outcome.detail,
                     outcome.result,
+                    args=dict(rec.req.args),
                 ),
             )
             resumed, stopped = _plan_after_approval(rec.plan, rec.req.tool, outcome)
@@ -679,7 +680,7 @@ class Conductor:
             standing_note = "∞ Standing approval used. Details: /allowed."
             if resume_agent:
                 resumed_history = history + (
-                    tool_history_entry(req.tool, outcome.status.value, outcome.detail, outcome.result),
+                    tool_history_entry(req.tool, outcome.status.value, outcome.detail, outcome.result, args=dict(req.args)),
                 )
                 resumed_plan, stopped = _plan_after_approval(plan, req.tool, outcome)
                 if stopped:
@@ -1483,14 +1484,18 @@ class Conductor:
         TypeError mitten im Zug kostete die ganze Antwort. Streaming ist Komfort und
         darf nie der Grund sein, warum ein Lauf nicht stattfindet.
         """
-        if stream is None or not _accepts_sink(self.reasoner.reason):
-            return self.reasoner.reason(prompt)
+        # A direct API reasoner has the same typed failure path as ModelRouter.
+        # Its legacy reason() renders errors as text for standalone callers; that
+        # text must not become an ANSWERED turn in the conductor.
+        method = getattr(self.reasoner, "reason_strict", None) or self.reasoner.reason
+        if stream is None or not _accepts_sink(method):
+            return method(prompt)
         try:
             stream.begin_turn()
         except Exception:
             # Dieselbe Regel wie in `stream.py`: ein kaputter Sink darf den Zug nicht
             # mitnehmen. Dann eben ohne Anzeige — die Antwort laeuft unveraendert.
-            return self.reasoner.reason(prompt)
+            return method(prompt)
         push = stream.push
         if run_id:
             # TTFT-Beleg: der erste sichtbare Token dieses Zuges. Fail-open wie
@@ -1506,8 +1511,8 @@ class Conductor:
                         pass
                 push(delta)
 
-            return self.reasoner.reason(prompt, on_text=marked)
-        return self.reasoner.reason(prompt, on_text=stream.push)
+            return method(prompt, on_text=marked)
+        return method(prompt, on_text=stream.push)
 
     def _approval_prompt(self, pending: ToolRequest) -> str:
         """Der Text zeigt die KERNEL-Wahrheit, nie eine LLM-Beschreibung: Tool, abgeleitete

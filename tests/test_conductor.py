@@ -291,6 +291,41 @@ def test_empty_model_retry_after_real_write_executes_the_tool_once(tmp_path):
     assert len(prompts) == 3  # Duplicate inbound delivery cannot replay the job either.
 
 
+def test_direct_api_quota_failure_is_not_recorded_as_an_answer(tmp_path):
+    from test_api_reasoner import build
+    reasoner, _, _ = build([], provider='openai-api', status=429, text='quota reached')
+    activity = FakeActivity()
+    conductor, sent = _build(tmp_path, reasoner, begin_activity=lambda _: activity)
+    assert conductor.handle(msg(716, OWNER, 'Finish this request.')) is False
+    records = conductor.log.recent(100)
+    assert not any(r['type'] == 'reason.done' for r in records)
+    failures = [r['payload'] for r in records if r['type'] == 'error' and r['payload'].get('stage') == 'reason']
+    assert failures and failures[0]['kind']
+    assert not sent and any('429' in text for text in activity.failed)
+    assert 'Finish this request.' in str(conductor.memory.recall(CHAT_OWNER))
+
+
+def test_strict_reasoner_receives_stream_without_using_text_error_fallback(tmp_path):
+    from talos.provider_errors import ReasonerFailure
+    calls = []
+    class Strict:
+        def reason(self, prompt, on_text=None):
+            raise AssertionError('must preserve the typed failure route')
+        def reason_strict(self, prompt, on_text=None):
+            calls.append(prompt)
+            if on_text:
+                on_text('visible')
+            raise ReasonerFailure('Provider unavailable', kind='unavailable')
+    class Stream:
+        def begin_turn(self): pass
+        def push(self, text): calls.append(text)
+    conductor, _ = _build(tmp_path, Strict())
+    import pytest
+    with pytest.raises(ReasonerFailure):
+        conductor._ask('request', Stream(), 'strict-stream')
+    assert calls == ['request', 'visible']
+
+
 def test_unauthorized_and_commands_never_create_activity(tmp_path):
     began: list[str] = []
 

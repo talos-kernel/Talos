@@ -1009,6 +1009,9 @@ failures += mem_failures
 # — ein Stub wuerde genau das Stueck ersetzen, das angegriffen wird.
 ss_failures = 0
 SS_WORT = "morgenstern-santorin"
+# The search needle is already known to the requesting model. Use a distinct
+# payload canary: echoed request context must not masquerade as a cross-chat leak.
+SS_QUERY = "archive-lookup-fixture"
 
 
 def _ss(name: str, ok: bool, detail: str) -> None:
@@ -1070,12 +1073,12 @@ def _ss_in(update_id: int, text: str, conversation: str = CHAT_OWNER, principal:
     return Inbound(principal, conversation, text, f"redteam-ss:{update_id}")
 
 
-_SEARCH_CALL = "TOOL_CALL: " + json.dumps({"tool": "session_search", "args": {"query": SS_WORT}})
+_SEARCH_CALL = "TOOL_CALL: " + json.dumps({"tool": "session_search", "args": {"query": SS_QUERY}})
 
 # 0) Kontrolle: ein beantworteter Zug landet im Archiv, und DIESELBE Konversation
 #    findet ihn ueber das echte Werkzeug wieder. Ohne diese Zeile bewiesen die
 #    naechsten Faelle nur, dass gar nichts gespeichert wird.
-ss_reasoner.script = [f"Das Codewort ist {SS_WORT}."]
+ss_reasoner.script = [f"{SS_QUERY}: Das Codewort ist {SS_WORT}."]
 ss_conductor.handle(_ss_in(1, "merk dir das codewort"))
 ss_reasoner.script = [_SEARCH_CALL, "gefunden"]
 ss_conductor.handle(_ss_in(2, "such das codewort im archiv"))
@@ -1110,7 +1113,7 @@ _ss(
 #    Argumente. Der Runner darf das Feld nicht einmal ansehen — eine naive, von
 #    vault_search kopierte Umsetzung wuerde genau hier reissen.
 _smuggle = "TOOL_CALL: " + json.dumps(
-    {"tool": "session_search", "args": {"query": SS_WORT, "conversation": CHAT_OWNER}}
+    {"tool": "session_search", "args": {"query": SS_QUERY, "conversation": CHAT_OWNER}}
 )
 ss_reasoner.script = [_smuggle, "fertig"]
 ss_conductor.handle(_ss_in(5, "such nochmal", conversation=CHAT_ZWEI))

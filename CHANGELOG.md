@@ -33,6 +33,9 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 - Malformed tool replies receive at most two inference-only correction attempts
   before a visible failure. Partial batches are never executed; existing receipts,
   cancellation, step budgets and kernel decisions remain authoritative.
+- Tool receipts retain bounded request arguments, including after approval, so equal
+  outputs from different actions do not trigger repeated writes. Direct API failures
+  keep their typed error status instead of becoming apparently normal answers.
 - Failed foreground runs retain the unresolved request in bounded conversation
   context with an explicit interruption status, so follow-ups keep their subject.
   This does not fabricate an answer, replay tools or import background context.
