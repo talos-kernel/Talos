@@ -7,6 +7,11 @@ cases passed. Installing the signed archive into a fresh environment yielded
 The separate Mac profile suite passed 25 tests. Pinned runtime, development, Computer
 and Swift dependencies had no reported OSV findings in the release scan.
 
+The published installer was also executed unchanged in an isolated installation directory.
+Its root-level test run (including the Mac profile tests) passed 2,614 tests with 34 skips;
+all 217 adversarial cases passed. Downloaded signatures, checksums, installed source,
+configuration permissions and the command link were checked independently.
+
 ## Completion pilot
 
 Completion candidate `604259e` completed the same 30 controlled headless tasks twice,
@@ -36,6 +41,12 @@ provider errors. It verifies reachable control commands, explicit model switchin
 retained request context and exactly one tool execution. Synthetic provider failures
 are not live account outages. Transport checks and controlled repetition do not replace
 long-term production observation.
+
+A 30-minute ARM64 Linux soak completed 186 isolated fault cases in 62 rounds. Each
+case checked control commands, explicit model recovery, retained context, one tool
+execution and an empty queue at the end. The test process returned to one thread
+after every round; the separately observed agent service had no automatic restarts.
+This is a bounded synthetic-failure test, not a multi-day uptime measurement.
 
 Run the repository suite with `python -m pytest tests/ -q` and adversarial checks with
 `python redteam.py`. Browser fixtures require a separately provisioned Computer; see
