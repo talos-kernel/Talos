@@ -190,6 +190,75 @@ def test_reasoner_failure_finalizes_activity_without_dirty_result(tmp_path):
     assert sent == []
 
 
+def test_followup_keeps_interrupted_request_without_replaying_a_completed_tool(tmp_path):
+    from dataclasses import replace
+    from talos.memory import RUN_STATUS
+    from talos.transcript import TranscriptStore
+
+    target = tmp_path / "receipt.txt"
+    request = "Save the fixture, then inspect its result."
+    prompts = []
+
+    class InterruptedReasoner:
+        def reason(self, prompt):
+            prompts.append(prompt)
+            if len(prompts) == 1:
+                return _tool_call("write_file", {"path": str(target), "content": "once"}, [])
+            if len(prompts) == 2:
+                raise PermissionError("sensitive diagnostic: fixture-credential")
+            return "The earlier request stopped; checking the existing receipt is next."
+
+    conductor, sent = _build(tmp_path, InterruptedReasoner())
+    conductor = replace(conductor, transcript=TranscriptStore(tmp_path / "transcript.db"))
+    assert conductor.handle(msg(710, OWNER, request)) is False
+    assert target.read_text() == "once"
+    assert sent == []
+    assert conductor.memory.recall(CHAT_OWNER)[-1].speaker == RUN_STATUS
+    assert conductor.transcript.recent(CHAT_OWNER) == ()  # No invented delivered answer.
+    assert conductor.handle(msg(711, OWNER, "?"))
+    followup = prompts[-1]
+    assert request in followup and RUN_STATUS in followup
+    assert "Completion is unverified" in followup
+    assert "Do not automatically repeat completed actions" in followup
+    assert "fixture-credential" not in followup
+    assert followup.endswith("[New message]\n?")
+    executions = [e for e in conductor.log.recent(100) if e["type"] == "exec.result"]
+    assert len(executions) == 1 and executions[0]["payload"]["status"] == "done"
+    assert target.read_text() == "once"
+
+
+def test_failed_request_does_not_leak_to_another_conversation_or_survive_explicit_forget(tmp_path):
+    prompts = []
+
+    class OnceBroken:
+        def reason(self, prompt):
+            prompts.append(prompt)
+            if len(prompts) == 1:
+                raise RuntimeError("temporary failure")
+            return "Ready."
+
+    conductor, _ = _build(tmp_path, OnceBroken(), allowed_principals=frozenset({OWNER, SECOND_ALLOWED}))
+    assert conductor.handle(msg(712, OWNER, "Inspect my private browser window.")) is False
+    assert conductor.handle(msg(713, SECOND_ALLOWED, "?"))
+    assert prompts[-1] == "?"
+    conductor.memory.forget(CHAT_OWNER)
+    assert conductor.handle(msg(714, OWNER, "New topic."))
+    assert prompts[-1] == "New topic."
+
+
+def test_isolated_background_failure_does_not_pollute_foreground_context(tmp_path):
+    class Broken:
+        def reason(self, prompt):
+            raise RuntimeError("temporary failure")
+
+    conductor, _ = _build(tmp_path, Broken())
+    conductor.memory.remember(CHAT_OWNER, asked="Current foreground request", answered="Working on it.")
+    before = conductor.memory.recall(CHAT_OWNER)
+    assert conductor._run_task(msg(715, OWNER, "Isolated background request"), "background-fixture",
+                               past_override=()) is False
+    assert conductor.memory.recall(CHAT_OWNER) == before
+
+
 def test_empty_model_retry_after_real_write_executes_the_tool_once(tmp_path):
     from talos.provider import ModelRouter, ModelSelection, Provider, ProviderRegistry
     from talos.provider_errors import cli_failure

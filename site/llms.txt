@@ -6,7 +6,7 @@
 
 - Permission kernel: 913 lines of Python.
 - 31 tools in the manifest, gated before dispatch.
-- 2590 collected tests in the current source tree; platform-dependent checks may skip.
+- 2594 collected tests in the current source tree; platform-dependent checks may skip.
 - 217/217 adversarial cases passed in that source run.
 - Published release metrics are separate: https://talos-agent.ch/status.json
 - Grants bind one tool call's exact arguments, are single-use and expire after 30 seconds.

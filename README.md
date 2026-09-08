@@ -15,10 +15,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests", nicht „passing": die Zahl kommt aus dem Einsammeln (2590).
+  <!-- ⚠️ Bewusst „tests", nicht „passing": die Zahl kommt aus dem Einsammeln (2594).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-2590-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-2594-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-217%2F217-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-913%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-31%20gated-8a4318.svg" alt="Tools">
@@ -345,6 +345,11 @@ stay; a stop that deleted timers would create the next incident while ending thi
 The reply is an honest balance per category, and a second `/stopall` says so.
 
 ## What it remembers
+
+If a foreground run fails before a final answer, the original request stays in
+active context with a clearly labelled interruption status. A short follow-up can
+refer to that open request. No delivered answer is invented or archived, and no
+completed tool is automatically replayed.
 
 The conversation is kept per channel, in memory only, bounded by turns and by characters.
 When the bound is reached the **middle is summarised** and both ends stay verbatim — the

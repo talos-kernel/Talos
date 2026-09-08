@@ -811,6 +811,12 @@ class Conductor:
                 Event(run_id, "conductor", "error", {"stage": "reason", "error": str(error),
                                                       **provider_detail})
             )
+            # Losing the reply must not erase the operator's unresolved request.
+            # This is bounded conversation context, never a fabricated answer,
+            # archive entry, approval or automatic replay. Isolated background
+            # failures must not replace the foreground conversation's focus.
+            if past_override is None or approval_reply or initial_history:
+                self.memory.remember_interrupted(update.conversation, asked=text)
             if activity is not None:
                 activity.fail(str(error))
             self._settle(stream, run_id)

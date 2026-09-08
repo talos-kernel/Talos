@@ -25,6 +25,9 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ### Fixed
 
+- Failed foreground runs retain the unresolved request in bounded conversation
+  context with an explicit interruption status, so follow-ups keep their subject.
+  This does not fabricate an answer, replay tools or import background context.
 - Computer provisioning grants the exact agent UID inherited read access to
   screenshots, even when a running user service has stale supplementary groups.
 - Provider availability no longer gates service startup. Telegram control commands

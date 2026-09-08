@@ -34,8 +34,9 @@ durabel und volltextsuchbar, fliesst aber NIE automatisch zurueck — der einzig
 ist das gegatete `session_search`-Werkzeug, dessen Aufruf der Betreiber im Verlauf sieht.
 „Vergessen" heisst hier also praezise: aus dem aktiven Kontext. `/new` sagt das dazu.
 
-**4. Steuerung hinterlaesst keine Spur.** Erinnert wird nur, was aus dem Agent-Loop mit
-einer echten Antwort herauskam. Kommandos, Freigabe-Runden und ja/nein stehen nie im
+**4. Steuerung hinterlaesst keine Spur.** Antworten werden erst nach Zustellung gemerkt.
+Scheitert ein Vordergrundlauf, bleibt die offene Anfrage mit einem ausdruecklichen
+Abbruchstatus erhalten, niemals mit einer erfundenen Antwort. Kommandos und ja/nein stehen nie im
 Verlauf. Ein „ja" ohne seinen Vorgang ist nicht nur bedeutungslos — es waere ein
 Beispiel im Prompt, das dem Modell beibringt, dass „ja" eine normale Ausgabe ist.
 
@@ -62,6 +63,12 @@ CUT_MARK = " […truncated]"
 # Update, ohne dass der Baum auseinanderlaeuft.
 OWNER = os.environ.get("TALOS_OWNER_LABEL", "You").strip() or "You"
 AGENT = "Agent"
+RUN_STATUS = "Run status (not an answer)"
+INTERRUPTED = (
+    "This request stopped before a final answer. Completion is unverified. "
+    "Tools may already have run; inspect existing receipts before continuing. "
+    "Do not automatically repeat completed actions."
+)
 
 # Verdichtung: was woertlich stehen bleibt, wenn die Mitte zusammengefasst wird.
 # Der Kopf traegt meist die eigentliche Aufgabe, der Schwanz das, worauf sich ein
@@ -120,13 +127,20 @@ class Memory:
     def remember(self, conversation: str, *, asked: str, answered: str) -> None:
         """Legt genau ein Paar ab. Leere Haelften werden verworfen — ein halbes Paar
         liest sich spaeter wie ein Aussetzer und ist es nicht."""
+        self._remember_pair(conversation, asked, answered, AGENT)
+
+    def remember_interrupted(self, conversation: str, *, asked: str) -> None:
+        """Preserve an unresolved request without inventing a delivered answer."""
+        self._remember_pair(conversation, asked, INTERRUPTED, RUN_STATUS)
+
+    def _remember_pair(self, conversation: str, asked: str, answered: str, speaker: str) -> None:
         asked, answered = clip(asked), clip(answered)
         if not asked or not answered:
             return
         with self._lock:
             turns = self._turns.setdefault(conversation, [])
             turns.append(Turn(OWNER, asked))
-            turns.append(Turn(AGENT, answered))
+            turns.append(Turn(speaker, answered))
             self._trim(turns)
 
     def forget(self, conversation: str) -> int:
