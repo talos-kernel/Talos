@@ -31,18 +31,11 @@ def build(python_root: Path, destination: Path, identity: str = "-") -> Path:
         raise SystemExit("Use an ARM64 python-build-standalone 3.13 directory (uv python dir 3.13).")
     run("swift", "build", "--package-path", str(ROOT / "macos"), "-c", "release")
     swift = ROOT / "macos/.build/release"
-    # SwiftPM emits a command-line resource lookup at the .app root. Signed
-    # macOS apps require resources inside Contents/Resources. Adjust only the
-    # generated accessor, then rebuild; dependency source remains untouched.
-    accessor = swift / "SwiftTerm.build/DerivedSources/resource_bundle_accessor.swift"
-    generated = accessor.read_text()
-    original = 'Bundle.main.bundleURL.appendingPathComponent("SwiftTerm_SwiftTerm.bundle")'
-    packaged = 'Bundle.main.resourceURL!.appendingPathComponent("SwiftTerm_SwiftTerm.bundle")'
-    if original in generated:
-        accessor.write_text(generated.replace(original, packaged))
-        run("swift", "build", "--package-path", str(ROOT / "macos"), "-c", "release")
-    if packaged not in accessor.read_text():
-        raise SystemExit("SwiftPM changed its resource accessor; review app resource packaging.")
+    # Pinned SwiftTerm handles Contents/Resources itself. Editing SwiftPM's
+    # generated accessor is both unnecessary and lost at the next build plan.
+    renderer = ROOT / "macos/.build/checkouts/SwiftTerm/Sources/SwiftTerm/Apple/Metal/MetalTerminalRenderer.swift"
+    if 'Bundle.main.resourceURL?.appendingPathComponent(bundleName)' not in renderer.read_text():
+        raise SystemExit("Review SwiftTerm's packaged-app resource lookup before building.")
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         raise SystemExit("Output already exists. Choose a new output path; existing apps are never deleted.")
@@ -97,7 +90,7 @@ def build(python_root: Path, destination: Path, identity: str = "-") -> Path:
         info = {"CFBundleIdentifier": "org.talos-kernel.desktop", "CFBundleName": "Talos",
                 "CFBundleDisplayName": "Talos", "CFBundleExecutable": "TalosApp",
                 "CFBundlePackageType": "APPL", "CFBundleIconFile": "Talos.icns",
-                "CFBundleShortVersionString": "0.1.0", "CFBundleVersion": "1",
+                "CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "2",
                 "LSMinimumSystemVersion": "14.0", "NSHighResolutionCapable": True,
                 "LSApplicationCategoryType": "public.app-category.productivity"}
         (contents / "Info.plist").write_bytes(plistlib.dumps(info))

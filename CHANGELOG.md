@@ -8,6 +8,8 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ## [Unreleased]
 
+## [0.19.0-alpha] — 2026-09-08
+
 ### Security
 
 - Optional attended Computer automation and a closed set of remote status commands
@@ -25,6 +27,9 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ### Fixed
 
+- Browser receipts carry stable Chromium tab identifiers across reconnects. A
+  closed target fails explicitly; it never falls back to another tab. Legacy page
+  indices remain available, but multi-step work should reuse the observed `tab`.
 - Local tasks no longer require optional Vault or worker integrations. Notes and
   delegation follow configuration, relevance and the operator's requested scope;
   a failed integration does not make other tools unavailable.

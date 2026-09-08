@@ -13,7 +13,12 @@ def validate_browser(args):
     action = args.get("action")
     if action not in BROWSER_ACTIONS:
         raise ValueError("unknown browser action")
-    allowed = {"action", "frame", "page"}
+    allowed = {"action", "frame", "page", "tab"}
+    if "tab" in args:
+        if not isinstance(args["tab"], str) or not re.fullmatch(r"[A-Fa-f0-9]{32}", args["tab"]):
+            raise ValueError("tab must be an observed browser target ID")
+        if "page" in args:
+            raise ValueError("choose a stable tab ID or a legacy page index, not both")
     if "frame" in args:
         text(args["frame"], 500, "frame selector")
     if "page" in args and (type(args["page"]) is not int or not 0 <= args["page"] <= 30):

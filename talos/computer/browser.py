@@ -12,6 +12,27 @@ from urllib.parse import urlsplit, urlunsplit
 ENDPOINT = "http://127.0.0.1:9222"
 
 
+def tab_id(context, page):
+    session = context.new_cdp_session(page)
+    try:
+        return session.send("Target.getTargetInfo")["targetInfo"]["targetId"]
+    finally:
+        session.detach()
+
+
+def select_page(context, args):
+    pages = context.pages
+    if "tab" in args:
+        for page in pages:
+            if tab_id(context, page) == args["tab"]:
+                return page
+        raise ValueError("browser tab no longer exists; inspect available tabs before continuing")
+    index = args.get("page", len(pages) - 1)
+    if index >= len(pages):
+        raise ValueError("browser tab not found; inspect the available tabs")
+    return pages[index] if pages else context.new_page()
+
+
 def public_url(url):
     parts = urlsplit(url)
     return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
@@ -58,11 +79,10 @@ def run(args):
     with sync_playwright() as pw:
         browser = pw.chromium.connect_over_cdp(ENDPOINT, timeout=10000)
         context = browser.contexts[0]
-        pages = context.pages
-        index = args.get("page", len(pages)-1)
-        if index >= len(pages):
-            raise ValueError("browser tab not found; inspect the available tabs")
-        page = pages[index] if pages else context.new_page()
+        # Chromium target order can change between CDP connections. Prefer the
+        # observed target ID; a missing ID never falls back to a different tab.
+        page = select_page(context, args)
+        selected_tab = tab_id(context, page)
         page.set_default_timeout(8000)
         page.bring_to_front()
         errors, responses, submissions = [], [], []
@@ -131,10 +151,10 @@ def run(args):
                         submission_origins.add(urlsplit(form_action).netloc)
                     valid = target.evaluate("e => { const f=e.form || e.closest('form'); return f ? f.checkValidity() : true; }")
                     if not valid:
-                        return {"state":"needs_review", "action_performed":False,
+                        return {"state":"needs_review", "action_performed":False, "tab":selected_tab,
                                 "reason":"required fields are invalid", "page":snapshot(page, scope)}
                     if snapshot(page, scope)["challenge"]["interactive"]:
-                        return {"state":"needs_review", "action_performed":False,
+                        return {"state":"needs_review", "action_performed":False, "tab":selected_tab,
                                 "reason":"operator challenge confirmation required", "page":snapshot(page, scope)}
                 target.click()
             effect = action != "wait"
@@ -149,11 +169,11 @@ def run(args):
         # global network-idle on sites that poll forever.
         page.wait_for_timeout(350)
         observed_page = snapshot(page, scope)
-        receipt = {"state":"needs_review", "action":action, "action_performed":effect,
+        receipt = {"state":"needs_review", "action":action, "action_performed":effect, "tab":selected_tab,
                    "observed_value":observed, "previous_url":before_url,
                    "submissions":submissions[-6:], "responses":responses[-12:], "page_errors":errors[:5],
                    "page":observed_page,
-                   "tabs":[{"page":i,"url":public_url(p.url)} for i,p in enumerate(context.pages[:30])],
+                   "tabs":[{"page":i,"tab":tab_id(context,p),"url":public_url(p.url)} for i,p in enumerate(context.pages[:30])],
                    "verification":"browser observations only; check the real confirmation and server response"}
         (root / "browser-last.json").write_text(json.dumps(receipt, ensure_ascii=False))
         page.screenshot(path=str(root / "browser-last.png"), full_page=False)
