@@ -2,19 +2,6 @@
 
 ## 0.19.1-alpha
 
-The published runtime is built from `82e87aa`. Source checks passed 2,777 tests with
-8 optional/platform skips on macOS. All 230 adversarial cases passed. The signed archive was
-installed with the actual Bash installer into a fresh isolated directory: 2,774 tests
-passed and 36 were skipped, including repository-only checks absent from the archive.
-That installer invokes pytest from the archive root and includes the 25 Mac profile
-tests; the source count above uses `tests/` only. Signatures, hashes, all 127 runtime
-files, the command link, empty initial allowlist and configuration permissions were
-independently checked. OSV reported no findings in runtime, development, Computer
-or Swift pins. All 44 real-model E2E cases also passed with Claude CLI, using an
-isolated chat transport and disposable test files. This exercises inference, the kernel,
-approvals, execution, cancellation and history without polling a real Telegram bot.
-The release remains an alpha; the Computer requires separate provisioning.
-
 This release bundles task-scoped consent, command and queue handling, service-owned
 cron dispatch, confirmed media delivery, consultation follow-through, temporary
 Telegram progress and Computer observations with an optional takeover keyboard.

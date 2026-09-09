@@ -12,6 +12,9 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ### Security
 
+- Direct-install minimum versions for Requests, Cryptography and pytest now match
+  the already-audited release pins. Regenerated locks retain the same package versions
+  and hashes; older vulnerable versions no longer satisfy the declared requirements.
 - **Allow this task** authorizes later approval-requiring steps in the same attended
   foreground task until it ends or is cancelled. Consent is bound to the task,
   operator and conversation; hard denials and capability checks remain enforced.

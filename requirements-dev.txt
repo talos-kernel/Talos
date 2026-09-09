@@ -1,7 +1,7 @@
 # Only needed to run the proofs — the agent itself does not import these.
 # The installer pulls them in because it refuses to finish without running
 # the test suite and the adversarial suite in front of you.
-pytest>=8.0
+pytest>=9.1.1
 
 # Keep direct installs above the audited security floor too.
 pygments>=2.20
