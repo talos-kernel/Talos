@@ -15,6 +15,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # Private-address fixtures are allowlisted by exact file and host. A new host in the same
 # test or example still fails instead of inheriting a broad path exemption.
 ALLOWED_ENDPOINT_FIXTURE_HOSTS = {
+    # Local fake Telegram APIs for cancellation, approvals and transient progress.
+    "tests/test_background_telegram_e2e.py": frozenset({"127.0.0.1"}),
+    "tests/test_ephemeral_telegram.py": frozenset({"127.0.0.1"}),
+    "tests/test_task_approval_telegram_e2e.py": frozenset({"127.0.0.1"}),
+    "tests/test_telegram_progress_updates.py": frozenset({"127.0.0.1"}),
     # Local HTTP double for Telegram transport and provider-failure integration.
     "tests/test_operator_recovery_integration.py": frozenset({"127.0.0.1"}),
     # QEMU SLIRP guest-only proxy address; no operator machine endpoint.

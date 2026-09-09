@@ -79,12 +79,16 @@ def extract(text: object) -> tuple[str, tuple[str, ...]]:
     kept: list[str] = []
     paths: list[str] = []
     overflow = 0
+    seen: set[str] = set()
     for line in str(text or "").split("\n"):
         match = _TAG_LINE.match(line)
         if match is None:
             kept.append(line)
+        elif match.group(1) in seen:
+            continue
         elif len(paths) < MAX_ATTACHMENTS:
             paths.append(match.group(1))
+            seen.add(match.group(1))
         else:
             overflow += 1
     clean = _BLANK_RUN.sub("\n\n", "\n".join(kept)).strip("\n")

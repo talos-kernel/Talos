@@ -160,6 +160,7 @@ class TalosConfig:
     bot_username: str
     allowed_principals: frozenset[Principal]
     eventlog_db: Path
+    cleanup_sent_media: bool = False
     snapshot_dir: Path = SNAPSHOT_DIR
     claude_bin: str = CLAUDE_BIN
     reasoner_timeout_s: int = REASONER_TIMEOUT_S
@@ -388,6 +389,7 @@ def load_config(*, require_channel: bool = True) -> TalosConfig:
         brave_api_key=_value("TALOS_BRAVE_API_KEY"),
         web_allow_http=_value("TALOS_WEB_ALLOW_HTTP") == "1",
         bot_token=token,
+        cleanup_sent_media=_value("TALOS_CLEANUP_SENT_MEDIA") == "1",
         shell_needs_human=SHELL_NEEDS_HUMAN,
         bot_username=username,
         allowed_principals=allowed,

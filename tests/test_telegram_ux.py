@@ -229,11 +229,12 @@ def test_activity_failure_is_final_and_precise_but_redacted() -> None:
     activity.progress(_tool("run_shell", summary="shell"))
     activity.fail("Timeout mit token=super-secret-value")
 
-    final = client.edited[-1][2]
+    final = client.sent[-1][1]
     assert "✕ failed: Timeout" in final
     assert "super-secret-value" not in final
     assert "[REDACTED]" in final
-    assert client.deleted == []
+    activity.cleanup()  # The conductor calls this after confirmed error delivery.
+    assert client.deleted == [(42, 77)]
 
 
 def test_tool_updates_are_sanitized_bounded_and_coalesced() -> None:
@@ -567,7 +568,9 @@ def test_mission_retains_counts_when_the_visible_trail_is_truncated() -> None:
     assert "1m 05s" in text and "4 tool calls" in text
     assert "2 earlier events" in text and "file-0.txt" not in text
     assert "Step 1" in text and "limit" not in text and "%" not in text and "ETA" not in text
-    assert len(client.sent) == 1 and client.deleted == []
+    assert len(client.sent) == 2 and client.deleted == []
+    assert ' · Update · ' in client.sent[-1][1]
+    assert '4 tool actions completed' in client.sent[-1][1]
 
 
 def test_mission_does_not_call_a_delegated_job_complete_at_turn_end() -> None:
@@ -610,8 +613,10 @@ def test_mission_escapes_operator_and_tool_text_and_redacts_failures() -> None:
     assert client.edited[-1][3]["parse_mode"] == "HTML"
     assert "<a " not in text and "<script>" not in text
     assert "&lt;b&gt;notes&amp;more&lt;/b&gt;" in text
-    assert "never-show-this" not in text and "[REDACTED]" in text
-    assert "Stopped" in text
+    failure = client.sent[-1]
+    assert 'parse_mode' not in failure[2]
+    assert "never-show-this" not in failure[1] and "[REDACTED]" in failure[1]
+    assert "failed" in failure[1]
 
 
 def test_expressive_timeline_uses_clear_labels_without_protocol_or_filler():

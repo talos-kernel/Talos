@@ -24,7 +24,7 @@ with sync_playwright() as pw:
   if candidate:
    for url,file,typ in [('/','index.html','text/html'),('/app.js','app.js','text/javascript'),('/style.css','style.css','text/css')]:
     content=(ROOT/'talos/computer/web'/file).read_text()
-    context.route(origin+url,lambda route,request,content=content,typ=typ:route.fulfill(status=200,body=content,content_type=typ))
+    context.route(origin+url,lambda route,request,content=content,typ=typ:route.fulfill(response=route.fetch(),body=content,content_type=typ))
   page=context.new_page();errors=[];bad=[];posts=[]
   page.on('pageerror',lambda e:errors.append(str(e)))
   page.on('console',lambda m:errors.append(m.text) if m.type=='error' else None)
@@ -33,7 +33,7 @@ with sync_playwright() as pw:
   page.goto(origin,wait_until='domcontentloaded')
   expect(page.locator('#workspace')).to_be_visible()
   expect(page.locator('#capture')).to_be_visible(timeout=30000)
-  page.wait_for_function("document.getElementById('capture').naturalWidth>0")
+  page.wait_for_function("() => document.getElementById('capture').naturalWidth>0")
   def scale():
    return page.locator('#capture').evaluate('e=>Math.min(e.clientWidth/e.naturalWidth,e.clientHeight/e.naturalHeight)')
   before=scale()
@@ -44,22 +44,22 @@ with sync_playwright() as pw:
   expanded=scale()
   assert expanded>before*1.20,(before,expanded)
   page.locator('#screen-zoom').select_option('150')
-  page.wait_for_function("document.getElementById('screen').scrollWidth>=2160")
+  page.wait_for_function("() => document.getElementById('screen').scrollWidth>=2160")
   page.locator('#screen').evaluate('e=>{e.scrollLeft=240;e.scrollTop=120}')
   assert page.locator('#screen').evaluate('e=>e.scrollLeft')==240
   assert page.locator('#screen').evaluate('e=>e.scrollTop')==120
   page.reload(wait_until='domcontentloaded')
   expect(page.locator('#workspace')).to_be_visible()
   expect(page.locator('#capture')).to_be_visible(timeout=30000)
-  page.wait_for_function("document.getElementById('capture').naturalWidth>0")
+  page.wait_for_function("() => document.getElementById('capture').naturalWidth>0")
   expect(page.locator('#expand')).to_have_attribute('aria-pressed','true')
   expect(page.locator('#screen-zoom')).to_have_value('150')
   page.locator('#screen-zoom').select_option('fit')
   page.locator('#fullscreen').click()
-  page.wait_for_function("document.fullscreenElement?.id==='workspace'")
+  page.wait_for_function("() => document.fullscreenElement?.id==='workspace'")
   expect(page.locator('#fullscreen')).to_have_attribute('aria-pressed','true')
   page.locator('#fullscreen').click()
-  page.wait_for_function('!document.fullscreenElement')
+  page.wait_for_function('() => !document.fullscreenElement')
   page.keyboard.press('Escape')
   expect(page.locator('#expand')).to_have_attribute('aria-pressed','false')
   expect(page.locator('.grid>aside')).to_be_visible()

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from talos.reasoner import (
     HERMES_NO_TOOLS_TOOLSET,
     TOOL_PROTOCOL,
@@ -21,6 +23,9 @@ def test_hermes_argv_selects_provider_model_and_exact_no_tools_toolset(tmp_path:
     argv = reasoner.argv_for("hello")
 
     assert argv[0] == str(binary)
+    assert argv[1:4] == ["chat", "-Q", "-q"]
+    kimi = HermesCliReasoner(str(binary), 30, provider="kimi-cli", model="kimi-code/k3")
+    assert kimi.argv_for("hello")[1] == "-z"
     assert argv[argv.index("--provider") + 1] == "openai-codex"
     assert argv[argv.index("--model") + 1] == "gpt-5"
     assert HERMES_NO_TOOLS_TOOLSET == "__talos_reasoner_no_tools__"
@@ -37,7 +42,8 @@ def test_hermes_argv_keeps_machine_protocol_in_final_answer_channel(tmp_path: Pa
         str(binary), 30, provider="openai-codex", model="gpt-5.6-sol"
     )
 
-    prompt = reasoner.argv_for("inspect the VPS")[2].lower()
+    args = reasoner.argv_for("inspect the VPS")
+    prompt = args[args.index("-q") + 1].lower()
 
     assert "final answer channel" in prompt
     assert "never put plan or tool_call in commentary" in prompt
@@ -143,21 +149,80 @@ def test_tool_protocol_names_the_vault_note_schema() -> None:
 
 def test_hermes_parser_reads_plain_oneshot_and_defensive_json() -> None:
     assert _interpret_hermes("  Hallo.\n") == ("Hallo.", "")
+    startup = "⚠ tirith security scanner enabled but not available — command scanning will use pattern matching only\n"
+    assert _interpret_hermes(startup + "MEDIA:/workspace/report.pdf") == ("MEDIA:/workspace/report.pdf", "")
     assert _interpret_hermes(json.dumps({"result": "Antwort"})) == ("Antwort", "")
     text, note = _interpret_hermes("")
     assert "leer" in text and note == "leere Ausgabe"
 
 
-def test_hermes_reasoner_executes_configured_binary_without_tools(tmp_path: Path) -> None:
+@pytest.mark.parametrize("answer", [
+    "The report is ready.",
+    'TOOL_CALL: {"tool":"read_file","args":{"path":"report.txt"}}',
+    "MEDIA:/workspace/report.pdf",
+])
+def test_hermes_reasoning_panel_never_becomes_answer_or_tool(answer: str) -> None:
+    panel = ('\x1b[33m┌─ Reasoning ─────┐\x1b[0m\n'
+             'TOOL_CALL: {"tool":"run","args":{"command":"wrong-channel"}}\n'
+             '└────────────────┘\n')
+    assert _interpret_hermes(panel + answer) == (answer, "")
+
+
+@pytest.mark.parametrize("output", [
+    "┌─ Reasoning ─────┐\ninternal-only",
+    '┌─ Reasoning ─────┐\nTOOL_CALL: {"tool":"run","args":{}}',
+    "┌─ Reasoning ─────┐\ninternal-only\n└────────────────┘",
+])
+def test_hermes_incomplete_or_reasoning_only_output_is_not_executable(output: str) -> None:
+    assert _interpret_hermes(output) == ("", "internal_display")
+
+
+@pytest.mark.parametrize("answer", [
+    "Reasoning about the next steps is complete.",
+    "```text\n┌─ Reasoning ─────┐\n```",
+    '{"result":"Your report is ready."}',
+])
+def test_hermes_clean_output_is_preserved(answer: str) -> None:
+    expected = json.loads(answer)["result"] if answer.startswith("{") else answer
+    assert _interpret_hermes(answer) == (expected, "")
+
+
+def test_hermes_reasoning_only_failure_does_not_leak_or_execute(tmp_path: Path) -> None:
+    from talos.provider_errors import ReasonerFailure
+
+    binary = tmp_path / "hermes"
+    binary.write_text(
+        "#!/usr/bin/env python3\nimport sys\n"
+        "if sys.argv[1] == 'tools':\n print('✗ disabled web')\n"
+        "else:\n print('┌─ Reasoning ─────┐\\nprivate-thought-marker')\n"
+    )
+    binary.chmod(0o700)
+    reasoner = HermesCliReasoner(str(binary), 10, provider="example", model="model")
+    with pytest.raises(ReasonerFailure) as caught:
+        reasoner.reason("hello")
+    assert caught.value.kind == "invalid_output"
+    assert not caught.value.fallback_allowed
+    assert "private-thought-marker" not in str(caught.value)
+    assert "┌" not in str(caught.value)
+    with pytest.raises(RuntimeError, match="no readiness marker"):
+        reasoner.validate()
+
+
+def test_hermes_reasoner_executes_configured_binary_without_tools(tmp_path: Path, monkeypatch) -> None:
+    import os
+    from talos.reasoner import HERMES_TRANSPORT_CONTEXT
+
+    monkeypatch.setenv("HERMES_EPHEMERAL_SYSTEM_PROMPT", "parent context stays unchanged")
     capture = tmp_path / "argv.json"
     binary = tmp_path / "hermes"
     binary.write_text(
         "#!/usr/bin/env python3\n"
-        "import json, pathlib, sys\n"
+        "import json, pathlib, sys, os\n"
         "if sys.argv[1:4] == ['tools', 'list', '--platform']:\n"
         "    print('✗ disabled web')\n"
         "    raise SystemExit(0)\n"
         f"pathlib.Path({str(capture)!r}).write_text(json.dumps(sys.argv[1:]))\n"
+        f"pathlib.Path({str(tmp_path / 'context.txt')!r}).write_text(os.environ.get('HERMES_EPHEMERAL_SYSTEM_PROMPT', ''))\n"
         "print('real answer')\n",
         encoding="utf-8",
     )
@@ -167,6 +232,8 @@ def test_hermes_reasoner_executes_configured_binary_without_tools(tmp_path: Path
     argv = json.loads(capture.read_text())
     assert "--toolsets" not in argv
     assert "--ignore-rules" in argv
+    assert (tmp_path / "context.txt").read_text() == HERMES_TRANSPORT_CONTEXT
+    assert os.environ["HERMES_EPHEMERAL_SYSTEM_PROMPT"] == "parent context stays unchanged"
 
 
 def test_hermes_reasoner_rejects_enabled_toolsets(tmp_path: Path) -> None:

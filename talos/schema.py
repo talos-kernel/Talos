@@ -120,6 +120,9 @@ def _model_overrides(value: str) -> str:
 
 
 KEYS: tuple[Key, ...] = (
+    Key("TALOS_CLEANUP_SENT_MEDIA", POLICY,
+        "delete unchanged disposable workspace/outbox file copies only after a confirmed "
+        "Telegram media upload; originals and failed uploads are retained", "0", _bool01),
     Key("TALOS_COMPUTER_AUTOAPPROVE", POLICY,
         "allow work inside the operator computer without per-action prompts in trusted "
         "attended sessions at autonomy 5; external account effects are included", "0", _bool01),

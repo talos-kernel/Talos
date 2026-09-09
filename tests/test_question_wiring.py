@@ -332,7 +332,7 @@ def test_stop_ends_an_open_question_instead_of_making_the_worker_wait(tmp_path):
     assert not thread.is_alive(), "der Worker wartete weiter"
     assert time.monotonic() - started < 5.0
     assert desk.pending(CHAT) is None
-    assert "Operator answer: none" in reasoner.prompts[1]
+    assert len(reasoner.prompts) == 1, "a stopped question must not start another model turn"
     assert sent[0][1] == "command:stop"
 
 

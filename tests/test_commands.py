@@ -288,8 +288,8 @@ def test_tools_lists_gating_per_tool(tmp_path: Path) -> None:
 
 def test_whoami_reports_admission(tmp_path: Path) -> None:
     center = _center(tmp_path)
-    assert "Zugelassen: ja" in (center.dispatch("whoami", "", principal=OWNER, conversation=CHAT).reply or "")
-    assert "Zugelassen: nein" in (center.dispatch("whoami", "", principal=STRANGER, conversation=CHAT).reply or "")
+    assert "Allowed: yes" in (center.dispatch("whoami", "", principal=OWNER, conversation=CHAT).reply or "")
+    assert "Allowed: no" in (center.dispatch("whoami", "", principal=STRANGER, conversation=CHAT).reply or "")
 
 
 def test_status_reports_open_approval(tmp_path: Path) -> None:

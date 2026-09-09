@@ -76,18 +76,27 @@ class Redirect:
         self._lock = threading.Lock()
         self._run: tuple[str, str] | None = None      # (principal, conversation)
         self._pending: list[Correction] = []
+        self._generation = 0
 
-    def open(self, principal: str, conversation: str) -> None:
+    def open(self, principal: str, conversation: str) -> int:
         """Ein Lauf erklaert sich fuer lenkbar. Verwirft Reste eines frueheren Laufs."""
         with self._lock:
             self._run = (principal, conversation)
             self._pending = []
+            self._generation += 1
+            return self._generation
 
-    def close(self) -> None:
+    def close(self, generation: int | None = None) -> None:
         """Kein Lauf mehr. Danach wird nichts mehr angenommen."""
         with self._lock:
+            if generation is not None and generation != self._generation:
+                return
             self._run = None
             self._pending = []
+
+    def active(self, generation: int) -> bool:
+        with self._lock:
+            return self._run is not None and self._generation == generation
 
     def is_open(self) -> bool:
         with self._lock:

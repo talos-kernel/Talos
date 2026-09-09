@@ -87,6 +87,8 @@ class Pending:
     # bequemste Weg, beides abzustreifen: nach dem „ja" stuende der Lauf wieder mit dem
     # vollen Hausmass da, obwohl er drei Schritte angekuendigt hatte.
     plan: object | None = None
+    # An opaque conductor-owned foreground task, never a field from model output.
+    task_id: str = ""
 
 
 class ApprovalStore:
@@ -122,6 +124,7 @@ class ApprovalStore:
         steps: int = 0,
         resume_agent: bool = False,
         plan: object | None = None,
+        task_id: str = "",
     ) -> Pending:
         targets = guard_targets(req)
         rec = Pending(
@@ -138,6 +141,7 @@ class ApprovalStore:
             steps=steps,
             resume_agent=resume_agent,
             plan=plan,
+            task_id=task_id,
         )
         with self._lock:
             self._pending = {**self._pending, conversation: rec}
@@ -247,15 +251,16 @@ class ApprovalPicker:
         now = self._clock()
         expires_at = min(pending.expires_at, now + self._ttl_s)
         buttons: list[Button] = []
+        choices = [("✓ Allow once", "yes"), ("∞ Always allow", "always"), ("✕ Deny", "no")]
+        if pending.task_id and pending.resume_agent:
+            from .task_approval import TASK_NOTICE
+            text += "\n\n" + TASK_NOTICE
+            choices.insert(1, ("▶ Allow this task", "allow this task"))
         with self._lock:
             self._states = {
                 token: state for token, state in self._states.items() if state.expires_at > now
             }
-            for label, decision in (
-                ("✓ Allow once", "yes"),
-                ("∞ Always allow", "always"),
-                ("✕ Deny", "no"),
-            ):
+            for label, decision in choices:
                 token = self._unique_token()
                 self._states[token] = _ApprovalButtonState(
                     principal=principal,
@@ -265,7 +270,7 @@ class ApprovalPicker:
                     expires_at=expires_at,
                 )
                 buttons.append(Button(label, self.PREFIX + token))
-        return StructuredMessage(text, ((buttons[0], buttons[1]), (buttons[2],)))
+        return StructuredMessage(text, (tuple(buttons[:2]), tuple(buttons[2:])))
 
     def consume(
         self,

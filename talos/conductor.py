@@ -38,7 +38,8 @@ from .approval import ApprovalPicker, ApprovalStore, Pending, is_affirmative, is
 from .attachment import extract as extract_media
 from .attachment import resolve as resolve_media
 from .capability import action_fingerprint
-from .channel import Activity, Inbound, Principal, StructuredMessage, Trust
+from .channel import Activity, FileDeliveryReceipt, Inbound, Principal, StructuredMessage, Trust
+from .media_cleanup import disposable_copy
 from .commands import CommandCenter, is_command, parse
 from .eventlog import Event, EventLog, new_run_id
 from .executor import Executor, Outcome, Status
@@ -49,6 +50,8 @@ from .question import CALLBACK_PREFIX as QUESTION_PREFIX, Answer, QuestionDesk, 
 from .reasoner import Reasoner
 from .redirect import Redirect
 from .standing import StandingStore
+from .task_approval import TASK_NOTICE, TaskApprovals, TaskExecutor, is_task_approval
+from .working_display import WorkingDisplays
 from .ux import SYM_GATE
 
 Sender = Callable[[str, str], None]
@@ -87,7 +90,8 @@ ReplyBegin = Callable[[str], ReplyStream | None]
 # Kommandos, die den Zustand von Talos selbst verstellen. Sie brauchen einen Kanal,
 # dessen Identität trägt — nicht bloß eine zugelassene Kennung.
 CONTROL_COMMANDS: frozenset[str] = frozenset(
-    {"autonomy", "approve", "deny", "undo", "stop", "revoke", "model"}
+    {"autonomy", "approve", "deny", "undo", "stop", "cancel", "stopall", "estop",
+     "steer", "revoke", "model", "models"}
 )
 
 # Kommandos, die einen laufenden Auftrag beenden. Eine offene Rückfrage gehört zu
@@ -186,7 +190,9 @@ class Conductor:
     # Dateianhaenge aus MEDIA:-Tags (`attachment.py`): (conversation, gegateter Pfad)
     # -> bool. `False` heisst: der Kanal kann keine Dateien — ein ehrliches Nein, kein
     # Fehler. Injiziert wie `send_structured`; `None` = kein Weg verdrahtet.
-    send_file: "Callable[[str, str], bool] | None" = None
+    send_file: "Callable[[str, str], bool | FileDeliveryReceipt] | None" = None
+    supports_files: Callable[[str], bool] | None = None
+    cleanup_sent_media: bool = False
     # Liefert die Quittungszeile unter den Verlauf (Werkzeuge, Dauer, Token, Modell).
     # Injiziert statt aus dem Meter gezogen: der Conductor soll die Messung nicht kennen,
     # und Tests brauchen dafuer keinen echten Reasoner.
@@ -236,6 +242,8 @@ class Conductor:
     execution_lock: threading.RLock = field(
         default_factory=threading.RLock, compare=False, repr=False
     )
+    task_approvals: TaskApprovals = field(default_factory=TaskApprovals, compare=False, repr=False)
+    working_displays: WorkingDisplays = field(default_factory=WorkingDisplays, compare=False, repr=False)
 
     def is_inline(self, update: Inbound) -> bool:
         """True = sofort im Poll-Thread beantworten, statt in die Warteschlange zu legen.
@@ -262,14 +270,15 @@ class Conductor:
             name, rest = parse(update.text)
             if name in {"retry", "approve", "deny"}:
                 return False
-            if name == "model" and len(rest.split()) == 2:
+            if name in {"model", "models"} and len(rest.split()) == 2:
                 return False
             return True
         if self.approvals.get(update.conversation) is not None:
             return False
         if self._looks_like_answer(update):
             return True
-        return is_affirmative(update.text) or is_always(update.text) or is_negative(update.text)
+        return (is_affirmative(update.text) or is_always(update.text)
+                or is_task_approval(update.text) or is_negative(update.text))
 
     def _looks_like_answer(self, update: Inbound) -> bool:
         """Nur eine WEGWAHL, kein Einlösen — `is_inline` darf nichts verbrauchen.
@@ -357,7 +366,7 @@ class Conductor:
                     else None
                 )
                 if decision is not None and pending is not None:
-                    self._ack_approval_callback(update, run_id, pending)
+                    self._ack_approval_callback(update, run_id, pending, decision=decision)
                     return self._resolve_approval(update, run_id, pending, decision)
                 message = StructuredMessage(
                     "Approval invalid or expired. Nothing ran.",
@@ -392,6 +401,7 @@ class Conductor:
         text = update.text
         if self.commands is not None and is_command(text):
             name, rest = parse(text)
+            pending_task = None
             self.log.append(
                 Event(run_id, "human", "command", {"name": name, "principal": str(update.principal)})
             )
@@ -399,11 +409,24 @@ class Conductor:
                 self.log.append(Event(run_id, "policy", "control.rejected",
                                       {"name": name, "channel": update.channel}))
                 return self._reply(update, run_id, _no_control(update.channel, trust))
+            if name == "steer":
+                return self._steer_command(update, run_id, rest)
+            if name in ABORT_COMMANDS and rest.strip().startswith("bg_"):
+                return self._cancel_background(update, run_id, rest.strip())
             # Vor dem Kommando, nicht danach: `/stop` soll den wartenden Worker sofort
             # loslassen, statt ihn bis zum Zeitlimit der Rückfrage stehen zu lassen.
             if name in ABORT_COMMANDS:
+                self.redirect.close()
+                self.task_approvals.cancel(update.principal, update.conversation)
+                pending_task = self.approvals.get(update.conversation)
+                if (pending_task is not None and pending_task.task_id
+                        and pending_task.principal == str(update.principal)):
+                    self.approvals.clear(update.conversation)
                 self.questions.cancel(update.conversation)
-            if name == "model" and len(rest.split()) == 2:
+            if name in {"stopall", "estop"}:
+                self.redirect.close()
+                self.task_approvals.clear()
+            if name in {"model", "models"} and len(rest.split()) == 2:
                 with self.execution_lock:
                     result = self.commands.dispatch(
                         name, rest, principal=update.principal, conversation=update.conversation
@@ -419,7 +442,10 @@ class Conductor:
             if result.structured is not None:
                 return self._reply_structured(update, run_id, result.structured)
             if result.forward_as is None:
-                return self._reply(update, run_id, result.reply or "(keine Antwort)")
+                sent = self._reply(update, run_id, result.reply or "(keine Antwort)")
+                if sent and pending_task is not None and pending_task.principal == str(update.principal):
+                    self.working_displays.cleanup((str(update.principal), update.conversation, pending_task.task_id))
+                return sent
             text = result.forward_as  # /approve -> „ja": weiter wie eine normale Antwort
 
         # Offene Rückfrage vor der Freigabe-Runde — und ebenfalls über die Form, nicht
@@ -440,7 +466,7 @@ class Conductor:
 
         # Kein offener Vorgang: ein einsames „ja"/„nein" ist bedeutungslos (abgelaufen oder nie
         # gefragt) — und darf niemals als Aufgabe an den Reasoner gehen.
-        if is_affirmative(text) or is_always(text) or is_negative(text):
+        if is_affirmative(text) or is_always(text) or is_task_approval(text) or is_negative(text):
             self.log.append(Event(run_id, "conductor", "approval.none", {}))
             return self._reply(update, run_id, "No approval is pending (it may have expired). Nothing ran.")
 
@@ -510,16 +536,19 @@ class Conductor:
         text = update.text if text is None else text
         negative = is_negative(text)
         always = is_always(text)
-        if not negative and not always and not is_affirmative(text):
+        task = is_task_approval(text)
+        if task and not (rec.task_id and rec.resume_agent):
+            return self._approval_reply(update, run_id, "Task approval requires a foreground agent task. Choose yes, always or no.")
+        if not negative and not always and not task and not is_affirmative(text):
             self.log.append(Event(run_id, "conductor", "approval.reprompt", {"tool": rec.req.tool}))
             # This still requests consent: Markdown must not rewrite the kernel's command.
             return self._reply_structured(
                 update, run_id,
-                StructuredMessage("Bitte nur ja, immer oder nein.\n\n" + rec.prompt),
+                StructuredMessage("Bitte nur ja, immer oder nein. For the whole task: allow this task.\n\n" + rec.prompt),
             )
 
         with self.execution_lock:
-            return self._execute_approval(update, run_id, rec, negative=negative, always=always)
+            return self._execute_approval(update, run_id, rec, negative=negative, always=always, task=task)
 
     def _execute_approval(
         self,
@@ -529,6 +558,7 @@ class Conductor:
         *,
         negative: bool,
         always: bool,
+        task: bool = False,
     ) -> bool:
         """Claim and execute as one serialized effect lifecycle."""
         # Atomarer One-shot-Claim VOR jeder Wirkung. Wurde inzwischen B geparkt,
@@ -558,24 +588,42 @@ class Conductor:
         rec = claimed
 
         if negative:
+            self.task_approvals.finish(rec.task_id)
             self.log.append(Event(run_id, "human", "approval.denied", {"tool": rec.req.tool}))
-            return self._approval_reply(update, run_id, "Discarded — nothing ran.")
+            sent = self._approval_reply(update, run_id, "Discarded — nothing ran.")
+            if sent:
+                self.working_displays.cleanup((str(update.principal), update.conversation, rec.task_id))
+            return sent
 
         # TOCTOU: die Bindung entsteht JETZT, beim Ausführen. Hat sich ein Ziel seit dem Fragen
         # geändert, wird abgebrochen statt blind auf das getauschte Ziel zu wirken.
         if not self.approvals.target_unchanged(rec):
+            self.task_approvals.finish(rec.task_id)
             self.log.append(Event(run_id, "human", "approval.stale", {"tool": rec.req.tool}))
-            return self._approval_reply(
+            sent = self._approval_reply(
                 update, run_id,
                 "The target changed since you were asked — aborted for safety. Please request again.",
             )
+            if sent:
+                self.working_displays.cleanup((str(update.principal), update.conversation, rec.task_id))
+            return sent
 
-        self.log.append(
-            Event(run_id, "human", "approval.granted", {"tool": rec.req.tool, "standing": always})
-        )
+        if task:
+            if not self.task_approvals.approve(rec.task_id, update.principal, update.conversation):
+                return self._approval_reply(update, run_id, "This task has ended. Nothing ran.")
+            self.log.append(Event(run_id, "human", "approval.task_granted", {"task_id": rec.task_id}))
+        self.log.append(Event(run_id, "human", "approval.granted",
+                              {"tool": rec.req.tool, "standing": always, "task_id": rec.task_id if task else ""}))
         # Erneut durch den Kernel (human_approved=True), nicht am Gate vorbei. DENY bleibt DENY.
-        outcome = self.executor.run(rec.req, run_id, human_approved=True)
+        try:
+            outcome = (self._task_executor(update, rec.task_id).run(rec.req, run_id) if task
+                       else self.executor.run(rec.req, run_id, human_approved=True))
+        except BaseException:
+            self.task_approvals.finish(rec.task_id)
+            raise
         note = self._remember_always(update, run_id, rec.req, outcome) if always else ""
+        if task:
+            note = "▶ Task approval used. It ends with this task; nothing carries into the next one."
         if rec.resume_agent:
             history = rec.history + (
                 tool_history_entry(
@@ -588,7 +636,11 @@ class Conductor:
             )
             resumed, stopped = _plan_after_approval(rec.plan, rec.req.tool, outcome)
             if stopped:
-                return self._approval_reply(update, run_id, _append_note(stopped, note))
+                self.task_approvals.finish(rec.task_id)
+                sent = self._approval_reply(update, run_id, _append_note(stopped, note))
+                if sent:
+                    self.working_displays.cleanup((str(update.principal), update.conversation, rec.task_id))
+                return sent
             return self._run_task(
                 update,
                 run_id,
@@ -599,6 +651,8 @@ class Conductor:
                 approval_reply=True,
                 trailing_note=note,
                 plan=resumed,
+                task_id=rec.task_id,
+                steerable=True,
             )
         return self._approval_reply(update, run_id, _append_note(self._describe(outcome), note))
 
@@ -651,6 +705,7 @@ class Conductor:
         steps: int = 0,
         resume_agent: bool = False,
         plan: PlanRun | None = None,
+        task_id: str = "",
     ) -> bool:
         """Parkt eine NEEDS_HUMAN-Anfrage — aber nur dort, wo sie auch lösbar ist.
 
@@ -694,9 +749,14 @@ class Conductor:
                     past_override=memory_context,
                     trailing_note=standing_note,
                     plan=resumed_plan,
+                    task_id=task_id,
+                    steerable=True,
                 )
             return self._reply(update, run_id, _append_note(self._describe(outcome), standing_note))
 
+        if resume_agent and not task_id:
+            task_id = run_id
+            self.task_approvals.open(task_id, update.principal, update.conversation)
         rec = self.approvals.park(
             update.conversation,
             req,
@@ -708,6 +768,7 @@ class Conductor:
             steps=steps,
             resume_agent=resume_agent,
             plan=plan,
+            task_id=task_id,
         )
         self.log.append(
             Event(run_id, "conductor", "approval.parked",
@@ -730,9 +791,15 @@ class Conductor:
                     Event(run_id, "conductor", "error",
                           {"stage": "approval.buttons", "error": str(error)})
                 )
+        if task_id:
+            text += "\n\n" + TASK_NOTICE + '\nType "allow this task" to choose it.'
         return self._reply(update, run_id, text)
 
     # --- Agent-Loop -------------------------------------------------------------
+    def _task_executor(self, update: Inbound, task_id: str) -> TaskExecutor:
+        return TaskExecutor(self.executor, self.task_approvals, task_id, update.principal,
+                            update.conversation, lambda: self.trust_of(update.channel))
+
     def _run_task(
         self,
         update: Inbound,
@@ -749,6 +816,7 @@ class Conductor:
         # Antwort schon als Antwort auf seine letzte Frage gelesen.
         leading_note: str = "",
         plan: PlanRun | None = None,
+        task_id: str = "",
         # ⚠️ Voreingestellt NICHT lenkbar ueber das Vordergrund-Postfach. Das gehoert
         # dem einen Lauf, vor dem gerade jemand sitzt; eine Chat-Nachricht waehrend
         # eines Hintergrundlaufs meint fast immer den Vordergrund und darf nicht
@@ -774,25 +842,70 @@ class Conductor:
         # `discard_reply` nur in DENY-Richtung; None = zustellen wie bisher.
         before_reply: ReplyHook | None = None,
     ) -> bool:
+        if steerable and not task_id:
+            self.task_approvals.cancel(update.principal, update.conversation)
         text = update.text if text is None else text
         past = (
             self.memory.recall(update.conversation)
             if past_override is None
             else past_override
         )
-        self.log.append(Event(run_id, "conductor", "reason.started", {"kontext_zuege": len(past)}))
+        if (past_override is None and not initial_history and not approval_reply and past
+                and text.strip().casefold() in {"?", "status?", "noch dran?", "was machst du jetzt?"}):
+            from .memory import RUN_STATUS
+            if past[-1].speaker == RUN_STATUS:
+                summary = next((line[9:] for line in past[-1].text.splitlines()
+                                if line.startswith("Stopped: ")), "")
+                if summary:
+                    # Status after protocol exhaustion is a read-back, not a new
+                    # inference run. Keep the request/receipts for an explicit continuation.
+                    self.log.append(Event(run_id, "conductor", "task.status_readback", {}))
+                    return self._reply(update, run_id, summary +
+                                       "\n\nNo retry was started. The unfinished request is retained.")
+        self.log.append(Event(run_id, "conductor", "reason.started",
+                              {"kontext_zuege": len(past), "task_id": task_id or run_id}))
         activity = self._begin_activity(update, run_id)
         stream = self._begin_stream(update, run_id, approval_reply=approval_reply)
+        display_key = (str(update.principal), update.conversation, task_id or run_id)
+        self.working_displays.add(display_key, activity, stream)
         # Ab hier weiss der `ask_operator`-Runner, wohin er fragen darf: in genau diesen
         # Chat, mit genau dieser Identität und der Stufe dieses Kanals.
         context = AskContext(update.principal, update.conversation, self.trust_of(update.channel))
-        if steerable:
-            self.redirect.open(str(update.principal), update.conversation)
+        generation = self.redirect.open(str(update.principal), update.conversation) if steerable else None
+        result = None
+        delivery_context = ""
+        if self.supports_files is not None:
+            delivery_context = f"[Talos user channel: {update.channel}. The model CLI is only a reasoning transport.]\n"
+            available = self.supports_files(update.conversation)
+            delivery_context += (
+                "[This conversation supports file attachments. Emit MEDIA:<verified local path> "
+                "in the final answer; Talos performs the upload. Do not claim attachments are "
+                "unavailable because the model runs in a CLI. Attachment gates still apply.]\n"
+                if available else "[This conversation has no file attachment transport.]\n"
+            )
+        base_propose = self._propose(text, past, stream, run_id, delivery_context=delivery_context)
+        def propose(history: list[str]) -> str:
+            if task_id and self.task_approvals.state(task_id, update.principal, update.conversation):
+                # A receipt of the human decision, never a model-supplied permission.
+                # Enforcement remains in TaskExecutor and the kernel for every action.
+                history = [
+                    "[Operator consent recorded by Talos: Allow this task is active. "
+                    "Continue this task through verification without asking again for tool "
+                    "permission. All approval-required actions in this task are covered "
+                    "until completion or stop, with no clock expiry. Kernel denials still "
+                    "apply. Ask only for genuinely missing information, not another Go.]",
+                    *history,
+                ]
+            return base_propose(history)
+        def stopped() -> bool:
+            return (bool(should_stop and should_stop()) or (steerable and not self.redirect.active(generation)) or bool(task_id and
+                    self.task_approvals.state(task_id, update.principal, update.conversation) is None))
         try:
-            with self.ask_contexts.active(context):
+            from . import run_control
+            with self.ask_contexts.active(context), run_control.active(stopped, reasoner=self.reasoner):
                 result = run_agent(
-                    self._propose(text, past, stream, run_id),
-                    self.executor,
+                    propose,
+                    self._task_executor(update, task_id) if task_id else self.executor,
                     update.principal,
                     run_id,
                     progress=None if activity is None else activity.progress,
@@ -801,7 +914,7 @@ class Conductor:
                     plan=plan,
                     redirect=self.redirect if steerable else steering,
                     final_check=self._final_check(text, run_id),
-                    should_stop=should_stop,
+                    should_stop=stopped,
                 )
         except Exception as error:
             # Der Lauf ist tot — eine Frage, auf die er noch wartete, auch.
@@ -818,23 +931,35 @@ class Conductor:
             # failures must not replace the foreground conversation's focus.
             if past_override is None or approval_reply or initial_history:
                 self.memory.remember_interrupted(update.conversation, asked=text)
-            if activity is not None:
-                activity.fail(str(error))
             self._settle(stream, run_id)
+            fallback = ""
             if initial_history:
                 fallback = _resume_failure(initial_history[-1])
                 if trailing_note:
                     fallback = _append_note(fallback, trailing_note)
-                if approval_reply:
-                    return self._approval_reply(update, run_id, fallback)
-                return self._reply(update, run_id, fallback)
-            return False
+            elif leading_note and not (discard_reply and discard_reply()):
+                fallback = (f"{leading_note}\n\nFailed before a final answer. "
+                    "The run has ended; /health or /log shows the recorded cause.")
+            sent = bool(fallback) and (self._approval_reply(update, run_id, fallback) if approval_reply
+                                      else self._reply(update, run_id, fallback))
+            if activity is not None:
+                if sent:
+                    activity.succeed(self._usage_footer())
+                else:
+                    activity.fail(str(error))
+            if sent or getattr(activity, 'failure_delivered', False):
+                self.working_displays.cleanup(display_key)
+            return sent
         finally:
+            if task_id and (result is None or result.status is not AgentStatus.NEEDS_HUMAN):
+                self.task_approvals.finish(task_id)
+                self.log.append(Event(run_id, "conductor", "approval.task_ended", {"task_id": task_id}))
             # ⚠️ `finally`, nicht am Ende des Erfolgspfads. Ein Lauf endet auch mit einer
             # Ausnahme, mit einer offenen Freigabe oder am Schrittlimit — bliebe das
             # Postfach danach offen, landete die naechste Nachricht als „Korrektur" in
             # einem Lauf, den es nicht mehr gibt.
-            self.redirect.close()
+            if steerable:
+                self.redirect.close(generation)
         self.log.append(
             Event(run_id, "reasoner", "reason.done", {"chars": len(result.text), "status": result.status.value})
         )
@@ -864,6 +989,7 @@ class Conductor:
         # fragt sie immer.
         verworfen = False
         zurueckgehalten = False
+        media: tuple[str, ...] = ()
         if result.status is AgentStatus.NEEDS_HUMAN and result.pending is not None:
             # Der Freigabe-Dialog ist eine eigene Nachricht mit Buttons; was bis dahin
             # gewachsen ist, wird eingefroren statt ueberschrieben.
@@ -878,6 +1004,7 @@ class Conductor:
                 steps=result.steps,
                 resume_agent=True,
                 plan=result.plan,
+                task_id=task_id,
             )
         else:
             reply = _final_answer(result.text) if result.status is AgentStatus.ANSWERED else result.text
@@ -923,21 +1050,46 @@ class Conductor:
                 activity.succeed("reply withheld — see the event log")
             else:
                 activity.fail("could not deliver the answer")
+        # A parked approval is not a completed task. Its displays join the resumed
+        # task under the original opaque ID and are removed only with its result.
+        if result.status is not AgentStatus.NEEDS_HUMAN and (
+            sent or verworfen or zurueckgehalten or getattr(activity, 'failure_delivered', False)
+        ):
+            self.working_displays.cleanup(display_key)
         # Erst merken, wenn die Antwort auch draussen ist. Ein Verlauf mit einer Antwort,
         # die the operator nie gesehen hat, laesst jedes Folgegespraech ins Leere laufen: Talos
         # bezieht sich auf etwas, das fuer the operator nie stattgefunden hat.
         # Ein abgebrochener Plan wird wie eine Antwort gemerkt: er IST das Ergebnis
         # dieses Zuges. Ohne ihn im Verlauf liefe die naheliegende Anschlussfrage
         # („warum hast du aufgehoert?") ins Leere.
-        if sent and result.status in (AgentStatus.ANSWERED, AgentStatus.PLAN_ABORTED):
-            self.memory.remember(update.conversation, asked=text, answered=result.text)
+        if (result.status is AgentStatus.STEP_LIMIT
+                and (past_override is None or approval_reply or initial_history)):
+            # Protocol exhaustion is an unresolved task, not a blank conversation.
+            # Keep bounded receipts as data; this does not resume or replay tools.
+            receipts = [entry[:300] for entry in result.history
+                        if entry.startswith("[") and " -> " in entry.split("\n", 1)[0]]
+            receipts = receipts if len(receipts) <= 4 else receipts[:2] + receipts[-2:]
+            detail = (f"Stopped: {result.text[:550]}\n"
+                      "For a status-only follow-up, explain this blocker from these receipts; "
+                      "do not restart the task.\n" + "\n".join(receipts[-4:]))
+            self.memory.remember_interrupted(update.conversation, asked=text, detail=detail)
+        remembered_answer = result.text
+        if media:
+            delivery_note = self._attachment_receipt_note(run_id, len(media))
+            remembered_answer = delivery_note + "\n" + extract_media(result.text)[0]
+            if not sent and (past_override is None or approval_reply or initial_history):
+                self.memory.remember_interrupted(update.conversation, asked=text,
+                                                 detail=delivery_note)
+        if (sent and (past_override is None or approval_reply or initial_history)
+                and result.status in (AgentStatus.ANSWERED, AgentStatus.PLAN_ABORTED)):
+            self.memory.remember(update.conversation, asked=text, answered=remembered_answer)
             # Dasselbe Paar auch ins durable Archiv — fail-open ist dort eingebaut,
             # aber eine bereits zugestellte Antwort darf auch an einem unerwarteten
             # Fehler dieses Nebenwegs nicht mehr scheitern.
             if self.transcript is not None:
                 try:
                     self.transcript.record(
-                        update.conversation, asked=text, answered=result.text
+                        update.conversation, asked=text, answered=remembered_answer
                     )
                 except Exception:
                     pass
@@ -1028,6 +1180,41 @@ class Conductor:
         except Exception:
             return ""
 
+    def _steer_command(self, update: Inbound, run_id: str, text: str) -> bool:
+        target, _, instruction = text.strip().partition(" ")
+        if not target:
+            return self._reply(update, run_id, "Usage: /steer <instruction> or /steer <bg_id> <instruction>")
+        if target.startswith("bg_"):
+            from .background import SteerRefused
+            try:
+                self.background.steer(target, instruction, principal=str(update.principal),
+                                      conversation=update.conversation)
+            except SteerRefused as error:
+                return self._reply(update, run_id, f"Steer not accepted: {error}")
+        else:
+            if (self.approvals.get(update.conversation) is not None
+                    or self.questions.pending(update.conversation) is not None
+                    or not self.redirect.offer(str(update.principal), update.conversation, text)):
+                return self._reply(update, run_id,
+                    "Steer not accepted: no matching active task, a decision is pending, "
+                    "or the inbox is full. Nothing was queued. /queue <task> starts a later task.")
+        self.log.append(Event(run_id, "human", "command.steered",
+                              {"target": target if target.startswith("bg_") else "foreground",
+                               "principal": str(update.principal), "chars": len(text)}))
+        return self._reply(update, run_id, "Accepted — the task receives your correction at its next step.")
+
+    def _cancel_background(self, update: Inbound, run_id: str, task_id: str) -> bool:
+        found = next((task for task in self.background.running()
+                      if task.task_id == task_id and task.principal == str(update.principal)
+                      and task.conversation == update.conversation), None)
+        if found is None or not self.background.cancel(task_id):
+            return self._reply(update, run_id,
+                "Background task not found in your chat. /tasks lists yours; /stop alone stops the foreground.")
+        self.log.append(Event(run_id, "human", "background.cancelled", {"task_id": task_id}))
+        return self._reply(update, run_id,
+            f"Stopping Background #{found.number} at its next step. The current model call may still finish; "
+            "no further tools or result will be sent. Your foreground task continues.")
+
     def _start_background(self, update: Inbound, run_id: str, prompt: str) -> bool:
         """`/background <auftrag>` — ein Lauf neben dem Gespraech.
 
@@ -1084,8 +1271,12 @@ class Conductor:
                 )),
             )
             try:
+                fork = getattr(self.reasoner, "fork", None)
+                # Production ModelRouter owns one cancellable process slot. A side
+                # task needs its own instance; the kernel/executor remain shared.
+                side = replace(self, reasoner=fork()) if callable(fork) else self
                 with self.unattended.active():
-                    self._run_task(
+                    side._run_task(
                         replace(update, text=prompt), eigene,
                         text=prompt, past_override=(),
                         leading_note=bg.header(task),
@@ -1302,10 +1493,16 @@ class Conductor:
         Freigabe-Dialog (`_approval_reply`). Eine zweite, wachsende Nachricht daneben
         waere genau die Dublette, die es nicht geben darf — also gar nicht erst anfangen.
         """
-        if self.begin_reply is None or (approval_reply and update.callback is not None):
+        if self.begin_reply is None:
             return None
         try:
-            return self.begin_reply(update.conversation)
+            stream = self.begin_reply(update.conversation)
+            if approval_reply and update.callback is not None:
+                progress_only = getattr(stream, 'as_progress_only', None)
+                if not callable(progress_only):
+                    return None
+                progress_only()
+            return stream
         except Exception as error:
             # Wie bei der Statusanzeige: UX ist kein Gate. Der Ausfall bleibt im Log.
             self.log.append(
@@ -1376,6 +1573,27 @@ class Conductor:
             delivered = delivered or attached
         return delivered
 
+    def _attachment_receipt_note(self, run_id: str, requested: int) -> str:
+        """Bounded delivery facts for follow-ups, from channel events rather than prose."""
+        try:
+            events = self.log.by_run(run_id, limit=1000)
+            receipts = [e["payload"] for e in events if e["type"] == "attachment.sent"]
+            cleaned = [e["payload"] for e in events if e["type"] == "attachment.cleanup"]
+            rows = []
+            for receipt in receipts[:4]:
+                name = Path(str(receipt.get("path", ""))).name[:100]
+                mid = receipt.get("message_id")
+                proof = f"Telegram message {mid}" if type(mid) is int else "channel reported sent"
+                removed = any(c.get("path") == receipt.get("path") and c.get("removed") is True
+                              for c in cleaned)
+                rows.append(f"{name}: {proof}; local copy {'removed' if removed else 'retained'}")
+            if len(receipts) < requested:
+                rows.append("Some attachments have no confirmed delivery. No cleanup was authorized for them. "
+                            "Check the chat before retrying; do not regenerate verified originals.")
+            return "[Attachment delivery receipts; not permission]\n" + "\n".join(rows)
+        except Exception:
+            return "[Attachment delivery status unavailable; check receipts before resending.]"
+
     def _send_attachments(self, update: Inbound, run_id: str, paths: tuple[str, ...]) -> bool:
         """Sendet die angeforderten Anhaenge — jeder Fehlschlag wird gemeldet, keiner kippt den Lauf.
 
@@ -1390,6 +1608,7 @@ class Conductor:
         """
         delivered = False
         notes: list[str] = []
+        attempted: set[str] = set()
         for raw in paths:
             try:
                 resolved = resolve_media(raw)
@@ -1400,31 +1619,48 @@ class Conductor:
                 )
                 notes.append(f"Attachment not sent — {error}")
                 continue
+            if resolved in attempted:
+                continue
+            attempted.add(resolved)
             if self.send_file is None:
                 notes.append(
                     "Attachment not sent — no file channel is wired in this build; "
                     f"the file remains at {resolved}"
                 )
                 continue
-            try:
-                sent = self.send_file(update.conversation, resolved)
-            except Exception as error:
-                self.log.append(
-                    Event(run_id, "conductor", "error",
-                          {"stage": "attachment", "error": str(error)})
-                )
-                notes.append(f"Attachment could not be sent ({Path(resolved).name}): {error}")
-                continue
-            if sent:
-                delivered = True
-                self.log.append(
-                    Event(run_id, "conductor", "attachment.sent", {"path": resolved})
-                )
-            else:
-                notes.append(
-                    "Attachment not sent — this channel cannot send files; "
-                    f"the file remains at {resolved}"
-                )
+            with disposable_copy(resolved, enabled=self.cleanup_sent_media) as disposable:
+                try:
+                    sent = self.send_file(update.conversation, resolved)
+                except Exception as error:
+                    self.log.append(
+                        Event(run_id, "conductor", "error",
+                              {"stage": "attachment", "error": str(error)})
+                    )
+                    notes.append(f"Attachment could not be sent ({Path(resolved).name}): {error}")
+                    continue
+                if sent:
+                    delivered = True
+                    receipt = {"path": resolved}
+                    if isinstance(sent, FileDeliveryReceipt):
+                        receipt.update(channel=sent.channel, kind=sent.kind, message_id=sent.message_id)
+                    self.log.append(Event(run_id, "conductor", "attachment.sent", receipt))
+                    if (disposable is not None and isinstance(sent, FileDeliveryReceipt)
+                            and sent.channel == "telegram"):
+                        try:
+                            removed = disposable.remove()
+                        except OSError:
+                            removed = False
+                        self.log.append(Event(run_id, "conductor", "attachment.cleanup",
+                                              {"path": resolved, "removed": removed,
+                                               "message_id": sent.message_id}))
+                        if not removed:
+                            notes.append("Attachment delivered; its local copy was retained because it "
+                                         "changed or cleanup failed. Do not resend it.")
+                else:
+                    notes.append(
+                        "Attachment not sent — this channel cannot send files; "
+                        f"the file remains at {resolved}"
+                    )
         if notes:
             self._reply(update, run_id, "\n".join(notes))
         return delivered
@@ -1448,6 +1684,7 @@ class Conductor:
         past: tuple[Turn, ...] = (),
         stream: ReplyStream | None = None,
         run_id: str = "",
+        delivery_context: str = "",
     ) -> Callable[[list[str]], str]:
         """Bindet den Reasoner an die Nachricht — davor der bisherige Verlauf, danach die
         Tool-Ergebnisse dieses Laufs. Der Approval-Zustand fließt hier bewusst NICHT ein.
@@ -1471,9 +1708,9 @@ class Conductor:
             snapshot = tuple(history)
             head = head_for(snapshot)
             if not history:
-                return self._ask(head + user_text, stream, run_id)
+                return self._ask(head + delivery_context + user_text, stream, run_id)
             joined = "\n".join(history)
-            return self._ask(f"{head}{user_text}\n\n[Tool results so far]\n{joined}", stream, run_id)
+            return self._ask(f"{head}{delivery_context}{user_text}\n\n[Tool results so far]\n{joined}", stream, run_id)
         return propose
 
     def _ask(self, prompt: str, stream: ReplyStream | None, run_id: str = "") -> str:
@@ -1489,7 +1726,9 @@ class Conductor:
         # text must not become an ANSWERED turn in the conductor.
         method = getattr(self.reasoner, "reason_strict", None) or self.reasoner.reason
         if stream is None or not _accepts_sink(method):
-            return method(prompt)
+            answer = method(prompt)
+            self._complete_stream_turn(stream, answer)
+            return answer
         try:
             stream.begin_turn()
         except Exception:
@@ -1511,8 +1750,23 @@ class Conductor:
                         pass
                 push(delta)
 
-            return method(prompt, on_text=marked)
-        return method(prompt, on_text=stream.push)
+            answer = method(prompt, on_text=marked)
+        else:
+            answer = method(prompt, on_text=stream.push)
+        self._complete_stream_turn(stream, answer)
+        return answer
+
+    @staticmethod
+    def _complete_stream_turn(stream: ReplyStream | None, answer: str) -> None:
+        from .run_control import current_stop
+        if current_stop()():
+            return
+        complete = getattr(stream, 'complete_turn', None)
+        if callable(complete):
+            try:
+                complete(answer)
+            except Exception:
+                pass  # Narration never changes inference or tool execution.
 
     def _approval_prompt(self, pending: ToolRequest) -> str:
         """Der Text zeigt die KERNEL-Wahrheit, nie eine LLM-Beschreibung: Tool, abgeleitete
@@ -1604,13 +1858,13 @@ class Conductor:
             return f"Done: {body}"
         return f"Not executed ({outcome.status.value}): {outcome.detail}"
 
-    def _ack_approval_callback(self, update: Inbound, run_id: str, rec: Pending) -> None:
+    def _ack_approval_callback(self, update: Inbound, run_id: str, rec: Pending, *, decision: str = "") -> None:
         """Acknowledge and disable the keyboard before any approved side effect starts."""
         callback = update.callback
         if callback is None or self.send_structured is None:
             return
         message = StructuredMessage(
-            rec.prompt + "\n\n… checking your decision",
+            rec.prompt + "\n\n" + ("… checking your task approval" if is_task_approval(decision) else "… checking your decision"),
             edit_message_id=callback.message_id,
             callback_query_id=callback.query_id,
             callback_notice="Decision accepted",

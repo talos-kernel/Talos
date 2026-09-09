@@ -129,9 +129,10 @@ class Memory:
         liest sich spaeter wie ein Aussetzer und ist es nicht."""
         self._remember_pair(conversation, asked, answered, AGENT)
 
-    def remember_interrupted(self, conversation: str, *, asked: str) -> None:
+    def remember_interrupted(self, conversation: str, *, asked: str, detail: str = "") -> None:
         """Preserve an unresolved request without inventing a delivered answer."""
-        self._remember_pair(conversation, asked, INTERRUPTED, RUN_STATUS)
+        status = INTERRUPTED + ("\n" + detail if detail else "")
+        self._remember_pair(conversation, asked, status, RUN_STATUS)
 
     def _remember_pair(self, conversation: str, asked: str, answered: str, speaker: str) -> None:
         asked, answered = clip(asked), clip(answered)

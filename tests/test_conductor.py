@@ -411,7 +411,7 @@ def test_non_decision_reprompt_preserves_literal_command_and_pending_approval(tm
     assert conductor.handle(msg(41, OWNER, "was bedeutet das")) is True
 
     delivered = client.send_message.call_args
-    assert delivered.args[1] == "Bitte nur ja, immer oder nein.\n\n" + pending.prompt
+    assert delivered.args[1] == "Bitte nur ja, immer oder nein. For the whole task: allow this task.\n\n" + pending.prompt
     assert command.encode("utf-8") in delivered.args[1].encode("utf-8")
     assert "parse_mode" not in delivered.kwargs
     assert client.send_message.call_count == 2
@@ -680,7 +680,7 @@ def test_abgelehnte_freigabe_steht_im_log(tmp_path):
 
 
 def test_approval_request_has_hermes_style_emoji_buttons_and_callback_executes(tmp_path):
-    tokens = iter(("tok1", "tok2", "tok3"))
+    tokens = iter(("tok1", "tok2", "tok3", "tok4"))
     picker = ApprovalPicker(token_factory=lambda: next(tokens))
     structured: list[StructuredMessage] = []
     reasoner = ScriptedReasoner(_tool_call("run_shell", {"command": "printf approved"}, []))
@@ -694,8 +694,8 @@ def test_approval_request_has_hermes_style_emoji_buttons_and_callback_executes(t
     assert conductor.handle(msg(200, OWNER, "mach den test")) is True
     prompt = structured[-1]
     assert [[button.label for button in row] for row in prompt.keyboard] == [
-        ["✓ Allow once", "∞ Always allow"],
-        ["✕ Deny"],
+        ["✓ Allow once", "▶ Allow this task"],
+        ["∞ Always allow", "✕ Deny"],
     ]
 
     callback = Inbound(
@@ -731,7 +731,7 @@ def test_approval_request_has_hermes_style_emoji_buttons_and_callback_executes(t
 
 def test_approval_deny_button_edits_prompt_and_executes_nothing(tmp_path):
     marker = tmp_path / "must-not-exist"
-    tokens = iter(("tok1", "tok2", "tok3"))
+    tokens = iter(("tok1", "tok2", "tok3", "tok4"))
     picker = ApprovalPicker(token_factory=lambda: next(tokens))
     structured: list[StructuredMessage] = []
     reasoner = ScriptedReasoner(
@@ -744,7 +744,7 @@ def test_approval_deny_button_edits_prompt_and_executes_nothing(tmp_path):
         send_structured=lambda _conversation, message: structured.append(message),
     )
     assert conductor.handle(msg(210, OWNER, "mach das nicht")) is True
-    deny = structured[-1].keyboard[1][0]
+    deny = next(button for row in structured[-1].keyboard for button in row if button.label == "✕ Deny")
     callback = Inbound(
         OWNER,
         CHAT_OWNER,

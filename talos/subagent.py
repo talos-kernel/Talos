@@ -36,6 +36,7 @@ from .policy import Decision, Verdict, stricter
 # Ein Untergebener soll nachsehen, nicht arbeiten. Knapp gehalten, weil ein langer
 # Nebenlauf den Hauptlauf blockiert: er laeuft synchron in dessen Werkzeugaufruf.
 DELEGATE_MAX_STEPS = 12
+DELEGATE_TIMEOUT_S = 180
 
 # Mehrere Untergebene duerfen NEBENEINANDER laufen — genau dafuer ist die Decke
 # thread-gebunden. Die Grenze ist keine Kosmetik: jeder Untergebene ist ein eigener
@@ -59,7 +60,7 @@ READ_ONLY_REASON = "delegated run — reading only, by construction"
 # diese Liste sagt nur, WER es rufen darf. Namentlich, weil das Manifest keinen Begriff
 # fuer „lenkt einen anderen Lauf" hat — und ein neues Feld fuer ein Werkzeug waere mehr
 # Kernel als Nutzen.
-NOT_FOR_DELEGATES = frozenset({"delegate_steer"})
+NOT_FOR_DELEGATES = frozenset({"delegate_steer", "delegate"})
 STEER_REASON = "delegated run — steering another run is not reading"
 
 
@@ -105,7 +106,8 @@ class ReadOnlyCeiling:
         if not self.is_delegated():
             return decision
         if spec is not None and spec.name in NOT_FOR_DELEGATES:
-            return stricter(decision, Decision(Verdict.DENY, STEER_REASON))
+            reason = ("delegated run — recursive delegation is refused" if spec.name == "delegate" else STEER_REASON)
+            return stricter(decision, Decision(Verdict.DENY, reason))
         if spec is not None and spec.effect is Effect.READ and decision.verdict is not Verdict.NEEDS_HUMAN:
             return decision
         return stricter(decision, Decision(Verdict.DENY, READ_ONLY_REASON))

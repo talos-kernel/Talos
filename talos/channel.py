@@ -111,6 +111,15 @@ class Button:
 
 
 @dataclass(frozen=True)
+class FileDeliveryReceipt:
+    """Channel-verified upload response; never constructed from model output."""
+
+    channel: str
+    kind: str
+    message_id: int
+
+
+@dataclass(frozen=True)
 class StructuredMessage:
     """Channel-neutral text plus an optional inline keyboard."""
 
@@ -254,7 +263,13 @@ class ChannelRegistry:
         starter = getattr(channel, "begin_activity", None)
         return None if starter is None else starter(conversation)
 
-    def send_file(self, conversation: str, path: str) -> bool:
+    def supports_files(self, conversation: str) -> bool:
+        name, sep, _ = conversation.partition(_SEP)
+        if not sep:
+            return False
+        return callable(getattr(self.get(name), "send_file", None))
+
+    def send_file(self, conversation: str, path: str) -> bool | FileDeliveryReceipt:
         """Dateianhang, falls der Kanal das kann. `False` heisst: kann er nicht.
 
         Gleiche Bauart wie `begin_activity`: fehlende Unterstützung ist kein
@@ -267,8 +282,8 @@ class ChannelRegistry:
         sender = getattr(self.get(name), "send_file", None)
         if sender is None:
             return False
-        sender(conversation, path)
-        return True
+        result = sender(conversation, path)
+        return result if isinstance(result, FileDeliveryReceipt) else result is not False
 
     def send_structured(self, conversation: str, message: StructuredMessage) -> None:
         """Nutzt Kanal-UI, falls vorhanden; sonst wird der ehrliche Text-Fallback gesendet."""

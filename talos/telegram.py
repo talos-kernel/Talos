@@ -35,6 +35,8 @@ DEFAULT_EDIT_INTERVAL_S = 1.2
 DEFAULT_ACTIVITY_LINES = 8
 # Ohne neuen Inhalt haelt nur die Uhr die Anzeige lebendig — seltener als ein echter Edit.
 DEFAULT_HEARTBEAT_S = 5.0
+# Edits do not surface as new chat messages. Long runs also need a bounded update.
+DEFAULT_PROGRESS_UPDATE_S = 60.0
 # Telegram nimmt hoechstens 4096 Zeichen pro Nachricht. Laengeres waere ein Aufruf, der
 # sicher mit 400 zurueckkommt — waehrend des Wachsens gar nicht erst versuchen.
 TELEGRAM_TEXT_LIMIT = 4096
@@ -52,6 +54,7 @@ TOOL_CALL_MARKER = "TOOL_CALL"
 # (declared_now ohne Werkzeugwunsch) — Stillschweigen verliert also nichts, was der
 # Betreiber sehen sollte.
 PLAN_MARKER = "PLAN:"
+MEDIA_MARKER = "MEDIA:"
 
 def split_for_telegram(text: str, limit: int = TELEGRAM_TEXT_LIMIT) -> tuple[str, ...]:
     """Eine zu lange Antwort in mehrere Nachrichten — statt sie zu verlieren.
@@ -529,7 +532,7 @@ class TelegramClient:
             requests.post,
             "deleteMessage",
             data={"chat_id": chat_id, "message_id": message_id},
-            timeout=30,
+            timeout=5,
         )
 
     def send_chat_action(self, chat_id: int, action: str = "typing") -> None:
@@ -538,29 +541,60 @@ class TelegramClient:
             data={"chat_id": chat_id, "action": action}, timeout=30,
         )
 
-    def send_document(self, chat_id: int, path: str) -> None:
-        """Eine Datei als Dokument. Der Pfad ist bereits gegatet (`attachment.resolve`)."""
-        ziel = Path(path)
-        with ziel.open("rb") as handle:
-            self._call(
-                requests.post,
-                "sendDocument",
-                data={"chat_id": chat_id},
-                files={"document": (ziel.name, handle)},
-                timeout=_UPLOAD_TIMEOUT_S,
+    def _upload(self, chat_id: int, path: str, kind: str) -> int:
+        """One upload, with a validated channel receipt. Never retry an uncertain send."""
+        target = Path(path)
+        method = {"photo": "sendPhoto", "document": "sendDocument", "audio": "sendAudio",
+                  "video": "sendVideo", "voice": "sendVoice", "animation": "sendAnimation"}[kind]
+        with target.open("rb") as handle:
+            response = self._call(
+                requests.post, method, data={"chat_id": chat_id},
+                files={kind: (target.name, handle)}, timeout=_UPLOAD_TIMEOUT_S,
             )
+        try:
+            payload = response.json()
+            result = payload.get("result") if isinstance(payload, dict) else None
+            if not isinstance(result, dict) or payload.get("ok") is not True:
+                raise ValueError
+            message_id = result.get("message_id")
+            if type(message_id) is not int or message_id <= 0:
+                raise ValueError
+            if result.get("chat", {}).get("id") != chat_id:
+                raise ValueError
+            media = result.get(kind)
+            items = media if kind == "photo" else [media]
+            if not isinstance(items, list) or not items or not all(
+                isinstance(item, dict) and isinstance(item.get("file_id"), str)
+                and item["file_id"] for item in items
+            ):
+                raise ValueError
+        except (ValueError, TypeError, AttributeError):
+            # Never quote a provider response: it can contain private captions/URLs.
+            raise ValueError(
+                f"Telegram {method} delivery unconfirmed; file retained. "
+                "Check the chat before retrying to avoid a duplicate."
+            ) from None
+        return message_id
 
-    def send_photo(self, chat_id: int, path: str) -> None:
+    def send_document(self, chat_id: int, path: str) -> int:
+        """Eine Datei als Dokument. Der Pfad ist bereits gegatet (`attachment.resolve`)."""
+        return self._upload(chat_id, path, "document")
+
+    def send_photo(self, chat_id: int, path: str) -> int:
         """Ein Bild als Foto. Nur fuer echte Bilder — die Wahl trifft der Aufrufer an den Bytes."""
-        ziel = Path(path)
-        with ziel.open("rb") as handle:
-            self._call(
-                requests.post,
-                "sendPhoto",
-                data={"chat_id": chat_id},
-                files={"photo": (ziel.name, handle)},
-                timeout=_UPLOAD_TIMEOUT_S,
-            )
+        return self._upload(chat_id, path, "photo")
+
+    def send_audio(self, chat_id: int, path: str) -> int:
+        return self._upload(chat_id, path, "audio")
+
+    def send_video(self, chat_id: int, path: str) -> int:
+        return self._upload(chat_id, path, "video")
+
+    def send_voice(self, chat_id: int, path: str) -> int:
+        return self._upload(chat_id, path, "voice")
+
+    def send_animation(self, chat_id: int, path: str) -> int:
+        return self._upload(chat_id, path, "animation")
 
 
 class ActivityClient(Protocol):
@@ -594,7 +628,7 @@ class _Line:
 
 
 class TelegramActivity:
-    """Eine stille Statusnachricht, die den Lauf mitschreibt — und danach stehen bleibt.
+    """Live work display, removed only after a durable result is delivered.
 
     Vier bewusste Entscheidungen:
     1. **Die Statusnachricht entsteht erst beim ersten Werkzeug.** Eine gewoehnliche
@@ -603,8 +637,8 @@ class TelegramActivity:
        genau wie bei Hermes.
     2. Die Denkphase ist sichtbar, sobald die Anzeige existiert. Sie war die laengste
        Phase eines Laufs und die einzige, die nichts zeigte.
-    3. Der Verlauf wird am Ende NICHT geloescht. Wo Werkzeuge liefen, ist er der Beleg,
-       was angefasst wurde — Loeschen sparte Chat-Muell und kostete die Nachvollziehbarkeit.
+    3. Der Conductor entfernt Arbeitsmeldungen erst nach bestaetigter Zustellung.
+       Ausfuehrungsbelege bleiben im Eventlog; Freigaben sind keine Arbeitsmeldungen.
     4. Jede Zeile traegt ihre Dauer, der Kopf traegt Gesamtzeit und Schritt.
     """
 
@@ -617,6 +651,7 @@ class TelegramActivity:
         min_edit_interval: float = DEFAULT_EDIT_INTERVAL_S,
         max_lines: int = DEFAULT_ACTIVITY_LINES,
         heartbeat_s: float = DEFAULT_HEARTBEAT_S,
+        update_interval_s: float = DEFAULT_PROGRESS_UPDATE_S,
         name: str = "",
         style: Style = GEOMETRIC,
     ) -> None:
@@ -627,6 +662,7 @@ class TelegramActivity:
         self._min_edit_interval = max(0.0, min_edit_interval)
         self._max_lines = max(1, max_lines)
         self._heartbeat_s = max(0.0, heartbeat_s)
+        self._update_interval_s = max(1.0, update_interval_s)
         self._name = name or agent_name()
         self._lines: list[_Line] = []
         self._thinking: _Line | None = None
@@ -634,14 +670,21 @@ class TelegramActivity:
         self._step = 0
         self._max_steps = 0
         self._tool_calls = 0
+        self._completed_calls = 0
+        self._current_tool = ""
+        self._current_stage = ProgressStage.THINKING
         self._issues = 0
         self._waiting = False
         self._fatal = False
         self._finished = False
         self._start = clock()
-        self._lock = threading.Lock()
+        self._last_update = self._start
+        # Serialize updates with terminal delivery: no heartbeat after the final state.
+        self._lock = threading.RLock()
         # Noch KEINE Nachricht: erst ein Werkzeug rechtfertigt eine (siehe `_ensure_message`).
         self._message_id: int | None = None
+        self._update_ids: list[int] = []
+        self.failure_delivered = False
         self._last_edit = clock()
         self._typing()
         # Ein Reasoner-Zug blockiert bis zu drei Minuten. Solange keine Anzeige existiert,
@@ -661,13 +704,8 @@ class TelegramActivity:
 
     def _heartbeat(self) -> None:
         while not self._stop.wait(self._heartbeat_s):
-            if self._finished:
-                return
             try:
-                if self._message_id is None:
-                    self._typing()   # nichts anzuzeigen — aber the operator soll sehen, dass es laeuft
-                else:
-                    self._edit(force=True)
+                self.tick()
             except Exception:
                 return  # die Anzeige ist Komfort; ein toter Takt darf den Lauf nicht stoeren
 
@@ -687,8 +725,17 @@ class TelegramActivity:
 
     # ------------------------------------------------------------------ Ereignisse
     def progress(self, event: AgentProgress) -> None:
+        with self._lock:
+            self._progress(event)
+
+    def _progress(self, event: AgentProgress) -> None:
         if self._finished:
             return
+        self._current_stage = event.stage
+        if event.stage is ProgressStage.TOOL:
+            self._current_tool = event.tool
+        if event.stage is ProgressStage.RESULT and event.status == "done":
+            self._completed_calls += 1
         if event.step:
             self._step = event.step
         if event.max_steps:
@@ -733,17 +780,50 @@ class TelegramActivity:
 
     def tick(self) -> None:
         """Manueller Takt fuer Aufrufer ohne Thread (und fuer Tests)."""
-        if self._finished:
+        with self._lock:
+            if self._finished:
+                return
+            self._send_update()
+            if self._message_id is None:
+                self._typing()
+                return
+            if self._clock() - self._last_edit >= self._heartbeat_s:
+                self._edit(force=True)
+
+    def _send_update(self) -> None:
+        now = self._clock()
+        if self._waiting or now - self._last_update < self._update_interval_s:
             return
-        if self._message_id is None:
-            self._typing()
-            return
-        if self._clock() - self._last_edit >= self._heartbeat_s:
-            self._edit(force=True)
+        # Only receipt counts and fixed labels: never echo arguments, model thoughts,
+        # private paths or a speculative percentage/ETA into an extra notification.
+        self._last_update = now
+        if self._current_stage is ProgressStage.TOOL:
+            label = self._style.tool_label(self._current_tool, "Running a tool")
+            state = f"{label}. Still waiting for this step to return."
+        elif self._current_stage is ProgressStage.THINKING:
+            state = "Working on the next response; no new result yet."
+        else:
+            state = "Continuing with the next step."
+        duration = int(max(0, now - self._start))
+        body = (f"{self._style.talos} {_redact(self._name)[:60]} · Update · {duration // 60}m {duration % 60:02d}s\n"
+                f"{self._completed_calls} tool actions completed; {self._issues} failed or refused.\n"
+                f"{state}\n/stop · interrupt")
+        try:
+            if self._update_ids:
+                self._client.edit_message_text(self._chat_id, self._update_ids[-1], body)
+            else:
+                message_id = self._client.send_message(self._chat_id, body, disable_notification=True)
+                self._update_ids.append(message_id)
+        except Exception:
+            pass  # Delivery failure cannot retry tools or derail the task.
 
     # ------------------------------------------------------------------ Abschluss
     def succeed(self, footer: str = "") -> None:
-        """Verlauf einfrieren und stehen lassen. Die eigentliche Antwort folgt separat.
+        with self._lock:
+            self._succeed(footer)
+
+    def _succeed(self, footer: str = "") -> None:
+        """Freeze the display; cleanup follows confirmed result delivery.
 
         Lief kein Werkzeug, existiert keine Anzeige — dann bleibt der Chat auch sauber:
         the operator sieht nur seine Frage und die Antwort.
@@ -758,6 +838,10 @@ class TelegramActivity:
         self._edit(text=self._render(final=True, footer=footer), force=True)
 
     def fail(self, error: str) -> None:
+        with self._lock:
+            self._fail(error)
+
+    def _fail(self, error: str) -> None:
         """Ein Fehler wird immer gemeldet — notfalls als eigene Nachricht.
 
         Anders als beim Erfolg: ein stiller Fehlschlag waere die eine Situation, in der
@@ -770,16 +854,35 @@ class TelegramActivity:
         self._stop.set()
         self._settle()
         detail = _redact(error) or TXT_UNKNOWN_ERROR
-        if self._message_id is None:
-            try:
-                self._client.send_message(
-                    self._chat_id, f"{self._style.fail} {TXT_FAILED}: {detail}", disable_notification=True
-                )
-            except Exception:
-                pass
+        try:
+            self._client.send_message(
+                self._chat_id, f"{self._style.fail} {TXT_FAILED}: {detail}\n/log · execution record",
+                disable_notification=True,
+            )
+            self.failure_delivered = True
+        except Exception:
+            pass
+        if self.failure_delivered:
             return
+        # Preserve the last visible evidence when even the failure cannot be sent.
         body = self._render(final=True)
         self._edit(text=f"{body}\n{self._style.fail} {TXT_FAILED}: {detail}", force=True)
+
+    def cleanup(self) -> None:
+        """Remove only this run's temporary messages, never its delivered result."""
+        with self._lock:
+            self._finished = True
+            self._stop.set()
+            ids = [*self._update_ids]
+            if self._message_id is not None:
+                ids.append(self._message_id)
+            self._update_ids.clear()
+            self._message_id = None
+        for message_id in dict.fromkeys(ids):
+            try:
+                self._client.delete_message(self._chat_id, message_id)
+            except Exception:
+                pass  # Keep the result even if Telegram cannot remove the trail.
 
     # ------------------------------------------------------------------ intern
     def _begin_thinking(self) -> None:
@@ -928,7 +1031,7 @@ def _verdict(collected: str) -> _Verdict | None:
     head = collected.lstrip()
     if not head:
         return None
-    for marker in (TOOL_CALL_MARKER, PLAN_MARKER):
+    for marker in (TOOL_CALL_MARKER, PLAN_MARKER, MEDIA_MARKER):
         if head.startswith(marker):
             return _Verdict.MUTE
         if marker.startswith(head):
@@ -942,8 +1045,8 @@ class TelegramReply:
     Bewusst getrennt von `TelegramActivity`: die Statusanzeige *belegt*, was lief
     (Kopfzeile, Werkzeugzeilen, Quittung). Diese Nachricht *ist* die Antwort und traegt
     darum keine Kopfzeile — eine werkzeugfreie Antwort bekommt keine, das ist ein
-    Projektentscheid und keine Stilfrage. Laufen beide, bleibt der Beleg stehen und die
-    Antwort ist ihre eigene Nachricht; sie kommen sich nicht ins Gehege.
+    Projektentscheid und keine Stilfrage. Nach bestaetigter Zustellung entfernt der
+    Conductor nur die Arbeitsmeldungen; die Antwort und das Eventlog bleiben.
 
     Zwei Regeln tragen den Rest:
 
@@ -976,6 +1079,9 @@ class TelegramReply:
         self._muted = False
         self._decided = False
         self._done = False
+        self._commentary_ids: list[int] = []
+        self._adopted = False
+        self._progress_only = False
         # Das erste Delta soll sofort sichtbar werden — dafuer wurde gestreamt.
         self._last_edit = clock() - self._min_edit_interval
         # Nur Zustand liegt unter dem Lock, nie ein Netzaufruf: sonst haenge der
@@ -983,6 +1089,10 @@ class TelegramReply:
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------ Ereignisse
+    def as_progress_only(self) -> None:
+        """A callback result edits its approval message; only interim prose goes here."""
+        self._progress_only = True
+
     def begin_turn(self) -> None:
         """Neuer Reasoner-Zug, neue Entscheidung.
 
@@ -1001,7 +1111,7 @@ class TelegramReply:
     def push(self, delta: str) -> None:
         """Text-Delta aus dem Stream. Gedrosselt, nie blockierend, nie fatal."""
         with self._lock:
-            if self._done or self._muted or not delta:
+            if self._done or self._muted or self._progress_only or not delta:
                 return
             # Deltas may contain both narration and control lines, or split a marker
             # at any character. Classifying just the first delta leaked raw tool JSON
@@ -1028,6 +1138,41 @@ class TelegramReply:
             self._write(payload)
 
     # ------------------------------------------------------------------ Abschluss
+    def complete_turn(self, text: str) -> None:
+        """Update one public narration message until task completion.
+
+        One-shot providers can use this too. Only the public returned text is read;
+        hidden provider thinking and tool results never enter this method.
+        """
+        lines = text.splitlines()
+        boundary = next((i for i, line in enumerate(lines)
+                         if line.lstrip().startswith((TOOL_CALL_MARKER, PLAN_MARKER, MEDIA_MARKER))), None)
+        if boundary is None:
+            return
+        note = _redact('\n'.join(lines[:boundary])).strip()[:1600]
+        with self._lock:
+            if self._done:
+                return
+        if note and note != self._shown:
+            self._write(note)
+        with self._lock:
+            self._text = ''
+            self._last_edit = self._clock() - self._min_edit_interval
+
+    def cleanup(self) -> None:
+        with self._lock:
+            self._done = True
+            ids = list(self._commentary_ids)
+            self._commentary_ids.clear()
+            if not self._adopted and self._message_id is not None:
+                ids.append(self._message_id)
+                self._message_id = None
+        for message_id in dict.fromkeys(ids):
+            try:
+                self._client.delete_message(self._chat_id, message_id)
+            except Exception:
+                pass
+
     def adopt(self, text: str) -> bool:
         """Macht die gewachsene Nachricht zur endgueltigen Antwort.
 
@@ -1037,6 +1182,8 @@ class TelegramReply:
         with self._lock:
             self._done = True
             message_id, shown = self._message_id, self._shown
+        if self._progress_only:
+            return False
         final = text.strip()
         if message_id is None or not final:
             return False
@@ -1048,8 +1195,10 @@ class TelegramReply:
                 self._chat_id, message_id, to_telegram_html(final), parse_mode="HTML"
             )
         except Exception:
-            return self._adopt_fallback(message_id, final, shown)
+            self._adopted = self._adopt_fallback(message_id, final, shown)
+            return self._adopted
         self._shown = final
+        self._adopted = True
         return True
 
     def _adopt_fallback(self, message_id: int, final: str, shown: str) -> bool:
@@ -1305,7 +1454,7 @@ class TelegramChannel:
         if errors:
             raise RuntimeError("; ".join(errors))
 
-    def send_file(self, conversation: str, path: str) -> None:
+    def send_file(self, conversation: str, path: str):
         """Eine Datei als echter Anhang: Bilder als Foto, alles andere als Dokument.
 
         Die Wahl faellt an den ersten BYTES, nicht an der Endung — eine Endung ist eine
@@ -1314,17 +1463,14 @@ class TelegramChannel:
         und Groesse geurteilt, bevor der Conductor an diese Stelle kommt.
         """
         chat = chat_id_of(conversation)
-        from .vision import media_type
+        from .mediaformat import telegram_kind
 
-        try:
-            with open(path, "rb") as handle:
-                kind = media_type(handle.read(16))
-        except OSError:
-            kind = ""
-        if kind in _SUFFIX:
-            self._client.send_photo(chat, path)
-        else:
-            self._client.send_document(chat, path)
+        media_kind = telegram_kind(path)
+        message_id = getattr(self._client, f"send_{media_kind}")(chat, path)
+        from .channel import FileDeliveryReceipt
+
+        if type(message_id) is int and message_id > 0:
+            return FileDeliveryReceipt("telegram", media_kind, message_id)
 
     def begin_activity(self, conversation: str) -> TelegramActivity:
         # Der Name wird JETZT gelesen, nicht beim Start: wer SOUL.md umbenennt, sah sonst

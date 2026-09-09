@@ -122,3 +122,63 @@ def test_headless_keeps_exec_files_and_pause_available(computer, monkeypatch):
     assert computer.handle({"kind":"read","owner":"owner","args":{"op":"files","project":"report"}},12345)["files"][0]["name"] == "report.txt"
     computer.action("owner", {"op":"pause"})
     assert computer.store.control() == "paused"
+
+
+@pytest.fixture
+def capture_store(computer, tmp_path, monkeypatch):
+    import base64
+    folder = tmp_path / "captures"
+    folder.mkdir()
+    monkeypatch.setattr(service, "CAPTURES", folder)
+    monkeypatch.setattr(service, "guest", lambda *a, **k: {
+        "png": base64.b64encode(b"\x89PNG\r\n\x1a\nfixture").decode(),
+        "captured_at": "2026-01-01T00:00:00Z",
+    })
+    return folder
+
+
+def test_dashboard_refreshes_do_not_evict_agent_capture(computer, capture_store):
+    from pathlib import Path
+    receipt = computer.capture()
+    original = Path(receipt["image_path"])
+    content = original.read_bytes()
+    for _ in range(40):
+        computer.handle({"kind":"read","args":{"op":"preview"}}, 0)
+    assert original.read_bytes() == content
+    assert len(list(capture_store.glob("preview-*.png"))) == 12
+    assert len(list(capture_store.glob("screen-*.png"))) == 1
+    assert receipt["retained_for_s"] == 3600
+
+
+def test_agent_receipts_survive_capture_bursts(computer, capture_store):
+    from pathlib import Path
+    paths = [Path(computer.capture()["image_path"]) for _ in range(30)]
+    assert all(p.is_file() for p in paths)
+
+
+def test_only_expired_agent_captures_are_removed(computer, capture_store):
+    from pathlib import Path
+    import os, time
+    old = Path(computer.capture()["image_path"])
+    recent = Path(computer.capture()["image_path"])
+    os.utime(old, (time.time()-3601,)*2)
+    computer.capture()
+    assert not old.exists()
+    assert recent.exists()
+
+
+def test_capture_quota_preserves_unexpired_receipts(computer, capture_store, monkeypatch):
+    from pathlib import Path
+    first = Path(computer.capture()["image_path"])
+    monkeypatch.setattr(service, "CAPTURE_BUDGET_BYTES", first.stat().st_size)
+    with pytest.raises(RuntimeError, match="recent image receipts were preserved"):
+        computer.capture()
+    assert first.is_file()
+    assert len(list(capture_store.glob("screen-*.png"))) == 1
+    assert Path(computer.capture(preview=True)["image_path"]).is_file()
+
+
+def test_agent_cannot_use_web_preview_route(computer, capture_store):
+    with pytest.raises(ValueError, match="trusted web service"):
+        computer.handle({"kind":"read","owner":"owner","args":{"op":"preview"}}, 12345)
+    assert not list(capture_store.iterdir())

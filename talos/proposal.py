@@ -43,16 +43,33 @@ def problem(tool, args):
     if tool == "write_file" and not isinstance(args.get("content"), str):
         return "provide content as text (an empty string is allowed)"
     if tool in {"computer_run", "computer_status"}:
-        from .computer.contract import validate
+        from .computer.contract import SchemaError, validate
         try:
             validate(args, read=tool == "computer_status")
+        except SchemaError as error:
+            return str(error)
         except (ValueError, TypeError):
             return "use the documented computer schema with all required arguments"
     return ""
 
 
-def note(tool, issue):
-    return (f"[Incomplete tool proposal for {tool}: {issue}. Nothing ran and no approval "
+def note(tool, issue, args=None):
+    import json
+    # This is the model's own rejected proposal, in transient context only. It is
+    # never logged, sent to the operator, or accepted as an executable request.
+    context = "" if args is None else ("\n[Rejected arguments — not executed] " +
+                                      json.dumps(args, ensure_ascii=True)[:2400])
+    hint = ""
+    if tool in {"computer_run", "computer_status"}:
+        hint = (" Computer requests accept only the documented fields. For run actions, "
+                "project/key are 1–48 lowercase letters, digits or hyphens; title is "
+                "1–120 characters. Desktop click: op=click, x/y integers within "
+                "1440x900. Browser: op=browser, action, observed selector when required; "
+                "fill/type/select/press use value. Use an observed tab ID or page, not both. "
+                "exec uses command and timeout 1–120; omit browser-only fields. "
+                "pause/resume/stop accept only op. Never fabricate selectors or targets.")
+    return (f"[Incomplete tool proposal for {tool}: {issue}. This proposal did not run and no approval "
             "was requested. Correct the arguments from the task and observed context. "
             "Do not ask the operator to repair tool syntax, invent facts, or repeat a "
-            "declined action. The corrected TOOL_CALL still passes the security kernel.]")
+            "completed, uncertain or declined action. The corrected TOOL_CALL still passes "
+            f"the security kernel.{hint}]{context}")

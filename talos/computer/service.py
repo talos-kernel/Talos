@@ -1,5 +1,6 @@
 """Private computer service. Agent requests and human control have distinct peer roles."""
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -19,6 +20,8 @@ CONFIG = Path("/etc/talos-computer.json")
 DATA = Path("/var/lib/talos-computer")
 RUNTIME = Path("/run/talos-computer-api")
 CAPTURES = Path("/var/lib/talos-computer-captures")
+CAPTURE_RETENTION_S = 3600
+CAPTURE_BUDGET_BYTES = 128 * 1024 * 1024
 
 
 def qmp(command):
@@ -80,6 +83,7 @@ class Computer:
         self.config = config
         self.store = Store(DATA / "jobs.db")
         self.lock = threading.RLock()
+        self.capture_lock = threading.Lock()
         self.store.recover()
         # The host service cannot silently resume agent activity after a crash.
         qmp("stop")
@@ -95,19 +99,38 @@ class Computer:
                 "jobs": self.store.jobs(owner), "view_url": self.config["view_url"],
                 "routines": self.store.routines(owner)}
 
-    def capture(self):
+    def capture(self, *, preview=False):
         self.require_desktop("screenshot")
         data = guest({"op": "screenshot"}, timeout=12)
-        filename = "screen-" + uuid.uuid4().hex + ".png"
-        path = CAPTURES / filename
         raw = base64.b64decode(data["png"], validate=True)
         if not raw.startswith(b"\x89PNG\r\n\x1a\n") or len(raw) > 1500000:
             raise RuntimeError("invalid desktop capture")
-        path.write_bytes(raw)
-        path.chmod(0o640)
-        for old in sorted(CAPTURES.glob("screen-*.png"), key=lambda p: p.stat().st_mtime)[:-12]:
-            old.unlink()
-        return {"image_path": str(path), "captured_at": data["captured_at"]}
+        # Browser refreshes must never evict an image awaiting agent analysis.
+        # Agent receipts expire by age, not by the number of open dashboard tabs.
+        prefix = "preview" if preview else "screen"
+        with self.capture_lock:
+            if not preview:
+                retained = []
+                for old in CAPTURES.glob("screen-*.png"):
+                    if old.is_symlink() or not old.is_file():
+                        continue
+                    stat = old.stat()
+                    if time.time() - stat.st_mtime >= CAPTURE_RETENTION_S:
+                        old.unlink()
+                    else:
+                        retained.append(stat.st_size)
+                if sum(retained) + len(raw) > CAPTURE_BUDGET_BYTES:
+                    raise RuntimeError("screenshot storage is full; recent image receipts were preserved")
+            path = CAPTURES / (prefix + "-" + uuid.uuid4().hex + ".png")
+            with path.open("xb") as file:
+                file.write(raw)
+            path.chmod(0o640)
+            if preview:
+                for old in sorted(CAPTURES.glob("preview-*.png"), key=lambda p: p.stat().st_mtime)[:-12]:
+                    old.unlink()
+        return {"image_path": str(path), "captured_at": data["captured_at"],
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "retained_for_s": None if preview else CAPTURE_RETENTION_S}
 
     def action(self, owner, args):
         op = validate(args)
@@ -207,6 +230,10 @@ class Computer:
             return self.action(owner, args)
         if kind != "read":
             raise ValueError("unknown request kind")
+        if args == {"op": "preview"}:
+            if not human:
+                raise ValueError("preview requires the trusted web service")
+            return self.capture(preview=True)
         op = validate(args, read=True)
         if op == "status":
             return self.status(owner)

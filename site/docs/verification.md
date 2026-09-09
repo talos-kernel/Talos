@@ -1,5 +1,27 @@
 # Verification scope
 
+## 0.19.1-alpha
+
+This release bundles task-scoped consent, command and queue handling, service-owned
+cron dispatch, confirmed media delivery, consultation follow-through, temporary
+Telegram progress and Computer observations with an optional takeover keyboard.
+The source suite collects 2,785 tests and contains 230 adversarial cases. Tests
+exercise separate kernel decisions for capture and image analysis, protected-file
+rejection, cancellation, bounded repair and delivery failure without action replay.
+
+Controlled tests on a provisioned Computer also read a random value from a disposable
+browser window. Each completed with one capture, one image analysis and two reasoning
+calls. After twenty dashboard refreshes, the saved agent image remained readable with
+the same SHA-256. View checks covered expand, zoom, fullscreen and mobile layout.
+These are bounded fixtures, not a promise about every website or task's running time.
+
+For the published archive's exact installation results and release identifiers, see
+[the online verification record](https://talos-agent.ch/docs/verification.md) and
+[release assets](https://github.com/talos-kernel/talos/releases/tag/v0.19.1-alpha).
+No operator profiles, credentials or private test captures are part of this source.
+
+## Earlier 0.19.0-alpha baseline
+
 The 0.19.0-alpha runtime is built from `b7e057e`. Source checks collected 2,623 tests:
 2,617 passed and 6 platform-specific tests were skipped on macOS. All 217 adversarial
 cases passed. Installing the signed archive into a fresh environment yielded

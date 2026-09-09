@@ -392,7 +392,7 @@ def test_narration_then_tool_executes_normally_without_streaming_its_protocol(tm
     conductor, sent = _conductor(tmp_path, reasoner, client=client)
     assert conductor.handle(_msg(12, "Lies den Status."))
     assert reasoner.calls == 2 and "52 GiB free" in reasoner.kwargs[1][0]
-    assert sent == [] and client.messages == 1
+    assert sent == [] and client.messages == 1  # narration is adopted as the final result
     assert all("TOOL_CALL" not in text and str(target) not in text for text in client.texts)
     assert client.edited[-1][2] == "52 GiB frei.\n\n1 tool call, 0 failed"
 

@@ -8,6 +8,49 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ## [Unreleased]
 
+## [0.19.1-alpha] — 2026-09-09
+
+### Security
+
+- **Allow this task** authorizes later approval-requiring steps in the same attended
+  foreground task until it ends or is cancelled. Consent is bound to the task,
+  operator and conversation; hard denials and capability checks remain enforced.
+  Delegates, schedules and new tasks never inherit it; restart clears it.
+- Cron dispatch belongs to the channel service. Concurrent schedulers claim due
+  slots atomically; a CLI session cannot consume shared scheduled work.
+- Screenshot questions queue a separate gated image read. Cancellation, operator
+  corrections, step budgets and protected-path checks apply before that read.
+
+### Added
+
+- Multiline `/btw` side questions and identity/control command compatibility.
+- Optional on-screen keyboard during desktop takeover, including mobile text entry,
+  one-shot modifiers and shortcuts. Losing control clears pending input.
+
+### Fixed
+
+- Stop and queue state remain responsive during delegation; delegated research is
+  bounded and cancellation reaches the active delegate.
+- Telegram updates one narration message and one periodic progress note instead of
+  stacking repeated messages. Temporary work is removed after a delivered result;
+  cleanup cannot block the task queue or delete another task's answer.
+- Malformed tool arguments receive bounded repair while preserving the unfinished
+  request and execution receipts. A model-free status question keeps its subject.
+- Images, audio, video and documents use the actual conversation's media transport.
+  Delivery is checked before eligible temporary local copies are cleaned up; failed
+  delivery preserves the file and does not become a success claim.
+- Execution continues after an advisory consultation when the original task still
+  needs action or verification. Advice never grants permission or retries an
+  uncertain external write.
+- Transport-level reasoning panels no longer leak into chat replies.
+- Desktop questions couple one saved screenshot with its image analysis before the
+  next model call. Repeated unchanged observations produce a progress warning.
+- Dashboard previews use a separate file pool and cannot evict recent agent images.
+  Agent captures are retained for at least an hour, with an explicit storage limit.
+- Installation examples consistently use Bash, which the installer requires.
+
+See [verification scope](docs/verification.md) for executed checks and their limits.
+
 ## [0.19.0-alpha] — 2026-09-08
 
 ### Security

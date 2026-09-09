@@ -386,7 +386,8 @@ class ScheduleStore:
             except sqlite3.Error:
                 self._conn.rollback()
 
-    def mark_run(self, task_id: str, *, now: float | None = None) -> None:
+    def mark_run(self, task_id: str, *, now: float | None = None,
+                 expected_next_run: float | None = None) -> bool:
         """Setzt den naechsten Termin — VOR der Ausfuehrung aufzurufen.
 
         Sonst laeuft ein Auftrag, der laenger dauert als sein Intervall, beim naechsten
@@ -399,11 +400,17 @@ class ScheduleStore:
         moment = time.time() if now is None else float(now)
         with self._lock:
             if self._conn is None:
-                return
+                return False
             try:
+                # Serialize across separate processes/stores, not just threads.
+                self._conn.execute("BEGIN IMMEDIATE")
                 zeile = self._conn.execute(
-                    "SELECT cron, once FROM schedules WHERE id = ?", (str(task_id),)
+                    "SELECT cron, once, next_run FROM schedules WHERE id = ?", (str(task_id),)
                 ).fetchone()
+                if zeile is None or (expected_next_run is not None and
+                        (float(zeile[2]) != expected_next_run or expected_next_run > moment)):
+                    self._conn.rollback()
+                    return False
                 ausdruck = (zeile[0] if zeile else "") or ""
                 einmal = bool(zeile[1]) if zeile else False
                 if einmal:
@@ -418,7 +425,7 @@ class ScheduleStore:
                         # eine Dauerschleife schicken: dann lieber weg als jede Minute.
                         self._conn.execute("DELETE FROM schedules WHERE id = ?", (str(task_id),))
                         self._conn.commit()
-                        return
+                        return False
                     self._conn.execute(
                         "UPDATE schedules SET last_run = ?, next_run = ? WHERE id = ?",
                         (moment, naechster, str(task_id)),
@@ -430,8 +437,10 @@ class ScheduleStore:
                         (moment, moment, str(task_id)),
                     )
                 self._conn.commit()
+                return True
             except sqlite3.Error:
                 self._conn.rollback()
+                return False
 
     def remove(self, task_id: str, *, conversation: str) -> bool:
         """Loescht — nur aus der eigenen Konversation.

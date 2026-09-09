@@ -99,6 +99,10 @@ class Worker:
     def busy(self) -> bool:
         return self._busy.is_set()
 
+    def stopping(self) -> bool:
+        with self._state_lock:
+            return self._current is not None and self._states.get(id(self._current)) == "cancelled"
+
     def busy_since(self) -> float | None:
         """Wann der laufende Auftrag begann — oder None, wenn gerade keiner laeuft.
 

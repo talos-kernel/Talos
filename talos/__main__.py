@@ -46,6 +46,7 @@ from .policy import WORKSPACE_DIR, PolicyKernel, claude_work_root
 from .question import QuestionDesk
 from .recall import Recall
 from .schedule import ScheduleStore, UnattendedCeiling
+from .scheduler import start_scheduler
 from .subagent import ReadOnlyCeiling
 from .transcript import TranscriptStore
 from .provider import (
@@ -574,6 +575,8 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
         send_structured=registry.send_structured,
         # Dateianhaenge (MEDIA:-Tags): Kanaele ohne `send_file` melden ehrlich False.
         send_file=registry.send_file,
+        supports_files=registry.supports_files,
+        cleanup_sent_media=config.cleanup_sent_media,
         usage_footer=lambda: _usage_footer(meter),
         capability_gaps=_gap_reporter(config),
         # DIESELBE Instanz wie der Zeitplan-Ticker: ein Hintergrundlauf ist derselbe Fall
@@ -605,40 +608,11 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     # Decke wie der Lauf. Das Modul hat keinen anderen Weg zur Shell als `executor.run`.
     continuity_desk = continuity.Continuity(schedules=schedules, log=log, execute=executor.run)
 
-    def tick_schedules() -> None:
-        while True:
-            time.sleep(SCHEDULE_TICK_S)
-            try:
-                for task in schedules.due():
-                    schedules.mark_run(task.id)
-                    principal = Principal.parse(task.principal)
-                    if principal not in config.allowed_principals:
-                        # Die Erlaubnis kann sich geaendert haben, seit der Auftrag entstand.
-                        # Ein Zeitplan darf keine Identitaet konservieren, die heute nicht
-                        # mehr gilt — sonst waere er ein Weg, eine entzogene Zulassung
-                        # weiterlaufen zu lassen.
-                        log.append(Event(new_run_id(), "schedule", "schedule.refused",
-                                         {"id": task.id, "reason": "principal no longer allowed"}))
-                        continue
-                    with unattended.active():
-                        # Sonde und Gedaechtnis VOR dem Lauf, unter derselben Decke:
-                        # `None` heisst „unveraendert" — im Log belegt, kein Modellzug.
-                        bereit = continuity_desk.prepare(task, principal, run_id=new_run_id())
-                        if bereit is None:
-                            continue
-                        update = Inbound(
-                            principal=principal,
-                            conversation=task.conversation,
-                            text=bereit.text,
-                            dedup_key=f"schedule:{task.id}:{int(time.time())}",
-                        )
-                        log.append(Event(new_run_id(), "schedule", "schedule.fired", {"id": task.id}))
-                        conductor.handle(update, before_reply=bereit.before_reply)
-            except Exception as error:  # ein kaputter Zeitplan darf den Agenten nicht anhalten
-                log.append(Event(new_run_id(), "schedule", "schedule.error", {"error": str(error)}))
-
-    if schedules.available:
-        threading.Thread(target=tick_schedules, daemon=True, name="talos-schedules").start()
+    start_scheduler(
+        service_mode=not (ask or chat), interval_s=SCHEDULE_TICK_S,
+        schedules=schedules, registry=registry, allowed_principals=config.allowed_principals,
+        unattended=unattended, continuity=continuity_desk, conductor=conductor, log=log,
+    )
 
     # Der Completion-Push: dieselbe Bauart wie der Zeitplan-Ticker — ein eigener Takt,
     # der den Worker nach den angemeldeten Jobs fragt und bei einem Endzustand eine
@@ -789,13 +763,18 @@ def delegate_propose(reasoner: object):
     """
 
     def fuer(question: str):
+        from .run_control import current_reasoner
+        parent = current_reasoner() or reasoner
+        fork = getattr(parent, "fork", None)
+        child = fork() if callable(fork) else parent
         def propose(history: list[str]) -> str:
             if not history:
-                return reasoner.reason(question)
-            return reasoner.reason(
+                return child.reason(question)
+            return child.reason(
                 f"{question}\n\n[Tool results so far]\n" + "\n".join(history)
             )
-
+        if child is not parent:
+            propose.cancel = child.cancel
         return propose
 
     return fuer

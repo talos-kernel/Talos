@@ -18,3 +18,27 @@ def test_login_rate_limit_survives_separate_database_connections(tmp_path):
     assert all(login_allowed(path,1000) for _ in range(8))
     assert not login_allowed(path,1001)
     assert login_allowed(path,1061)
+
+@pytest.mark.parametrize('running', [False, True])
+def test_dashboard_reads_preview_without_consuming_agent_capture_pool(tmp_path, monkeypatch, running):
+    pytest.importorskip('websockify')
+    from talos.computer import web
+    image = tmp_path/'preview-fixture.png'
+    image.write_bytes(b'preview fixture')
+    calls = []
+    def rpc(kind, args):
+        calls.append((kind, args))
+        if args['op'] == 'status':
+            return {'vm':'running' if running else 'paused'}
+        assert args == {'op':'preview'}
+        return {'image_path':str(image)}
+    monkeypatch.setattr(web, 'CAPTURES', tmp_path)
+    monkeypatch.setattr(web, 'rpc', rpc)
+    handler = object.__new__(web.Handler)
+    handler.path = '/api/screen'
+    handler.authenticated = lambda: True
+    response = []
+    handler.respond = lambda *args: response.append(args)
+    handler.do_GET()
+    assert response == [(200, b'preview fixture', 'image/png')]
+    assert calls == [('read', {'op':'status'})] + ([('read', {'op':'preview'})] if running else [])

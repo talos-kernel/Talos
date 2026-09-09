@@ -269,6 +269,9 @@ def run_agent(
     proposal_repairs = 0
     empty_repairs = 0
     recovery_attempts = 0
+    from .computer.observation import ObservationProgress, image_followup
+    observations = ObservationProgress()
+    followup = None
     if steps_used >= max_steps:
         return AgentResult(
             AgentStatus.STEP_LIMIT,
@@ -311,13 +314,22 @@ def run_agent(
         # Handlung wird durch eine nachgeschobene Nachricht nicht erlaubt.
         if redirect is not None:
             for korrektur in redirect.take():
+                followup = None  # Reconsider a pending read after an operator correction.
                 history.append(korrektur.as_turn())
                 _emit(
                     progress,
                     AgentProgress(ProgressStage.REDIRECTED, step=step, max_steps=max_steps),
                 )
-        _emit(progress, AgentProgress(ProgressStage.THINKING, step=step, max_steps=max_steps))
-        text = propose(history)
+        if followup is None:
+            _emit(progress, AgentProgress(ProgressStage.THINKING, step=step, max_steps=max_steps))
+            text = propose(history)
+        else:
+            text, followup = followup, None
+        # A stop can arrive while inference is blocked. Do not execute the proposal
+        # returned by that cancelled call, even if the backend did not kill it.
+        if should_stop is not None and should_stop():
+            return AgentResult(AgentStatus.ANSWERED, STOPPED_NOTE,
+                               steps=step, history=tuple(history), plan=active)
 
         # Der Plan wird genau einmal gelesen, im ersten Zug, der einen enthaelt. Danach
         # ist er fest: ein Werkzeug-Ergebnis ist fremder Text, und koennte es das Modell
@@ -438,10 +450,14 @@ def run_agent(
             exhausted = proposal_repairs >= proposal.MAX_REPAIRS
             executor.log.append(Event(run_id, "agent", "protocol.repair", {
                 "tool": tool, "reason": "incomplete arguments",
+                "schema_issue": issue,
                 "attempt": proposal_repairs + 1, "exhausted": exhausted,
             }))
             if exhausted:
-                message = "Tool arguments could not be completed. Nothing ran from these proposals."
+                message = (f"Task unfinished: {tool} arguments remain invalid after "
+                           f"{proposal.MAX_REPAIRS} repair attempts — {issue}. "
+                           "These proposals did not run. Earlier tool results remain valid; "
+                           "completed actions have not been replayed.")
                 stopped = active.abort(message) if active else None
                 return AgentResult(
                     AgentStatus.PLAN_ABORTED if stopped else AgentStatus.STEP_LIMIT,
@@ -449,7 +465,7 @@ def run_agent(
                     steps=step, history=tuple(history), plan=stopped,
                 )
             proposal_repairs += 1
-            history.append(proposal.note(tool, issue))
+            history.append(proposal.note(tool, issue, args))
             continue
         if tool == "ask_operator":
             try:
@@ -505,6 +521,12 @@ def run_agent(
             )
 
         history.append(tool_history_entry(tool, outcome.status.value, outcome.detail, outcome.result, args=args))
+        if outcome.status is Status.DONE:
+            observation_note = observations.record(tool, args, outcome.result)
+            if observation_note:
+                history.append(observation_note)
+            if tool == "computer_status":
+                followup = image_followup(args, outcome.result)
 
         from .recovery import advice
         recovery_note = advice(tool, outcome, recovery_attempts)

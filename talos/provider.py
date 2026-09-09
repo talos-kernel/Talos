@@ -145,6 +145,25 @@ class ModelRouter:
         with self._lock:
             return self._active_reasoner is None and not self._switching
 
+    def fork(self) -> "ModelRouter":
+        """Independent inference state for one background task, same selected route.
+
+        The factory builds a new CLI/API instance: sharing the parent's process slot
+        would reject concurrent calls or let /stop kill the wrong task. No validation,
+        model switch event or provider fallback is introduced. A current cooldown is
+        copied so starting a background task cannot sidestep a known provider limit.
+        """
+        with self._lock:
+            if self._switching:
+                raise RuntimeError("Model selection is changing; retry the background task afterwards.")
+            selection, registry = self._current, self._registry
+            failure, count, next_attempt = self._failure, self._failure_count, self._next_attempt
+        child = ModelRouter(registry, selection, self._build, self._log)
+        if failure is not None:
+            child._failure, child._failure_count, child._next_attempt = failure, count, next_attempt
+            child._ready = "unavailable"
+        return child
+
     def readiness(self) -> dict:
         with self._lock:
             return {"state": self._ready,

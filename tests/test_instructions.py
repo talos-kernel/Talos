@@ -148,7 +148,8 @@ def test_cli_and_api_use_the_same_system_prompt_assembly(monkeypatch, tmp_path: 
     cli = HermesCliReasoner(
         str(binary), 30, provider="test", model="test", skills=lambda: "CLI-SKILLS"
     )
-    assert marker in cli.argv_for("hello")[2]
+    args = cli.argv_for("hello")
+    assert marker in args[args.index("-q") + 1]
 
     captured: list[list[str]] = []
 

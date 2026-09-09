@@ -441,6 +441,7 @@ def make_delegate_runner(
     propose: Callable[[str], Callable[[list[str]], str]],
     run_id: Callable[[], str],
     max_steps: int = 0,
+    timeout_s: float | None = None,
 ) -> Callable[[ToolRequest], str]:
     """Baut den `delegate`-Runner: ein zweiter Lauf, der ausschliesslich lesen darf.
 
@@ -459,7 +460,7 @@ def make_delegate_runner(
     """
     from .agent_loop import run_agent
     from .subagent import (
-        DELEGATE_MAX_STEPS, MAX_PARALLEL, MAX_QUESTION_CHARS, bound_answer,
+        DELEGATE_MAX_STEPS, DELEGATE_TIMEOUT_S, MAX_PARALLEL, MAX_QUESTION_CHARS, bound_answer,
     )
 
     grenze = max_steps or DELEGATE_MAX_STEPS
@@ -474,24 +475,48 @@ def make_delegate_runner(
         )
         return tuple(f for f in sauber if f)[:MAX_PARALLEL]
 
-    def _einer(frage: str) -> str:
+    def _einer(frage: str, principal, parent_stop, parent_reasoner) -> str:
         """Ein Untergebener. Betritt die Decke in SEINEM Thread — deshalb ist sie
         thread-gebunden: nebeneinander laufende Untergebene teilen sie sich nicht,
         jeder traegt seine eigene, und der Hauptlauf bleibt unberuehrt."""
-        with ceiling.active():
-            return bound_answer(
-                run_agent(propose(frage), executor(), identity[0], run_id(), max_steps=grenze).text
-            )
-
-    identity: list = [None]
+        import time
+        from . import run_control
+        budget = max(.01, min(float(timeout_s if timeout_s is not None else DELEGATE_TIMEOUT_S), DELEGATE_TIMEOUT_S))
+        deadline = time.monotonic() + budget
+        stopped = lambda: parent_stop() or time.monotonic() >= deadline
+        finished = threading.Event()
+        with ceiling.active(), run_control.active(stopped, reasoner=parent_reasoner):
+            proposal = propose(frage)
+            def watch():
+                while not finished.wait(.05):
+                    if stopped():
+                        cancel = getattr(proposal, 'cancel', None)
+                        if callable(cancel):
+                            try:
+                                cancel()  # only this delegate's independently built reasoner
+                            except Exception:
+                                pass  # the step boundary still observes cancellation
+                        return
+            watcher = threading.Thread(target=watch, name='talos-delegate-deadline', daemon=True)
+            watcher.start()
+            try:
+                result = run_agent(proposal, executor(), principal, run_id(),
+                                   max_steps=grenze, should_stop=stopped)
+                if stopped():
+                    return f'(delegated task stopped: cancelled or its {budget:g}-second budget ended; completion unverified)'
+                return bound_answer(result.text)
+            finally:
+                finished.set()
+                watcher.join(1)
 
     def delegate(req: ToolRequest) -> str:
+        from .run_control import current_stop, current_reasoner
         fragen = _fragen(req.args)
         if not fragen:
             raise ValueError("delegate braucht eine Frage")
-        identity[0] = req.identity
+        parent_stop, parent_reasoner = current_stop(), current_reasoner()
         if len(fragen) == 1:
-            return _einer(fragen[0])
+            return _einer(fragen[0], req.identity, parent_stop, parent_reasoner)
 
         # Mehrere: je ein Thread. Ein gescheiterter Untergebener nimmt die anderen NICHT
         # mit — sein Fehler wird an seiner Stelle berichtet, damit die Luecke sichtbar
@@ -500,7 +525,7 @@ def make_delegate_runner(
 
         def lauf(index: int, frage: str) -> None:
             try:
-                antworten[index] = _einer(frage)
+                antworten[index] = _einer(frage, req.identity, parent_stop, parent_reasoner)
             except Exception as fehler:
                 antworten[index] = f"(failed: {fehler})"
 

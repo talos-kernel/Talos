@@ -6,12 +6,12 @@
 
 - Permission kernel: 913 lines of Python.
 - 31 tools in the manifest, gated before dispatch.
-- 2623 collected tests in the current source tree; platform-dependent checks may skip.
-- 217/217 adversarial cases passed in that source run.
+- 2785 collected tests in the current source tree; platform-dependent checks may skip.
+- 230/230 adversarial cases passed in that source run.
 - Published release metrics are separate: https://talos-agent.ch/status.json
 - Grants bind one tool call's exact arguments, are single-use and expire after 30 seconds.
 - Confined Claude and Codex coding workers. MCP runs in the Claude worker from an operator-owned registry.
-- Experimental Computer: persistent ARM64 KVM Linux workspace, headless by default, optional desktop. Available in 0.19.0-alpha; the Computer requires separate provisioning.
+- Experimental Computer: persistent ARM64 KVM Linux workspace, headless by default, optional desktop. Available in 0.19.1-alpha; the Computer requires separate provisioning.
 - Updates are signed tarballs, verified before unpacking; dependencies are pinned and hashed.
 
 ## Pages

@@ -3279,6 +3279,93 @@ with __import__('unittest.mock', fromlist=['patch']).patch.dict(os.environ, {
         _result(_ok, "Computer opt-in leaks into unattended work", _decision.reason)
         failures += int(not _ok)
 
+# One foreground task may approve later actions, but never another authority scope.
+from talos.task_approval import TaskApprovals as _TaskApprovals, TaskExecutor as _TaskExecutor
+with tempfile.TemporaryDirectory(prefix="talos-task-redteam-") as _task_dir:
+    _task_log = EventLog(Path(_task_dir) / "events.db")
+    _task_gov = AutonomyGovernor(3)
+    from talos.schedule import UnattendedCeiling as _TaskUnattended
+    _task_unattended = _TaskUnattended()
+    _task_policy = GovernedKernel(PolicyKernel(default_manifest(), frozenset({OWNER})),
+                                 _task_gov, lambda _: Trust.FULL, unattended=_task_unattended)
+    _task_mint = CapabilityMint(_task_policy, governor=_task_gov)
+    _task_ran = []
+    _task_runner = GrantedRunner(mint=_task_mint, runners={"write_file": lambda req: _task_ran.append(req.tool)})
+    _task_base = Executor(_task_policy, _task_log, Snapshotter(Path(_task_dir) / "snap"),
+                          _task_runner, _task_mint)
+    _task_scopes = _TaskApprovals()
+    _task_scopes.open("one-task", OWNER, "task-chat")
+    _task_scopes.approve("one-task", OWNER, "task-chat")
+    _task_executor = _TaskExecutor(_task_base, _task_scopes, "one-task", OWNER, "task-chat", lambda: Trust.FULL)
+    _task_write = ToolRequest("write_file", OWNER, {"path": str(Path(_task_dir) / "one"), "content": "fixture"})
+    _task_ok = all(_task_executor.run(replace(_task_write, args=_task_write.args | {"path": str(Path(_task_dir) / str(i))}),
+                                         "task-control").status is Status.DONE for i in range(2))
+    _result(_task_ok, "Task consent positive control: two different actions execute", str(len(_task_ran)))
+    failures += int(not _task_ok)
+    _task_cases = [
+        ("Task consent accepts another identity", replace(_task_write, identity=STRANGER)),
+        ("Task consent overrides a secret-read DENY", ToolRequest("read_file", OWNER,
+             {"path": str(Path.home() / ".secrets" / "task-redteam-nonexistent")})),
+        ("Task consent accepts an unregistered tool", ToolRequest("not_a_registered_tool", OWNER, {})),
+    ]
+    for _name, _req in _task_cases:
+        _before = len(_task_ran)
+        _outcome = _task_executor.run(_req, "task-negative")
+        _ok = _outcome.status is Status.DENIED and len(_task_ran) == _before
+        _result(_ok, _name, _outcome.status.value)
+        failures += int(not _ok)
+    for _name, _candidate in [
+        ("Task consent crosses conversations", replace(_task_executor, conversation="another-chat")),
+        ("Task consent crosses channel trust", replace(_task_executor, trust=lambda: Trust.ASK)),
+    ]:
+        _ok = _candidate.run(_task_write, "task-scope").status is Status.DENIED
+        _result(_ok, _name, "denied" if _ok else "GOT THROUGH")
+        failures += int(not _ok)
+    with _task_unattended.active():
+        _ok = _task_executor.run(_task_write, "task-unattended").status is Status.DENIED
+    _result(_ok, "Task consent overrides unattended ceiling", "denied" if _ok else "GOT THROUGH")
+    failures += int(not _ok)
+    _ok = _task_base.run(_task_write, "another-task").status is Status.NEEDS_HUMAN
+    _result(_ok, "Task consent leaks into shared executor", "still asks" if _ok else "GOT THROUGH")
+    failures += int(not _ok)
+    _task_scopes.finish("one-task")
+    _ok = _task_executor.run(_task_write, "task-after-end").status is Status.DENIED
+    _result(_ok, "Finished task consent can be reused", "denied" if _ok else "GOT THROUGH")
+    failures += int(not _ok)
+
+# Slash-command control never turns a neighbouring task into the operator's own.
+from talos.background import BackgroundDesk as _CommandDesk, SteerRefused as _CommandRefused
+from talos.commands import parse as _CommandParse
+from talos.conductor import CONTROL_COMMANDS as _CommandControls
+_command_desk = _CommandDesk()
+_command_task = _command_desk.accept("fixture", run_id="command-redteam",
+                                    principal=str(OWNER), conversation="command-chat")
+for _name, _principal, _conversation in [
+    ("Background slash steer accepts another person", str(STRANGER), "command-chat"),
+    ("Background slash steer accepts another chat", str(OWNER), "another-chat"),
+]:
+    try:
+        _command_desk.steer(_command_task.task_id, "change direction",
+                            principal=_principal, conversation=_conversation)
+        _ok = False
+    except _CommandRefused:
+        _ok = not _command_desk.take_steering(_command_task.task_id)
+    _result(_ok, _name, "refused before injection" if _ok else "GOT THROUGH")
+    failures += int(not _ok)
+_ok = all(_CommandParse(command)[0] in _CommandControls
+          for command in ("/models provider model", "/steer instruction", "/cancel bg_id", "/stopall", "/estop"))
+_result(_ok, "Control aliases escape the full-trust channel gate", "all gated" if _ok else "UNGATED")
+failures += int(not _ok)
+
+_nested_ceiling = _ROC()
+with _nested_ceiling.active():
+    _nested_policy = GovernedKernel(PolicyKernel(default_manifest(), frozenset({OWNER})),
+                                   AutonomyGovernor(5), lambda _: Trust.FULL, delegated=_nested_ceiling)
+    _nested_decision = _nested_policy.decide(ToolRequest("delegate", OWNER, {"question": "delegate again"}))
+    _ok = _nested_decision.verdict.value == "deny" and "recursive" in _nested_decision.reason
+_result(_ok, "A delegate recursively creates more delegates", "refused" if _ok else "RECURSED")
+failures += int(not _ok)
+
 # Gezaehlt, nicht addiert. Auf einer Maschine ohne Isolation faellt der
 # Identitaets-Block als SKIP heraus — dann steht hier ehrlich eine kleinere Zahl,
 # statt zwei Faelle zu behaupten, die niemand gefahren hat.

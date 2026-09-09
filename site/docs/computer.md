@@ -106,6 +106,14 @@ readable, with scrolling inside the desktop. Your browser remembers the view and
 zoom. **Restore** or Escape returns to the workspace layout. These view controls
 do not change who owns the computer or interrupt the current task.
 
+On a phone, choose **Take over → Keyboard** after the desktop connects. Tap the
+desired desktop field, then use the on-screen keys, or type with your phone's
+keyboard in the text box and choose **Send text**. Sending text does not press
+Enter; use the separate **Enter** key when ready. Shift, Ctrl and Alt apply to the
+next key only. **Hide** closes the keyboard and discards unsent text. Returning
+control, pausing or losing the desktop connection disables input and clears the
+text box. Keyboard text is not saved in browser preferences.
+
 Prefer an existing skill, API or CLI when it can solve the task. Use the desktop
 when an actual browser or application session helps. Describe the intended project,
 action and expected result. Every Computer effect requires kernel approval,
@@ -115,6 +123,21 @@ desktop. Unattended runs cannot approve it.
 After a submitted job, use `computer_status` with `op: job` and its `job_id` to
 read the durable result. A queued receipt is not completion. With the optional desktop, screenshots are read
 through `op: screenshot`; files through `op: files, project: ...`.
+
+For visual reading, use `computer_status {"op":"screenshot","question":"Read the visible total."}`.
+The loop proposes `see_image` for that exact saved image before the next model call.
+This is a separate, budgeted kernel step: file permissions, secret-path protection,
+approval requirements, cancellation and operator corrections still apply. Omit
+`question` when only the image file is needed. After a click or scroll, read its
+terminal job receipt, then capture and interpret the resulting screen. Repeated
+unchanged captures produce a progress warning; they never replay an action.
+
+Dashboard previews and agent images use separate retention pools. Previews keep
+their newest twelve files. Agent images remain available for at least one hour;
+expired images are pruned on the next agent capture. The agent pool is limited to
+128 MiB: when full, a new capture fails explicitly instead of deleting a recent
+receipt. Captures include a timestamp and SHA-256 digest. These identify the image,
+not proof that a task has succeeded.
 
 The workbench's **Take over** cancels active guest action units before it enables
 mouse and keyboard input. **Return to Talos** revokes desktop input before allowing

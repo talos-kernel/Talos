@@ -113,7 +113,10 @@ Control
 /stop — abort the running thought and clear the queue
 /stopall (also /estop) — stop everything stoppable: thought, queue, background jobs,
   pending approvals. Schedules are not touched.
-/queue — what is running, what is waiting
+/queue (also /q) — what is running, what is waiting; /queue <task> queues a separate next turn
+/steer <instruction> — correct the running task at its next step, without restarting it
+/tasks — your running background jobs; /steer <bg_id> <instruction> redirects one
+/cancel <bg_id> (also /stop <bg_id>) — stop one background job; the foreground continues
 /status — runtime, queue, pending approval, usage, background jobs, next schedules
 /computer — open your private desktop, live jobs and project files
 /new — clear the active context (log and searchable archive stay)
@@ -124,6 +127,8 @@ Control
 Approval
 /pending — show the pending approval verbatim
 /approve — same as "yes"
+/approve task — allow all approval-required actions until this task ends, with no time limit
+/approve always — keep an exact-action standing rule; /approvals shows the pending decision
 /deny — same as "no"
 /allowed — standing approvals of this chat ("always"), numbered
 /revoke <n> — take back one standing approval
@@ -138,14 +143,14 @@ Accountability
 /every <min> or <M H DOM MON DOW> <task> — recurring job · /schedules · /unschedule <id>
 /blueprints — installable automations with plain-language schedules
   (/blueprint install|remove|enable|disable|status <name>)
-/skills — what is loaded, what was refused
+/skills — what is loaded, what was refused; /reload-skills re-scans the live catalogue
 /tools — which tools exist and how they are gated
-/whoami — your ID and whether it is allowed
+/whoami — your identity, chat and access
 /version — git state of the running code
 
 Inside view
 /usage — runs, tokens, thinking time, computed cost
-/model — show the provider/model or select one safely
+/model (also /models) — show the provider/model or select one safely
 /reasoning — how thinking happens, and what deliberately does not exist here
 /debug — state worth looking at: paths, permissions, counters
 /health — the traffic light: what runs, what stumbled lately, what is quiet
@@ -163,9 +168,11 @@ def parse(text: str) -> tuple[str, str]:
     stripped = text.strip()
     if not stripped.startswith("/"):
         return "", ""
-    head, _, rest = stripped[1:].partition(" ")
+    parts = stripped[1:].split(None, 1)
+    head, rest = (parts[0], parts[1] if len(parts) > 1 else "") if parts else ("", "")
     name, _, _bot = head.partition("@")  # Gruppen hängen @Botname an
-    return name.strip().lower(), rest.strip()
+    name = name.strip().lower()
+    return {"q": "queue", "models": "model"}.get(name, name), rest.strip()
 
 
 @dataclass(frozen=True)
@@ -226,11 +233,13 @@ class CommandCenter:
         if name == "start":
             return CommandResult(reply=self._start())
         if name in ("help", "commands"):
-            return CommandResult(reply=HELP.format(name=agent_name()))
+            return CommandResult(reply=self._help(rest))
         if name == "status":
             return CommandResult(reply=self._status(conversation))
-        if name == "queue":
+        if name in ("queue", "q"):
             return CommandResult(reply=self._queue())
+        if name == "tasks":
+            return CommandResult(reply=self._tasks(principal, conversation))
         if name in ("new", "reset") or (name == "forget" and not rest.strip()):
             # `/forget` ohne Argument bleibt das Synonym fuer `/new` (Verlaufs-Reset).
             # MIT Argument faellt es unten zum Recall-Loeschen durch — vorher fing
@@ -253,10 +262,13 @@ class CommandCenter:
         if name in ("stopall", "estop"):
             return CommandResult(reply=self._stopall())
         if name == "approve":
-            return CommandResult(forward_as="yes")
+            choice = rest.strip().lower()
+            words = {"": "yes", "once": "yes", "task": "allow this task", "always": "always"}
+            return (CommandResult(forward_as=words[choice]) if choice in words
+                    else CommandResult(reply="Usage: /approve [once|task|always]"))
         if name == "deny":
             return CommandResult(forward_as="no")
-        if name == "pending":
+        if name in ("pending", "approvals"):
             return CommandResult(reply=self._pending(conversation))
         if name == "allowed":
             return CommandResult(reply=self._allowed(conversation, principal=principal))
@@ -278,7 +290,7 @@ class CommandCenter:
             return CommandResult(reply=self._schedules(conversation))
         if name in ("unschedule", "cancel_job"):
             return CommandResult(reply=self._unschedule(rest, conversation))
-        if name in ("blueprint", "blueprints"):
+        if name in ("blueprint", "blueprints", "bp"):
             return CommandResult(reply=self._blueprints(rest, principal, conversation))
         if name == "computer":
             from .computer.presentation import chat_authorized
@@ -292,6 +304,8 @@ class CommandCenter:
             return CommandResult(structured=entry())
         if name == "skills":
             return CommandResult(reply=self._skills())
+        if name in ("reload-skills", "reload_skills"):
+            return CommandResult(reply="Skills are discovered live on every turn. Current scan:\n\n" + self._skills())
         if name == "tools":
             return CommandResult(reply=self._tools())
         if name == "autonomy":
@@ -304,7 +318,7 @@ class CommandCenter:
             return CommandResult(reply=self._version())
         if name == "usage":
             return CommandResult(reply=self._usage())
-        if name == "model":
+        if name in ("model", "models"):
             if self.model_picker is None:
                 return CommandResult(reply=self._model())
             message = (
@@ -322,6 +336,32 @@ class CommandCenter:
         return CommandResult(reply=f"Unknown command /{name}. /help lists them all.")
 
     # --- Steuerung ---------------------------------------------------------------
+    def _help(self, query: str) -> str:
+        text = HELP.format(name=agent_name())
+        query = query.strip().lower().lstrip("/")
+        if not query:
+            return text
+        # Keep wrapped descriptions with their command, without invoking a provider.
+        entries: list[str] = []
+        for line in text.splitlines():
+            if line.startswith("/"):
+                entries.append(line)
+            elif line.startswith("  ") and entries:
+                entries[-1] += "\n" + line
+        matches = [entry for entry in entries if query in entry.lower()]
+        return (f"Commands matching {query}:\n\n" + "\n".join(matches) if matches
+                else f"No commands match {query}. /help lists all commands.")
+
+    def _tasks(self, principal: Principal, conversation: str) -> str:
+        jobs = () if self.background is None else self.background.running()
+        own = [task for task in jobs if (task.principal, task.conversation)
+               == (str(principal), conversation)]
+        if not own:
+            return "No background tasks running in your chat. /btw <task> starts one."
+        return ("⚙ Background tasks\n\n" + "\n".join(
+            f"#{task.number} · {task.task_id} · {task.short}" for task in own)
+            + "\n\n/steer <bg_id> <instruction> · /cancel <bg_id>")
+
     def _start(self) -> str:
         """Persönliche Begrüßung mit belegten Fakten statt der Diagnose-Konsole."""
         facts: Mapping[str, object] = {}
@@ -748,20 +788,25 @@ class CommandCenter:
         return CommandResult(forward_as=last)
 
     def _queue(self) -> str:
+        if getattr(self.worker, "stopping", lambda: False)():
+            return f"Stopping: waiting for the current action to return.\nWaiting: {self.worker.pending()}"
         if not self.worker.busy() and self.worker.pending() == 0:
             return "Nothing running, nothing waiting."
         return f"Running: {'yes' if self.worker.busy() else 'no'}\nWaiting: {self.worker.pending()}"
 
     def _stop(self) -> str:
         dropped = self.worker.drain()
+        running = self.worker.busy()
         killed = self.reasoner.cancel()
-        if killed and hasattr(self.worker, "mark_cancelled"):
+        if (killed or running) and hasattr(self.worker, "mark_cancelled"):
             self.worker.mark_cancelled()
-        if not killed and dropped == 0:
+        if not killed and not running and dropped == 0:
             return "Nichts abzubrechen — es lief nichts und es wartete nichts."
         parts = []
         if killed:
             parts.append("laufendes Denken abgebrochen")
+        elif running:
+            parts.append("Abbruch angefordert; der aktuelle Aufruf wird beendet")
         if dropped:
             parts.append(f"{dropped} wartende Nachricht(en) verworfen")
         return "Abgebrochen: " + ", ".join(parts) + "."
@@ -788,19 +833,22 @@ class CommandCenter:
         """
         killed = self.reasoner.cancel()
         dropped = self.worker.drain()
-        if killed and hasattr(self.worker, "mark_cancelled"):
+        running = self.worker.busy()
+        if (killed or running) and hasattr(self.worker, "mark_cancelled"):
             self.worker.mark_cancelled()
         jobs: tuple = ()
         if self.background is not None:
             jobs = tuple(self.background.cancel_all())
         verworfen = self.approvals.discard_all()
-        if not killed and not dropped and not jobs and not verworfen:
+        if not killed and not running and not dropped and not jobs and not verworfen:
             # Idempotent: das zweite /stopall hintereinander sagt ehrlich „nichts
             # mehr da", statt eine Bilanz ueber Nullen zu behaupten.
             return ("Nichts zu stoppen — es lief nichts, es wartete nichts, "
                     "keine Freigabe offen. Zeitpläne bleiben ohnehin unberührt.")
         lines = ["Gestoppt, was stoppbar war:"]
-        lines.append("- Denkzug: abgebrochen" if killed else "- Denkzug: lief gerade nichts")
+        lines.append("- Denkzug: abgebrochen" if killed else
+                     "- Auftrag: Abbruch angefordert, aktueller Aufruf endet noch" if running else
+                     "- Denkzug: lief gerade nichts")
         lines.append(f"- Warteschlange: {dropped} verworfen" if dropped
                      else "- Warteschlange: war leer")
         if self.background is None:
@@ -997,9 +1045,9 @@ class CommandCenter:
     def _whoami(self, principal: Principal, conversation: str) -> str:
         allowed = principal in self.policy.allowed_identities
         return (
-            f"Identitaet: {principal}\nUnterhaltung: {conversation}\n"
-            f"Zugelassen: {'ja' if allowed else 'nein'}\n"
-            "Freigaben gelten nur in dem Chat, in dem gefragt wurde."
+            f"👤 Identity: {principal}\nChat: {conversation}\n"
+            f"Allowed: {'yes' if allowed else 'no'}\n"
+            "Approvals belong to the person and chat that granted them."
         )
 
     def _version(self) -> str:

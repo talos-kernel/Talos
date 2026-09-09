@@ -127,9 +127,10 @@ class Handler(websocketproxy.ProxyRequestHandler):
             if path == "/api/screen":
                 state = rpc("read", {"op": "status"})
                 if state["vm"] == "running":
-                    image = Path(rpc("read", {"op": "screenshot"})["image_path"])
+                    image = Path(rpc("read", {"op": "preview"})["image_path"])
                 else:
-                    image = max(CAPTURES.glob("screen-*.png"), key=lambda p: p.stat().st_mtime, default=None)
+                    image = max((*CAPTURES.glob("preview-*.png"), *CAPTURES.glob("screen-*.png")),
+                                key=lambda p: p.stat().st_mtime, default=None)
                 if image is None:
                     return self.respond(409, {"error": "Der Computer ist angehalten."})
                 if image.parent != CAPTURES or image.is_symlink():
