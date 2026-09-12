@@ -23,8 +23,22 @@ def test_daemon_carries_binary_from_env_file_to_request_handler(tmp_path,tmp_pat
     thread=threading.Thread(target=worker.serve,args=(path,str(env)),kwargs={'environ':{},'stop':stop},daemon=True)
     thread.start()
     try:
-        deadline=time.monotonic()+3
-        while not __import__('os').path.exists(path) and time.monotonic()<deadline:time.sleep(.01)
+        # Auf die Existenz der Datei zu warten ist zu frueh: sie entsteht schon bei
+        # bind(), doch erst nach listen() nimmt der Worker Verbindungen an. Wer in
+        # dieser Luecke connectet, bekommt ECONNREFUSED — auf dem macOS-Laeufer der CI
+        # ist genau das am 12.09.2026 passiert, waehrend derselbe Test auf dem Mac
+        # daneben gruen blieb. Gewartet wird deshalb auf ERREICHBARKEIT, nicht auf ein
+        # Dateisystem-Ereignis. Dasselbe Muster steht in test_modelworker.py und
+        # test_claudeworker.py; dies war die dritte Stelle.
+        for _ in range(500):
+            try:
+                with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as probe:
+                    probe.settimeout(0.5);probe.connect(path)
+                break
+            except OSError:
+                time.sleep(.01)
+        else:  # pragma: no cover — waere ein Defekt des Tests selbst
+            raise RuntimeError('Worker-Socket nahm keine Verbindung an')
         with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as connection:
             connection.connect(path);connection.sendall(b'{"op":"status","job_id":"absent"}\n')
             assert json.loads(connection.recv(4096))['ok'] is False
