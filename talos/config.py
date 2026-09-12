@@ -180,6 +180,7 @@ class TalosConfig:
     # `provider/model`. Leer heisst: kein Fallback, ein Fehler ist ein Fehler.
     # Sie gilt pro Lauf und ruehrt die persistierte Modellwahl nie an.
     model_fallbacks: str = ""
+    custom_providers_file: str = ""
     # Betreiber-Korrekturen an den Eckdaten einzelner Modelle (TALOS_MODEL_OVERRIDES,
     # `modelinfo.py`): Kontextfenster, Preise, Faehigkeiten. Dieselbe Ebene wie
     # TALOS_MODEL — eine Entscheidung ueber das Modell, nie ueber den Weg dorthin.
@@ -431,6 +432,10 @@ def load_config(*, require_channel: bool = True) -> TalosConfig:
             or secrets.get("TALOS_MODEL", DEFAULT_MODEL)
         ),
         model_fallbacks=_value("TALOS_MODEL_FALLBACKS"),
+        custom_providers_file=(
+            _value("TALOS_CUSTOM_PROVIDERS")
+            or str(DATA_DIR / "custom-providers.json")
+        ),
         # Wirft mit dem Variablennamen, nie mit dem Wert — ein Startabbruch, weil still
         # ignorierte Betreiber-Konfiguration die schlimmere Variante ist.
         model_overrides=modelinfo.parse(_value(modelinfo.ENV_VAR)),

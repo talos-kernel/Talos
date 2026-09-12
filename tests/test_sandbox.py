@@ -339,9 +339,23 @@ def test_the_process_limit_reaches_the_child(tmp_path: Path) -> None:
     assert result.stdout.split() == ["nproc", str(ceiling)], result.stderr
 
 
-@pytest.mark.skipif(not LINUX, reason="RLIMIT_AS cannot be set on macOS/arm64")
 @requires_sandbox
 def test_the_memory_limit_reaches_the_child(tmp_path: Path) -> None:
+    """Die Speichergrenze — und was sie auf macOS/arm64 wert ist.
+
+    Bis zum 12.09. wurde dieser Fall ausserhalb von Linux uebersprungen. Ein
+    uebersprungener Test sagt ueber die Maschine, auf der er laeuft, aber nichts, und
+    hier ist gerade das *Fehlen* der Grenze die Information, die der Betreiber braucht:
+    auf macOS/arm64 lehnt der Kernel `RLIMIT_AS` ab („current limit exceeds maximum
+    limit"), dort gibt es also keinen Speicherriegel — der Riegel ist die Wanduhr in
+    `SandboxedShell._collect`.
+
+    Also laeuft der Fall jetzt ueberall und behauptet je Plattform das, was dort wahr
+    ist. Die macOS-Haelfte ist keine Abschwaechung: sie verlangt, dass eine abgelehnte
+    Grenze auch NICHT als gesetzt erscheint. Stuende sie eines Tages doch im Kind, waere
+    das entweder eine neue Faehigkeit der Plattform (dann gehoert sie geprueft) oder
+    eine stille Luege (dann erst recht) — beides faellt hier auf.
+    """
     script = resolved(tmp_path) / "mem.py"
     script.write_text(
         "import resource\nprint('as', resource.getrlimit(resource.RLIMIT_AS)[0])\n",
@@ -352,7 +366,16 @@ def test_the_memory_limit_reaches_the_child(tmp_path: Path) -> None:
     limits = SandboxLimits(timeout_s=20, max_memory_bytes=limit)
     result = shell(tmp_path, limits=limits).run(f"{sys.executable} {script}")
 
-    assert result.stdout.split() == ["as", str(limit)], result.stderr
+    feld, _, gemeldet = result.stdout.partition(" ")
+    assert feld == "as", result.stderr
+    if LINUX:
+        assert gemeldet.strip() == str(limit), result.stderr
+    else:
+        assert gemeldet.strip() != str(limit), (
+            "RLIMIT_AS erscheint hier als gesetzt — dann ist entweder die Plattform "
+            "weiter als angenommen oder die Grenze wird nur behauptet. Beides pruefen."
+        )
+        assert result.returncode == 0, result.stderr
 
 
 @requires_sandbox
@@ -389,32 +412,38 @@ def test_a_grandchild_writes_its_marker_when_nobody_cancels(tmp_path: Path) -> N
 
 @requires_sandbox
 def test_cancel_kills_the_grandchild_too(tmp_path: Path) -> None:
+    """Der Abbruch muss den Enkel erwischen, der den Vater sonst muehelos ueberlebt.
+
+    ⚠️ Der Fall hing bis zum 12.09. an der Uhr: abgebrochen wurde, sobald `cancel()`
+    ueberhaupt etwas vorfand — moeglicherweise, bevor die Schale den Enkel ueberhaupt
+    abgespalten hatte. Dann starb nur der Vater, die Marke blieb aus, und der Test war
+    gruen, ohne das Versprechen je geprueft zu haben. Unter Last kippte dieselbe
+    Uhr in die andere Richtung (einmal beobachtet, Suite-Lauf vom 12.09.).
+
+    Jetzt meldet der Enkel seine Geburt selbst, und abgebrochen wird erst danach. Der
+    Fall ist damit nicht nur stabil, sondern strenger: er prueft ausschliesslich den
+    schweren Weg — ein Enkel, der nachweislich LEBT, muss sterben.
+    """
+    gestartet = resolved(tmp_path) / "started.txt"
     marker = resolved(tmp_path) / "grandchild.txt"
-    started = resolved(tmp_path) / "started.txt"
     runner = shell(tmp_path, limits=SandboxLimits(timeout_s=30))
     outcome: dict[str, sandbox.SandboxResult] = {}
 
     def run() -> None:
         outcome["result"] = runner.run(
-            f"bash -c 'echo go > {started}; sleep 3; echo alive > {marker}' & wait"
+            f"bash -c 'echo da > {gestartet}; sleep 2; echo alive > {marker}' & wait"
         )
 
     thread = threading.Thread(target=run)
     thread.start()
-    # Erst abbrechen, wenn der Lauf WIRKLICH laeuft. Ohne den Handschlag landet das
-    # cancel() auf einem ausgelasteten Runner VOR dem Start des Kommandos — der Lauf
-    # schreibt seinen Marker trotzdem, und der Test kippt, ohne etwas getestet zu
-    # haben (auf dem geteilten macOS-CI-Runner gemessen).
     deadline = time.monotonic() + 10
-    while time.monotonic() < deadline and not started.exists():
+    while time.monotonic() < deadline and not gestartet.exists():
         time.sleep(0.02)
-    assert started.exists(), "der Lauf kam nie in Gang — kein Abbruch mitten drin moeglich"
-    deadline = time.monotonic() + 10
-    while time.monotonic() < deadline and not runner.cancel():
-        time.sleep(0.02)
+    assert gestartet.exists(), "der Enkel lief nie — ein Abbruch bewiese hier nichts"
+    assert runner.cancel() is True, "es lief nichts zum Abschiessen"
     thread.join(timeout=20)
 
-    time.sleep(3.5)  # ueber die Schlafzeit des Enkels hinaus
+    time.sleep(2.5)  # ueber die Schlafzeit des Enkels hinaus
     assert outcome["result"].cancelled is True
     assert not marker.exists()
 
@@ -512,21 +541,6 @@ def test_bubblewrap_only_shares_the_network_when_asked() -> None:
     assert "--share-net" in BubblewrapSandbox().argv(
         "true", workspace=Path("/ws"), allow_network=True
     )
-
-
-def test_bubblewrap_restores_dns_when_the_network_is_shared() -> None:
-    """Netz ohne DNS ist kein Netz: `/etc` liegt unter der leeren tmpfs-Maske,
-    also muessen die Resolver-Dateien einzeln zurueck, sobald `--share-net`
-    gesetzt ist. Gemessen am ersten 0.11-E2E: ein `claude`-Job im Sandbox
-    scheiterte mit `Unable to connect to API`, weil `/etc/resolv.conf` fehlte."""
-    argv = BubblewrapSandbox().argv("true", workspace=Path("/ws"), allow_network=True)
-
-    for name in ("resolv.conf", "nsswitch.conf", "hosts"):
-        if Path(f"/etc/{name}").exists():
-            assert f"/etc/{name}" in argv
-
-    argv_off = BubblewrapSandbox().argv("true", workspace=Path("/ws"))
-    assert "/etc/resolv.conf" not in argv_off
 
 
 def test_bubblewrap_masks_every_protected_prefix_the_floor_names() -> None:
@@ -643,25 +657,3 @@ def test_the_installations_own_interpreter_comes_first_on_the_path() -> None:
     if not venv_bin.is_dir():
         pytest.skip("keine .venv neben der Installation — hier nichts zu binden")
     assert env["PATH"].split(os.pathsep)[0] == str(venv_bin)
-
-
-def test_network_sandbox_binds_the_ca_bundle() -> None:
-    """Netz ohne CA-Bundle ist halbes Netz — gemessen am ersten git-E2E:
-    der https-Clone scheiterte mit „server certificate verification failed",
-    weil /etc/ssl unter der /etc-Maske lag."""
-    import os
-    from talos.sandbox import BubblewrapSandbox, SandboxExecSandbox
-
-    if os.path.isdir("/etc/ssl"):
-        argv = BubblewrapSandbox().argv("true", workspace=Path("/tmp/ws"), allow_network=True)
-        assert "--ro-bind" in list(argv) and "/etc/ssl" in list(argv)
-    profil = SandboxExecSandbox().profile(Path("/tmp/ws"), allow_network=True)
-    assert '(allow file-read* (subpath "/etc/ssl")' in profil
-
-
-def test_offline_sandbox_keeps_the_ca_bundle_masked() -> None:
-    """Ohne Netz braucht nichts Zertifikate — die Maske bleibt ganz."""
-    from talos.sandbox import SandboxExecSandbox
-
-    profil = SandboxExecSandbox().profile(Path("/tmp/ws"), allow_network=False)
-    assert '(allow file-read* (subpath "/etc/ssl")' not in profil

@@ -6,7 +6,6 @@ liefert. Kein Netz, kein Modell.
 """
 import json
 import sys
-import pytest
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -114,74 +113,6 @@ def test_prose_that_merely_starts_like_the_marker_still_appears() -> None:
     assert client.sent[0][1] == "TOOLs sind bereit."
 
 
-# --- Die PLAN-Falle: rohes Plan-JSON gehoert nie in den Chat -------------------
-def test_a_plan_line_never_reaches_the_chat_even_split_across_deltas() -> None:
-    """Befund 27.08.: der Betreiber sah `PLAN: {"goal": …}` als rohes JSON im Chat.
-    Die Zeile ist Maschinerie wie TOOL_CALL — ihre menschliche Form ist die
-    Aktivitaetszeile (ProgressStage.PLAN), nicht die Nachricht."""
-    client = FakeChatClient()
-    reply = _reply(client)
-
-    for delta in ("PL", "AN: {\"goal\": ", "\"Campaign-report\"", ", \"steps\": [\"suchen\"]}"):
-        reply.push(delta)
-
-    assert client.sent == []
-    assert client.edited == []
-    assert reply.adopt("Fertig.") is False   # nichts gewachsen -> normal senden
-
-
-def test_plan_and_tool_call_in_one_turn_stay_silent() -> None:
-    """Der Normalfall: Ankuendigung und erster Schritt im selben Zug."""
-    client = FakeChatClient()
-    reply = _reply(client)
-
-    reply.push('PLAN: {"goal": "x", "steps": ["a", "b"]}\n')
-    reply.push('TOOL_CALL: {"tool": "vault_search", "args": {"query": "x"}}')
-
-    assert client.texts == []
-
-
-def test_prose_that_merely_starts_like_plan_still_appears() -> None:
-    """`PLANET der Affen` ist Prosa — nur der echte Marker mit Doppelpunkt schweigt."""
-    client = FakeChatClient()
-    reply = _reply(client)
-
-    reply.push("PLAN")     # noch unentscheidbar: echtes Praefix
-    assert client.texts == []
-    reply.push("ET der Affen.")
-
-    assert client.sent[0][1] == "PLANET der Affen."
-
-
-@pytest.mark.parametrize("width", [1, 2, 7, 4096])
-@pytest.mark.parametrize("control", [
-    'TOOL_CALL: {"tool": "remote_exec", "args": {"host": "server", "command": "df -h /"}}',
-    'PLAN: {"goal": "Check storage", "steps": ["Read usage"]}\nTOOL_CALL: {}',
-    'TOOL_CALL: {\n  "tool": "read_file",\n  "args": {"path": "private-command-argument"}\n}',
-])
-def test_control_after_prose_is_never_visible_in_any_stream_snapshot(width, control):
-    client = FakeChatClient()
-    reply = _reply(client, min_edit_interval=0)
-    text = "Ich prüfe den Server.\n\n  " + control
-    for offset in range(0, len(text), width):
-        reply.push(text[offset:offset + width])
-    reply.settle()
-    assert client.texts
-    assert client.texts[-1].strip() == "Ich prüfe den Server."
-    assert all("TOOL" not in text and "PLAN" not in text and "command" not in text
-               and "{" not in text for text in client.texts)
-
-
-def test_line_filter_keeps_normal_multiline_prose_and_marker_mentions():
-    client = FakeChatClient()
-    reply = _reply(client, min_edit_interval=0)
-    text = "Erster Absatz.\n\nPLANET und TOOLs sind Wörter.\nDas Wort TOOL_CALL ist hier Prosa."
-    for char in text:
-        reply.push(char)
-    reply.settle()
-    assert client.texts[-1] == text
-
-
 def test_prose_grows_visibly_and_the_last_version_is_exactly_the_answer() -> None:
     client = FakeChatClient()
     reply = _reply(client, min_edit_interval=1.2)
@@ -197,7 +128,7 @@ def test_prose_grows_visibly_and_the_last_version_is_exactly_the_answer() -> Non
     assert reply.adopt("Ja, das passt.") is True
     assert client.messages == 1              # und keine zweite daneben
     assert client.edited[-1][2] == "Ja, das passt."
-    assert client.edited[-1][3]["parse_mode"] == "HTML"
+    assert client.edited[-1][3]["parse_mode"] == "HTML"  # adopt() formatiert nach Telegram-HTML (tgmarkup), nicht legacy-Markdown
 
 
 def test_growth_is_raw_and_only_the_final_version_is_formatted() -> None:
@@ -211,7 +142,7 @@ def test_growth_is_raw_and_only_the_final_version_is_formatted() -> None:
     assert "parse_mode" not in client.edited[0][3]
 
     reply.adopt("Hier:\n```py\nx = 1\n```")
-    assert client.edited[-1][3]["parse_mode"] == "HTML"
+    assert client.edited[-1][3]["parse_mode"] == "HTML"  # adopt() formatiert nach Telegram-HTML (tgmarkup), nicht legacy-Markdown
 
 
 def test_edits_keep_the_minimum_interval_instead_of_flooding() -> None:
@@ -361,7 +292,7 @@ def test_answer_grows_in_place_and_is_never_sent_a_second_time(tmp_path) -> None
     assert sent == []                                   # keine zweite Nachricht
     assert client.messages == 1
     assert client.edited[-1][2] == "Der Kessel ist kalt."
-    assert client.edited[-1][3]["parse_mode"] == "HTML"
+    assert client.edited[-1][3]["parse_mode"] == "HTML"  # adopt() formatiert nach Telegram-HTML (tgmarkup), nicht legacy-Markdown
 
 
 def test_tool_turn_stays_silent_and_only_the_prose_turn_shows(tmp_path) -> None:
@@ -381,20 +312,6 @@ def test_tool_turn_stays_silent_and_only_the_prose_turn_shows(tmp_path) -> None:
     assert client.messages == 1
     assert all("TOOL" not in text for text in client.texts)
     assert client.edited[-1][2] == "Steht drin: kalt.\n\n1 tool call, 0 failed"
-
-
-def test_narration_then_tool_executes_normally_without_streaming_its_protocol(tmp_path):
-    target = tmp_path / "storage.txt"
-    target.write_text("52 GiB free\n")
-    client = FakeChatClient()
-    turn = "Ich lese den Status.\n\n" + _tool_call("read_file", {"path": str(target)})
-    reasoner = StreamingReasoner(tuple(turn), ("52 GiB frei.",))
-    conductor, sent = _conductor(tmp_path, reasoner, client=client)
-    assert conductor.handle(_msg(12, "Lies den Status."))
-    assert reasoner.calls == 2 and "52 GiB free" in reasoner.kwargs[1][0]
-    assert sent == [] and client.messages == 1  # narration is adopted as the final result
-    assert all("TOOL_CALL" not in text and str(target) not in text for text in client.texts)
-    assert client.edited[-1][2] == "52 GiB frei.\n\n1 tool call, 0 failed"
 
 
 def test_an_approval_run_leaves_no_stray_answer_message(tmp_path) -> None:

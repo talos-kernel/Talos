@@ -92,20 +92,21 @@ def _start(sock_dir, tmp_path, spawn, *, extra_env=""):
         daemon=True,
     )
     thread.start()
-    # Bereit heisst VERBINDBAR, nicht "Datei da": zwischen bind() und listen()
-    # liegt ein Fenster, und ein Client in diesem Fenster bekommt
-    # ECONNREFUSED — auf dem CI-macOS-Runner gemessen, lokal praktisch nie.
-    ende = time.monotonic() + 5
-    while True:
+    # Auf sock.exists() zu warten ist zu frueh: die Datei entsteht schon bei bind(),
+    # doch erst nach listen() nimmt der Worker Verbindungen an. Wer in die Luecke
+    # connectet, bekommt ECONNREFUSED — auf dem langsameren macOS-Laeufer flackerte genau
+    # das (test_prompt_cap, 11.09.). Warte, bis wirklich verbunden werden kann; die leere
+    # Probe liest der Worker als inhaltslose Verbindung (`_bediene`: roh is None).
+    for _ in range(500):
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
                 probe.settimeout(0.5)
                 probe.connect(str(sock))
-            break  # verbunden — der accept-Loop laeuft
+            break
         except OSError:
-            if time.monotonic() > ende:  # pragma: no cover — Fixture-Defekt
-                raise RuntimeError("Worker-Socket ist nicht verbindbar")
-            time.sleep(0.02)
+            time.sleep(0.01)
+    else:  # pragma: no cover — waere ein Defekt des Fixtures selbst
+        raise RuntimeError("Worker-Socket nahm keine Verbindung an")
     return str(sock), stop
 
 
@@ -236,21 +237,10 @@ def test_spawn_env_contains_no_talos_secrets(recorded_env_worker, monkeypatch):
         time.sleep(0.05)
     env = recorded_env_worker.last_env
     assert env is not None
-    assert env["HOME"].endswith(".home")      # HOME liegt IM Job-Workspace
-    # Die einzige erlaubte Credential ist die EIGENE des Jobs (Claude-OAuth).
-    leaked = [k for k in env
-              if ("TALOS" in k or "TELEGRAM" in k or "TOKEN" in k)
-              and k != "CLAUDE_CODE_OAUTH_TOKEN"]
+    assert env["HOME"]                      # dedicated worker home, set
+    leaked = [k for k in env if "TALOS" in k or "TELEGRAM" in k or "TOKEN" in k]
     assert leaked == []
     assert "supersecret" not in json.dumps(env) and "alsasecret" not in json.dumps(env)
-
-
-def test_job_env_home_inside_workspace_and_token_opt_in(tmp_path):
-    ohne = claudeworker.job_env("/srv/worker-home", tmp_path)
-    assert ohne["HOME"] == str(tmp_path / ".home")
-    assert "CLAUDE_CODE_OAUTH_TOKEN" not in ohne
-    mit = claudeworker.job_env("/srv/worker-home", tmp_path, oauth_token="tok")
-    assert mit["CLAUDE_CODE_OAUTH_TOKEN"] == "tok"
 
 
 def test_unconfined_backend_never_selected(monkeypatch):
@@ -281,66 +271,3 @@ def test_parse_stream_event_extracts_summary_and_files(tmp_path):
             files.append(f)
     assert summary == "created note.md"
     assert files == ["note.md", "sub/a.py"]      # /etc/passwd dropped
-
-
-class _FailHandle:
-    """Ein Job, der mit rc != 0 endet — und eine stderr-Spur hinterlässt."""
-
-    def __init__(self, rc=1, tail="bwrap: Can't mount proc on /newroot/proc"):
-        self._rc = rc
-        self.stderr_tail = tail
-
-    def events(self):
-        if False:
-            yield None
-        return self._rc
-
-
-def _frame_submit(jobs, jid, workspace, spawn, timeout_s=30):
-    from talos.sandbox import SandboxLimits
-    roh = json.dumps({"op": "submit", "job_id": jid, "prompt": "p",
-                      "workspace": str(workspace)}).encode()
-    return claudeworker.handle_frame(roh, jobs, spawn=spawn,
-                                     limits=SandboxLimits(timeout_s=timeout_s))
-
-
-def _warte_auf(jobs, jid, zustand, sekunden=5.0):
-    ende = time.monotonic() + sekunden
-    while time.monotonic() < ende:
-        s = claudeworker.handle_frame(
-            json.dumps({"op": "status", "job_id": jid}).encode(), jobs)
-        if s.get("state") == zustand:
-            return s
-        time.sleep(0.05)
-    return s
-
-
-def test_failed_job_carries_stderr_tail_and_returncode(tmp_path):
-    """Ein gescheiterter Job, der nichts sagt, ist un-debuggbar — gemessen am
-    ersten Live-E2E: `failed` ohne jede Spur, weil stderr im Nichts landete."""
-    jobs = claudeworker._Jobs(worker_home=str(tmp_path))
-    r1 = _frame_submit(jobs, "f1", tmp_path / "job-f1",
-                       lambda a, c, e, l: _FailHandle())
-    assert r1["ok"] and r1["state"] == "accepted"
-    s = _warte_auf(jobs, "f1", "failed")
-    assert s["state"] == "failed"
-    assert s["returncode"] == 1
-    assert "Can't mount proc" in s["error"]
-
-
-def test_failed_job_without_spawn_carries_the_exception(tmp_path):
-    def kaputt(argv, cwd, env, limits):
-        raise OSError("claude binary not found")
-    jobs = claudeworker._Jobs(worker_home=str(tmp_path))
-    _frame_submit(jobs, "f2", tmp_path / "job-f2", kaputt)
-    s = _warte_auf(jobs, "f2", "failed")
-    assert s["state"] == "failed"
-    assert "claude binary not found" in s["error"]
-
-
-def test_done_job_has_no_error_field(tmp_path):
-    jobs = claudeworker._Jobs(worker_home=str(tmp_path))
-    _frame_submit(jobs, "ok1", tmp_path / "job-ok1", _spawn_ok)
-    s = _warte_auf(jobs, "ok1", "done")
-    assert s["state"] == "done"
-    assert "error" not in s

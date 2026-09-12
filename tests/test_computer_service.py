@@ -27,7 +27,19 @@ def test_captures_inherit_exact_agent_read_access_after_final_chmod(computer, tm
     from pathlib import Path
 
     if not shutil.which("setfacl") or not shutil.which("getfacl"):
-        pytest.skip("Linux POSIX ACL tools required")
+        # ⚠️ Kein Skip. Die POSIX-ACL-Werkzeuge gehoeren Linux; der Computer laeuft
+        # dort, entwickelt wird oft auf macOS. Ein uebersprungener Fall sagt aber
+        # NICHTS — und was hier bewacht wird, ist das Rechtemodell der Aufnahmen:
+        # der Agent darf lesen, sonst niemand. Ohne echte Werkzeuge wird deshalb der
+        # VERTRAG aus der Installerquelle geprueft. Wer die Rechte lockert, faellt
+        # damit auf jeder Plattform auf, statt nur dort, wo setfacl zufaellig liegt.
+        quelle = (Path(__file__).resolve().parents[1] / "deploy/computer-setup.py").read_text()
+        zeile = next(z for z in quelle.splitlines() if "setfacl" in z and "-m" in z)
+        assert 'u:{agent_uid}:r-x' in zeile, f"Verzeichnisrecht geaendert: {zeile.strip()}"
+        assert 'd:u:{agent_uid}:r--' in zeile, f"Vererbtes Leserecht geaendert: {zeile.strip()}"
+        spec = zeile.split('f"', 1)[1].split('"', 1)[0]
+        assert "w" not in spec, f"Schreibrecht in der ACL: {spec}"
+        return
     installer = runpy.run_path(str(Path(__file__).resolve().parents[1] / "deploy/computer-setup.py"))
     captures = tmp_path / "captures"
     captures.mkdir(mode=0o750)

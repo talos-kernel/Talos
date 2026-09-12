@@ -16,7 +16,12 @@ from .eventlog import Event
 from .executor import Executor, Outcome, Status
 from .policy import ToolRequest
 
-TASK_WORDS = frozenset({"allow this task"})
+# Zweisprachig und ADDITIV (CLAUDE.md: „Approval tokens are additive across
+# languages — never replace, only extend"). Bewusst eine MEHRWORT-Wendung je
+# Sprache: das hier ist die breiteste Freigabe, die es gibt, sie deckt spaetere
+# Befehle und Ziele derselben Aufgabe mit ab. Ein Wort wie „ok" oder auch nur
+# „aufgabe" darf sie niemals ausloesen. Belegt in redteam.py.
+TASK_WORDS = frozenset({"allow this task", "diese aufgabe erlauben"})
 TASK_NOTICE = (
     "▶ Allow this task: automatically approve all approval-required actions in this "
     "task until it ends or you stop it; no time limit. Later commands and targets "

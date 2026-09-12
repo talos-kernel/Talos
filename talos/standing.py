@@ -92,6 +92,26 @@ def action_key(req: ToolRequest) -> str | None:
         if not isinstance(op, str) or not op or not isinstance(repo, str) or not repo:
             return None
         material = ("op", op, "repo", repo, "url", str(req.args.get("url") or ""))
+    elif req.tool in ("computer_run", "computer_status"):
+        # Der private Computer bekommt NIE eine stehende Freigabe, und das ist kein
+        # Versehen. Sein Zielextraktor liefert eine Konstante (das Computer-Wurzel-
+        # verzeichnis), also ist das abgeleitete Material fuer JEDE Aktion dasselbe:
+        # gemessen am 12.09. traegt `exec "echo hi"` denselben Abdruck wie
+        # `browser navigate https://bank.example/transfer` und wie `stop`. Ein einziges
+        # „∞ Always allow" auf harmlose Arbeit haette damit den ganzen Computer
+        # dauerhaft freigeschaltet — ueber Neustarts hinweg, denn `restore` liest die
+        # Regeln aus dem Log zurueck. In `/allowed` hiessen alle diese Regeln zudem
+        # gleich („computer_run /var/lib/talos-computer"), der Betreiber koennte also
+        # nicht einmal gezielt widerrufen.
+        #
+        # Auf op/command/url zu binden waere der naheliegende Ausweg und ist trotzdem
+        # falsch: fuer reibungslose Arbeit gibt es bereits `TALOS_COMPUTER_AUTOAPPROVE`,
+        # bewusst auf COMPUTER_WORK begrenzt und ohne pause/resume/stop. Eine stehende
+        # Regel danebenzustellen waere eine zweite Quelle von Erlaubnis — genau das, was
+        # CLAUDE.md verbietet, und sie waere die staerkere: sie ueberlebt den Neustart
+        # und braucht keinen Schalter. Der Betreiber bekommt hier „einmal ausgefuehrt,
+        # keine Regel angelegt" zu lesen, nicht eine Regel, die mehr deckt als gemeint.
+        return None
     else:
         targets = guard_targets(req)
         if not targets:

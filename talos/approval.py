@@ -33,13 +33,21 @@ _HASH_CHUNK = 65536
 # Freigabe ist eine Sicherheitsbestätigung — nur ein bewusster, eindeutiger Token zählt.
 # Bewusst NICHT ok/go/sure: bei offener Freigabe wuerde sonst ein beilaeufiges "ok" im
 # Chat einen Shell-Lauf scharf schalten. Der Freigabe-Text verlangt ausdruecklich "yes".
-_AFFIRMATIVE = {"yes"}
+#
+# Zweisprachig und ADDITIV (CLAUDE.md: „Approval tokens are additive across languages
+# (`yes` **and** the operator's own word). Never replace, only extend."): der
+# Freigabe-Text ist deutsch („Bitte nur ja, immer oder nein"), die Wortlisten waren es
+# nicht. Ein getipptes „ja" fiel dadurch in den reprompt-Zweig und lief nach
+# TTL_SECONDS in „Freigabe ungültig" — die Freigabe war für den Betreiber faktisch tot.
+# Genau ein Wort je Sprache, weiterhin ohne ok/klar/passt: die Enge ist die
+# Sicherheitseigenschaft, nicht die Sprache. Belegt in redteam.py.
+_AFFIRMATIVE = {"yes", "ja"}
 # Abbruch darf breit sein — mehr Wege, „nein" zu sagen, ist eine Sicherheitsreserve.
-_NEGATIVE = {"no", "n", "nope", "stop", "cancel", "abort"}
+_NEGATIVE = {"no", "n", "nope", "stop", "cancel", "abort", "nein"}
 # „immer" ist das ja mit Gedächtnis: es führt diese Anfrage aus UND legt eine stehende
 # Freigabe für genau diese Handlung an (siehe standing.py). Genauso eng gefasst wie „ja" —
 # und bewusst disjunkt davon, damit die drei Wege sich im Conductor nie überlappen.
-_ALWAYS = {"always"}
+_ALWAYS = {"always", "immer"}
 
 Fingerprint = tuple[tuple[str, str], ...]  # ((realpath, sha256|"absent"), ...)
 
@@ -270,7 +278,14 @@ class ApprovalPicker:
                     expires_at=expires_at,
                 )
                 buttons.append(Button(label, self.PREFIX + token))
-        return StructuredMessage(text, (tuple(buttons[:2]), tuple(buttons[2:])))
+        # „Deny" steht ALLEIN in der zweiten Reihe — das war auf main eine bewusste
+        # Festlegung (`((buttons[0], buttons[1]), (buttons[2],))`) und der Port hat sie
+        # beim Verallgemeinern auf n Knoepfe verloren: bei vier Knoepfen landete Deny
+        # neben „∞ Always allow". Ein Fehlgriff auf dem Telefon haette damit aus einer
+        # Ablehnung die BREITESTE Freigabe gemacht, die es gibt. Alle Erlaubnisse oben,
+        # die Ablehnung fuer sich — „Deny" ist per Konstruktion immer der letzte Eintrag
+        # in `choices`, auch wenn „Allow this task" davor eingefuegt wurde.
+        return StructuredMessage(text, (tuple(buttons[:-1]), (buttons[-1],)))
 
     def consume(
         self,

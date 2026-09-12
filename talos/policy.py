@@ -454,6 +454,8 @@ TARGET_EXTRACTORS = {
     # Wurzel, unter der jeder Job-Workspace liegt — nie ein Modellpfad. Der
     # Floor greift also, bevor ein einziger Byte des fremden Agenten faellt.
     "delegate_code": lambda args: (claude_work_root(),),
+    # Der Computer ist EINE Wurzel, nie ein Modellpfad: `computer_status` liest nur
+    # (kein Ziel), `computer_run` wirkt ausschliesslich unterhalb seiner Wurzel.
     "computer_status": lambda args: (),
     "computer_run": lambda args: (os.environ.get("TALOS_COMPUTER_ROOT", "/var/lib/talos-computer"),),
     # DAG-Delegation: dasselbe Ziel wie `delegate_code` — jeder Knoten wird ein

@@ -27,15 +27,11 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install sandbox and filesystem ACL tools
+      - name: Install bubblewrap
         if: runner.os == 'Linux'
         run: |
-          # Both packages come from Ubuntu. Unrelated runner repositories (for
-          # example Chrome during a mirror sync) must not block these checks.
-          test -f /etc/apt/sources.list.d/ubuntu.sources
-          apt_sources=(-o Dir::Etc::sourcelist=sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-)
-          sudo apt-get "${apt_sources[@]}" update
-          sudo apt-get "${apt_sources[@]}" install --yes bubblewrap acl
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap
           if sysctl kernel.unprivileged_userns_clone >/dev/null 2>&1; then
             sudo sysctl --write kernel.unprivileged_userns_clone=1
           fi

@@ -1,112 +1,369 @@
-/* Shared public surfaces. Local assets only; the agent's own data never enters here. */
-@font-face{font-family:Talos Display;src:url('/fonts/cinzel-var.woff2') format('woff2');font-weight:400 900;font-display:swap}
-:root{--bg:oklch(.16 .016 75);--bg2:oklch(.20 .018 75);--amber:oklch(.80 .12 78);--hot:oklch(.94 .035 82);--dim:oklch(.74 .035 80);--faint:oklch(.64 .035 80);--line:oklch(.34 .028 80);--surface:oklch(.225 .022 77);--body:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-body{font-family:var(--body);font-size:16px;line-height:1.7}
-p,li{max-width:75ch}
-a,button,input{touch-action:manipulation}
-:focus-visible{outline:2px solid var(--amber);outline-offset:5px}
-section,[id]{scroll-margin-top:96px}
-.wrap{max-width:1260px}
-.crt-fx,.flicker,#rain,.rule{display:none!important}
-html.js #boot{display:none}
-nav{position:sticky;top:0;inset-inline:0;background:var(--bg);backdrop-filter:none;z-index:50}
-nav .wrap{align-items:center;gap:24px;min-height:76px;flex-wrap:wrap;padding-block:12px}
-nav .brand{white-space:nowrap;text-shadow:none;letter-spacing:.08em;flex-shrink:0}
-nav .status,nav .sp{display:none}
-nav a.lnk{font-family:var(--body);font-size:12px;letter-spacing:.015em;text-transform:none;white-space:nowrap;min-height:40px;display:inline-flex;align-items:center}
-.nav-links{display:flex;gap:20px;align-items:center;flex:1;justify-content:flex-end}
-.menu-toggle{display:none;margin-left:auto;background:var(--bg2);border:1px solid var(--line);color:var(--hot);padding:10px 16px;font:600 14px var(--body);border-radius:4px;cursor:pointer;min-height:44px}
-.skip-link{position:fixed;top:8px;left:12px;z-index:200;padding:10px 18px;background:var(--hot);color:var(--bg);transform:translateY(-160%)}
-.skip-link:focus{transform:none}
-h1,h2{letter-spacing:-.035em;text-shadow:none!important;text-wrap:balance}
-h1{font-family:'Talos Display',serif;font-weight:500;font-size:clamp(36px,5.3vw,72px);line-height:1.14}
-h2{font-family:var(--body);font-weight:600;font-size:clamp(28px,3.4vw,45px);line-height:1.2}
-.sub{font-size:17px;line-height:1.75}
-.sys,.sec-tag{font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--amber)}
-.btn{border-radius:4px;font-family:var(--body);letter-spacing:.02em;text-transform:none;font-size:15px;font-weight:600;min-height:48px;display:inline-flex;align-items:center;justify-content:center;transition:background .2s,color .2s,border-color .2s}
-.btn:not(.ghost){background:var(--amber);color:var(--bg)}
-.btn:hover{box-shadow:none;background:var(--hot)}
-.btn.ghost{color:var(--hot)}
-.btn:disabled{opacity:.55;cursor:default}
-.talos-home .hero{min-height:700px;padding:64px 0 72px}
-.talos-home .hero-grid{grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:52px}
-.talos-home h1{max-width:11ch}
-.talos-home .hero .lede{font-size:18px;line-height:1.75;max-width:45ch;margin-top:26px}
-.talos-home .scanbox{max-width:465px;opacity:.92}
-.talos-home .scanbox pre{filter:none;text-shadow:none}
-.talos-home .scan-label{color:var(--dim);letter-spacing:.12em}
-.talos-home .meter-row{border-top:1px solid var(--line);padding-top:22px;margin-top:30px;gap:28px;font-size:12px}
-.talos-home .meter-row b{font-family:var(--body);font-size:21px}
-.talos-home .tick{font-family:var(--mono);font-size:11px;margin-top:28px}
-.talos-home section{padding-block:clamp(56px,7vw,96px)}
-.talos-home .tools .tool-row{gap:24px}
-.talos-home .tool-row p{font-size:15px;line-height:1.75}
-.talos-home .limits li{font-size:16px}
-.talos-home .stats{gap:28px}
-.talos-home .stat .n{font-family:var(--body);font-size:40px;text-shadow:none}
-.talos-home .stat .l{line-height:1.5}
-.mission-section{background:var(--bg2);border-block:1px solid var(--line)}
-.mission-layout{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:clamp(32px,6vw,88px);align-items:center}
-.mission-intro h2{max-width:14ch;margin-bottom:22px}
-.mission-intro p{color:var(--dim)}
-.scenario-controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px}
-.scenario-controls button{background:transparent;border:1px solid var(--line);color:var(--dim);padding:11px 15px;font:500 14px var(--body);border-radius:4px;cursor:pointer;min-height:44px}
-.scenario-controls button[aria-pressed=true]{background:var(--amber);border-color:var(--amber);color:var(--bg)}
-.mission-intro .simulation-note{font-size:13px;margin-top:18px;max-width:42ch}
-.chat-preview{background:oklch(.18 .014 78);border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:0 24px 60px oklch(.10 .015 75/.25)}
-.chat-title{display:flex;align-items:center;gap:12px;padding-bottom:20px;border-bottom:1px solid var(--line)}
-.chat-avatar{background:var(--surface);border:1px solid var(--line);width:44px;height:44px;display:grid;place-items:center;border-radius:50%;font-size:20px}
-.chat-title strong{font-size:16px;display:block}.chat-title small{font-size:12px;color:var(--dim)}
-.demo-badge{margin-left:auto;font:10px var(--mono);letter-spacing:.1em;color:var(--amber);border:1px solid var(--line);padding:5px 8px;border-radius:3px}
-.chat-request{margin:22px 0 18px 35px;padding:13px 17px;border-radius:12px 12px 3px 12px;background:oklch(.30 .034 78);color:var(--hot);font-size:14px;line-height:1.6}
-.chat-receipt{background:var(--surface);border:1px solid var(--line);border-radius:3px 12px 12px 12px;padding:20px;min-height:284px}
-.receipt-header{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;color:var(--hot)}
-.receipt-meta{font:11px var(--mono);color:var(--dim);margin:7px 0 19px}
-.receipt-trail{list-style:none;display:grid;gap:13px;margin:0;padding:0;font-size:14px}
-.receipt-trail li{display:flex;align-items:flex-start;gap:10px;line-height:1.5}
-.receipt-trail span:first-child{flex:0 0 22px}
-.receipt-result{border-top:1px solid var(--line);padding-top:14px;margin-top:19px;color:var(--hot);font-size:14px;line-height:1.6}
-.preview-actions{display:flex;align-items:center;gap:14px;margin-top:18px}
-.preview-actions .btn{padding:9px 16px;font-size:13px;min-height:44px}
-.preview-actions small{font-size:12px;color:var(--dim)}
-.worker-roster{display:grid;margin-top:34px;border-top:1px solid var(--line)}
-.worker-row{display:grid;grid-template-columns:42px 180px minmax(0,1fr);gap:22px;align-items:start;padding:24px 0;border-bottom:1px solid var(--line)}
-.worker-row .worker-icon{font-size:25px}.worker-row h3{font-size:18px;color:var(--hot)}
-.worker-row code{font-size:11px;color:var(--amber)}
-.worker-row p{font-size:16px;color:var(--dim);margin:0}
-.privacy-note{display:flex;gap:18px;align-items:flex-start;margin-top:28px;padding:22px 0;color:var(--dim);font-size:15px}
-.privacy-note>span{font-size:25px}.privacy-note strong{display:block;margin-bottom:6px}
-@media(max-width:1240px){
-  nav[data-menu] .menu-toggle{display:block}
-  nav[data-menu] .nav-links{display:none;flex-basis:100%;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 20px;padding:8px 0 12px}
-  nav[data-menu][data-open] .nav-links{display:grid}
-  nav[data-menu] a.lnk{display:flex;font-size:15px;min-height:44px}
+/* ───────────────────────────────────────────────────────────────────────────
+   TALOS — shared public surface · "Bronze Gate"
+   One design system loaded last on every page, so every page inherits the look.
+   Local assets only; no third-party fonts, no telemetry, no agent data here.
+
+   Register: a bronze giant's gate carved on warm paper. Cinzel for the monument,
+   EB Garamond for the reflective line, Sometype Mono for the machine's own voice,
+   Inter for the calm body. One bronze accent marks authority — the gate, the nail.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* ── fonts (local, absolute paths resolve from site root for sub-pages too) ── */
+@font-face{font-family:"Talos Display";src:url("/fonts/cinzel-var.woff2") format("woff2");
+  font-weight:400 900;font-display:swap}
+@font-face{font-family:"Talos Serif";src:url("/fonts/eb-garamond-var.woff2") format("woff2");
+  font-weight:400 800;font-style:normal;font-display:swap}
+@font-face{font-family:"Talos Sans";src:url("/fonts/inter-var.woff2") format("woff2");
+  font-weight:100 900;font-display:swap}
+
+/* ── tokens · LIGHT (default) ──────────────────────────────────────────────── */
+:root{
+  color-scheme:light;
+
+  /* warm paper → warm ink */
+  --bg:      oklch(0.977 0.006 84);   /* paper                       */
+  --bg2:     oklch(0.953 0.010 82);   /* panel                       */
+  --surface: oklch(0.938 0.012 80);   /* raised card                 */
+  --hot:     oklch(0.255 0.020 58);   /* strongest ink (headings)    */
+  --amber:   oklch(0.320 0.018 58);   /* body ink                    */
+  --dim:     oklch(0.460 0.017 62);   /* secondary                   */
+  --faint:   oklch(0.600 0.014 66);   /* meta / captions             */
+  --line:    oklch(0.872 0.013 78);   /* hairline                    */
+
+  /* the single accent: bronze */
+  --accent:      oklch(0.605 0.090 66);
+  --accent-lift: oklch(0.700 0.100 72);
+  --accent-soft: oklch(0.605 0.090 66 / 0.15);
+
+  /* verdict semantics, restrained */
+  --deny:  oklch(0.510 0.150 32);
+  --ask:   oklch(0.585 0.090 66);
+  --allow: oklch(0.505 0.086 148);
+
+  /* inverted (ink) panels */
+  --ink:    oklch(0.190 0.014 60);
+  --ink-fg: oklch(0.945 0.008 84);
+
+  /* type roles — the sub-pages drive headings through --crt and code through --mono */
+  --crt:   "Talos Display", "Cinzel", Georgia, "Times New Roman", serif;
+  --serif: "Talos Serif", Georgia, "Times New Roman", serif;
+  --sans:  "Talos Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:  "Sometype Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --body:  var(--sans);
 }
-@media(max-width:940px){
-  .talos-home .hero-grid{grid-template-columns:1fr .7fr;gap:24px}
-  .talos-home .hero{min-height:0;padding:50px 0 56px}
-  .talos-home h1{font-size:clamp(38px,6vw,58px)}
+
+/* ── tokens · DARK (respects the OS setting; no toggle on these pages) ──────── */
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme:dark;
+    --bg:      oklch(0.168 0.012 64);
+    --bg2:     oklch(0.208 0.014 64);
+    --surface: oklch(0.238 0.016 64);
+    --hot:     oklch(0.940 0.022 82);
+    --amber:   oklch(0.862 0.030 82);
+    --dim:     oklch(0.700 0.030 80);
+    --faint:   oklch(0.560 0.026 78);
+    --line:    oklch(0.340 0.022 74);
+    --accent:      oklch(0.770 0.110 78);
+    --accent-lift: oklch(0.840 0.100 82);
+    --accent-soft: oklch(0.770 0.110 78 / 0.18);
+    --deny:  oklch(0.680 0.170 32);
+    --ask:   oklch(0.780 0.110 78);
+    --allow: oklch(0.760 0.130 150);
+    --ink:    oklch(0.120 0.010 60);
+    --ink-fg: oklch(0.930 0.020 82);
+  }
+}
+
+/* ── base ──────────────────────────────────────────────────────────────────── */
+html{background:var(--bg)}
+body{
+  background:var(--bg);
+  color:var(--amber);
+  font-family:var(--body);
+  font-size:16px;
+  line-height:1.65;
+  letter-spacing:-0.002em;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  overflow-x:clip;
+}
+p,li{max-width:74ch}
+a,button,input,select,textarea{touch-action:manipulation}
+::selection{background:var(--accent);color:var(--bg)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+section,[id]{scroll-margin-top:88px}
+.wrap{max-width:1160px}
+b,strong{color:var(--hot)}
+
+/* Decorations from the terminal skin have no place on paper. */
+.crt-fx,.flicker,#rain,#boot,.rule,.scanbox .scanline{display:none !important}
+html.js #boot{display:none}
+
+/* Kill every leftover amber glow so text sits crisp on the paper ground. */
+h1,h2,h3,.brand,.sec-tag,.sys,.spec b,.stat .n,.myth-pull,.led-row .v,
+.tick .t-verdict,.vs,nav a.lnk.on,.verdict pre,.doc-line,.nail code{text-shadow:none !important}
+
+/* ── links ─────────────────────────────────────────────────────────────────── */
+a{color:var(--hot);text-decoration:none}
+main a:not(.btn):not(.lnk):not(.brand):not(.chip){
+  color:var(--hot);
+  text-decoration:underline;
+  text-decoration-color:var(--accent-soft);
+  text-decoration-thickness:1px;
+  text-underline-offset:3px;
+  transition:text-decoration-color .2s;
+}
+main a:not(.btn):not(.lnk):not(.brand):not(.chip):hover{text-decoration-color:var(--accent)}
+
+/* ── nav ───────────────────────────────────────────────────────────────────── */
+nav{
+  position:fixed;inset:0 0 auto 0;z-index:50;
+  background:color-mix(in oklab, var(--bg) 86%, transparent);
+  border-bottom:1px solid var(--line);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
+nav .wrap{align-items:center;gap:22px;min-height:64px;flex-wrap:wrap;padding-block:10px}
+.brand{
+  font-family:var(--crt);font-weight:600;font-size:22px;letter-spacing:.14em;
+  color:var(--hot);text-decoration:none;white-space:nowrap;flex-shrink:0;
+  display:inline-flex;align-items:center;gap:12px;
+}
+.brand .mark{width:22px;height:22px;display:block;
+  filter:none;mix-blend-mode:multiply;opacity:.92}
+@media (prefers-color-scheme: dark){.brand .mark{mix-blend-mode:normal}}
+nav .status,nav .sp{display:none}
+nav a.lnk{
+  font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--dim);text-decoration:none;white-space:nowrap;
+  min-height:36px;display:inline-flex;align-items:center;position:relative;transition:color .18s;
+}
+nav a.lnk:hover{color:var(--hot)}
+nav a.lnk.on,nav a.lnk[aria-current="page"]{color:var(--accent)}
+nav a.lnk.on::before,nav a.lnk.on::after{content:none}
+
+/* injected by interface.js on every page */
+.nav-links{display:flex;gap:18px;align-items:center;flex:1;justify-content:flex-end;flex-wrap:wrap}
+.menu-toggle{
+  display:none;margin-left:auto;background:transparent;border:1px solid var(--line);
+  color:var(--hot);padding:9px 14px;font:600 12px/1 var(--mono);letter-spacing:.12em;
+  text-transform:uppercase;cursor:pointer;min-height:42px;transition:border-color .18s,color .18s;
+}
+.menu-toggle:hover{border-color:var(--accent);color:var(--accent)}
+.skip-link{position:fixed;top:8px;left:12px;z-index:200;padding:10px 18px;
+  background:var(--accent);color:var(--bg);font:600 13px var(--sans);transform:translateY(-160%)}
+.skip-link:focus{transform:none}
+
+/* ── headings ──────────────────────────────────────────────────────────────── */
+h1,h2{letter-spacing:-0.01em;text-wrap:balance}
+h1{
+  font-family:var(--crt);font-weight:600;
+  font-size:clamp(40px,6vw,80px);line-height:1.03;color:var(--hot);
+}
+h2{
+  font-family:var(--crt);font-weight:600;
+  font-size:clamp(29px,3.7vw,48px);line-height:1.08;color:var(--hot);
+}
+h3{font-family:var(--crt);font-weight:600;color:var(--hot);letter-spacing:.005em}
+
+/* the sub-page section counter ("Section 01"): quiet mono label, no box-drawing */
+h2 .n{
+  display:block;font-family:var(--mono);font-weight:500;
+  font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+  margin-bottom:12px;
+}
+h2 .n::before{content:"" !important}
+h2 .n::after{content:"" !important}
+
+/* ── eyebrows ──────────────────────────────────────────────────────────────── */
+.sec-tag,.sys{
+  font-family:var(--mono);font-weight:500;font-size:11px;line-height:1.4;
+  letter-spacing:.15em;text-transform:uppercase;color:var(--faint);
+  display:inline-flex;align-items:center;gap:10px;margin-bottom:14px;
+}
+.sec-tag::before{content:"";width:7px;height:7px;background:var(--accent);flex:none;
+  display:inline-block}
+.sec-tag::after{content:none}
+
+/* ── flowing text ──────────────────────────────────────────────────────────── */
+.sub,.lede,.hero .lede,.doc-line{color:var(--dim)}
+.sub{font-size:17px;line-height:1.7}
+.doc-line{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase}
+.doc-line::before{color:var(--accent)}
+strong{color:var(--hot);font-weight:600}
+em{font-style:italic;color:var(--amber)}
+li b{color:var(--hot)}
+li::before{color:var(--accent) !important}
+
+/* ── buttons ───────────────────────────────────────────────────────────────── */
+.btn{
+  font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:.1em;
+  text-transform:uppercase;text-decoration:none;border-radius:0;min-height:46px;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 22px;
+  border:1px solid var(--hot);color:var(--bg);background:var(--hot);
+  transition:background-color .2s,color .2s,border-color .2s;box-shadow:none;
+}
+.btn:hover{background:var(--accent);border-color:var(--accent);color:var(--bg);box-shadow:none}
+.btn.ghost{background:transparent;color:var(--hot);border-color:var(--line)}
+.btn.ghost:hover{background:transparent;color:var(--accent);border-color:var(--accent);box-shadow:none}
+.btn:disabled{opacity:.5;cursor:default}
+
+/* ── code & terminals ──────────────────────────────────────────────────────── */
+code{
+  font-family:var(--mono);font-size:.9em;color:var(--accent);
+  background:var(--accent-soft);border:1px solid transparent;padding:1px 6px;border-radius:2px;
+}
+pre{
+  font-family:var(--mono);background:var(--ink);color:var(--ink-fg);
+  border:1px solid var(--line);border-radius:0;
+  padding:16px 18px;overflow-x:auto;line-height:1.7;box-shadow:none;
+}
+pre code{background:none;border:none;padding:0;color:inherit;font-size:inherit}
+pre .c{color:oklch(0.66 0.02 80)}          /* comment  */
+pre .f,pre .p{color:var(--accent-lift)}     /* file / prompt */
+pre .d,pre .warn{color:oklch(0.70 0.16 34)} /* danger   */
+pre .g,pre .ok{color:oklch(0.78 0.12 150)}  /* good     */
+
+/* ── tables ────────────────────────────────────────────────────────────────── */
+.tw{overflow-x:auto;border:1px solid var(--line);background:var(--bg2);border-radius:0}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+th{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+   color:var(--faint);font-weight:500;background:var(--surface)}
+tr:last-child td{border-bottom:none}
+td:first-child{color:var(--hot)}
+td.d{color:var(--dim)}
+
+/* ── notes / callouts ──────────────────────────────────────────────────────── */
+.note{
+  border:1px solid var(--line);border-left:3px solid var(--faint);
+  background:var(--bg2);padding:15px 18px;margin:18px 0;max-width:70ch;
+}
+.note.warn{border-left-color:var(--deny)}
+.note.good{border-left-color:var(--allow)}
+.note b{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--faint);font-weight:600}
+.note.warn b{color:var(--deny)}
+.note.good b{color:var(--allow)}
+.note p{color:var(--amber)}
+
+/* ── spec strips & big counted numbers (redteam/docs/setup/registry/console) ── */
+.spec-row{gap:1px;background:var(--line);border:1px solid var(--line)}
+.spec{background:var(--bg);color:var(--dim)}
+.spec b,.stat .n{
+  font-family:var(--crt);font-weight:600;color:var(--hot);letter-spacing:0;
+  font-variant-numeric:tabular-nums;
+}
+.spec b.red,.stat .n.red{color:var(--deny)}
+.stat .l{color:var(--dim)}
+
+/* ── table of contents (redteam/docs) ──────────────────────────────────────── */
+.index{border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.index a{color:var(--dim);font-family:var(--mono);font-size:12px;letter-spacing:.02em}
+.index a::before{color:var(--faint)}
+.index a:hover,.index a.here{color:var(--accent)}
+.index a.here::before{color:var(--accent)}
+
+/* ── verdict stamps (docs) ─────────────────────────────────────────────────── */
+.vs{border-color:currentColor;font-family:var(--mono)}
+.vs.a{color:var(--allow)} .vs.h{color:var(--ask)} .vs.d{color:var(--deny)}
+.stamps p{color:var(--dim)}
+
+/* ── footer ────────────────────────────────────────────────────────────────── */
+footer{border-top:1px solid var(--line);color:var(--faint);font-family:var(--mono);font-size:12px}
+footer a{color:var(--dim);text-decoration:none}
+footer a:hover{color:var(--accent)}
+footer .desc{font-family:var(--sans);color:var(--dim);font-size:15px;line-height:1.6}
+
+/* ── reveals (kept; the pages stand fully without JS) ──────────────────────── */
+html.js .rv{opacity:0;transform:translateY(18px);
+  transition:opacity .8s cubic-bezier(.19,1,.22,1),transform .8s cubic-bezier(.19,1,.22,1)}
+html.js .rv.in{opacity:1;transform:none}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HOME · mission conversation preview + worker roster (home-only classes)
+   ═══════════════════════════════════════════════════════════════════════════ */
+.mission-section{background:var(--bg2);border-block:1px solid var(--line)}
+.mission-layout{display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);
+  gap:clamp(32px,6vw,80px);align-items:center}
+.mission-intro h2{max-width:15ch;margin-bottom:20px}
+.mission-intro p{color:var(--dim)}
+.scenario-controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.scenario-controls button{
+  background:transparent;border:1px solid var(--line);color:var(--dim);
+  padding:10px 15px;font:500 12px/1 var(--mono);letter-spacing:.04em;
+  text-transform:uppercase;cursor:pointer;min-height:44px;border-radius:0;
+  transition:border-color .18s,color .18s,background-color .18s;
+}
+.scenario-controls button:hover{border-color:var(--accent);color:var(--hot)}
+.scenario-controls button[aria-pressed=true]{
+  background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.mission-intro .simulation-note{font-size:13px;margin-top:16px;max-width:44ch;color:var(--faint)}
+
+.chat-preview{
+  background:var(--bg);border:1px solid var(--line);border-top:2px solid var(--accent);
+  border-radius:0;padding:24px;box-shadow:0 24px 60px oklch(0.4 0.03 70 / .10);
+}
+.chat-title{display:flex;align-items:center;gap:12px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.chat-avatar{background:var(--surface);border:1px solid var(--line);width:42px;height:42px;
+  display:grid;place-items:center;border-radius:0;font-size:19px}
+.chat-title strong{font-family:var(--crt);font-size:18px;display:block;letter-spacing:.06em}
+.chat-title small{font-size:12px;color:var(--dim)}
+.demo-badge{margin-left:auto;font:10px var(--mono);letter-spacing:.12em;color:var(--accent);
+  border:1px solid var(--accent-soft);padding:5px 8px;border-radius:0}
+.chat-request{margin:20px 0 16px 32px;padding:13px 17px;border-radius:0;
+  background:var(--surface);border:1px solid var(--line);color:var(--hot);font-size:14px;line-height:1.55}
+.chat-receipt{background:var(--bg2);border:1px solid var(--line);border-radius:0;padding:20px;min-height:284px}
+.receipt-header{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--hot)}
+.receipt-meta{font:11px var(--mono);color:var(--faint);margin:7px 0 18px;letter-spacing:.04em}
+.receipt-trail{list-style:none;display:grid;gap:13px;margin:0;padding:0;font-size:14px}
+.receipt-trail li{display:flex;align-items:flex-start;gap:10px;line-height:1.5;color:var(--amber)}
+.receipt-trail span:first-child{flex:0 0 22px}
+.receipt-result{border-top:1px solid var(--line);padding-top:14px;margin-top:18px;
+  color:var(--hot);font-size:14px;line-height:1.55}
+.preview-actions{display:flex;align-items:center;gap:14px;margin-top:18px;flex-wrap:wrap}
+.preview-actions .btn{padding:0 16px;font-size:11px;min-height:42px}
+.preview-actions small{font-size:12px;color:var(--faint)}
+
+.worker-roster{display:grid;margin-top:34px;border-top:1px solid var(--line)}
+.worker-row{display:grid;grid-template-columns:42px 180px minmax(0,1fr);gap:22px;
+  align-items:start;padding:24px 0;border-bottom:1px solid var(--line)}
+.worker-row .worker-icon{font-size:24px}
+.worker-row h3{font-family:var(--crt);font-size:19px;color:var(--hot);letter-spacing:.04em}
+.worker-row code{font-size:11px;color:var(--accent);background:var(--accent-soft)}
+.worker-row p{font-size:15px;color:var(--dim);margin:0}
+.privacy-note{display:flex;gap:18px;align-items:flex-start;margin-top:28px;padding:22px 0;
+  color:var(--dim);font-size:15px;border-top:1px solid var(--line)}
+.privacy-note>span{font-size:24px}
+.privacy-note strong{display:block;margin-bottom:6px}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Responsive
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width:1240px){
+  nav[data-menu] .menu-toggle{display:block}
+  nav[data-menu] .nav-links{display:none;flex-basis:100%;
+    grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 18px;padding:6px 0 12px}
+  nav[data-menu][data-open] .nav-links{display:grid}
+  nav[data-menu] a.lnk{display:flex;font-size:13px;min-height:44px}
+}
+@media (max-width:940px){
   .mission-layout{grid-template-columns:1fr}
   .mission-intro h2{max-width:20ch}
   .chat-preview{max-width:620px;width:100%}
 }
-@media(max-width:640px){
-  nav .wrap{min-height:68px;padding-block:8px}
+@media (max-width:640px){
   nav[data-menu] .nav-links{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .talos-home .hero-grid{grid-template-columns:1fr}
-  .talos-home .hero{padding-top:36px}
-  .talos-home h1{font-size:clamp(40px,10.5vw,58px);max-width:12ch}
-  .talos-home .hero .lede{font-size:17px;margin-top:20px}
-  .talos-home .scanbox{max-width:320px;margin-top:16px}
-  .talos-home .meter-row{gap:22px;font-size:11px}
-  .talos-home .meter-row b{font-size:20px}
-  .talos-home .cta-row{margin-top:26px;gap:10px}
-  .talos-home .tick{display:none}
-  .chat-preview{padding:16px;border-radius:12px}
+  .chat-preview{padding:16px}
   .chat-receipt{padding:16px}
-  .chat-request{margin-left:20px}
+  .chat-request{margin-left:18px}
   .worker-row{grid-template-columns:30px minmax(0,1fr);gap:12px}
   .worker-row p{grid-column:2}
   .preview-actions{align-items:flex-start}
 }
-@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important}}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation:none !important;transition:none !important}
+  html.js .rv{opacity:1;transform:none}
+}

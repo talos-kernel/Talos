@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, replace, field
 from typing import Callable
 
 from . import modelinfo
@@ -66,6 +66,23 @@ class Run:
 
 
 @dataclass(frozen=True)
+class ModelTotals:
+    """Was EIN Modell gekostet hat. Die Zuordnung, die `/usage` bisher nicht zeigte.
+
+    Ohne sie sagt der Zaehler nur, dass viel verbraucht wurde — nicht von wem. Genau das
+    fehlte, als das Abo eines Anbieters mitten in der Arbeit auslief: die Summe stieg,
+    aber welcher Anbieter sie trieb, stand nirgends.
+    """
+
+    runs: int = 0
+    failed: int = 0
+    seconds: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+
+
+@dataclass(frozen=True)
 class Snapshot:
     runs: int = 0
     failed: int = 0
@@ -79,6 +96,8 @@ class Snapshot:
     # nennt ihn getrennt, sonst laese jemand einen selbst eingetragenen Tarif als Messung.
     cost_override_usd: float = 0.0
     last: Run | None = None
+    # Modellname -> Summen. Leer heisst: noch kein Lauf, nicht „kein Modell".
+    per_model: dict[str, ModelTotals] = field(default_factory=dict)
 
     @property
     def cache_total(self) -> int:
@@ -93,10 +112,15 @@ class UsageMeter:
     verdrahtet; Tests uebergeben ihre eigene Funktion.
     """
 
-    def __init__(self, *, infos: Callable[[str], ModelInfo] | None = None) -> None:
+    def __init__(self, *, infos: Callable[[str], ModelInfo] | None = None,
+                 on_record: Callable[[Run], None] | None = None) -> None:
         self._lock = threading.Lock()
         self._total = Snapshot()
         self._infos = infos or modelinfo.lookup
+        # Der Sink schreibt den Lauf dorthin, wo er einen Neustart ueberlebt (Event-Log).
+        # Er darf NIE werfen: ein Zaehler, der den Zug mitnimmt, ist schlimmer als eine
+        # fehlende Zahl.
+        self._on_record = on_record
 
     def record(self, run: Run) -> None:
         run = self._priced(run)
@@ -115,7 +139,13 @@ class UsageMeter:
                 cost_override_usd=total.cost_override_usd
                 + (run.cost_usd if run.cost_source == "override" else 0.0),
                 last=run,
+                per_model=_mit_modell(total.per_model, run),
             )
+        if self._on_record is not None:
+            try:
+                self._on_record(run)
+            except Exception:
+                pass
 
     def _priced(self, run: Run) -> Run:
         """Ein gemeldeter Preis bleibt; nur ein fehlender wird gerechnet — und nur, wenn
@@ -140,3 +170,81 @@ class UsageMeter:
 def now() -> float:
     """Eigene Funktion, damit Tests die Uhr ersetzen koennen."""
     return time.time()
+
+
+def _mit_modell(bisher: dict[str, ModelTotals], run: Run) -> dict[str, ModelTotals]:
+    """Neue Zuordnungstabelle — nie die alte veraendern (der Snapshot ist unveraenderlich)."""
+    name = run.model or "unbekannt"
+    alt = bisher.get(name, ModelTotals())
+    neu = dict(bisher)
+    neu[name] = ModelTotals(
+        runs=alt.runs + 1,
+        failed=alt.failed + (0 if run.ok else 1),
+        seconds=alt.seconds + max(0.0, run.duration_s),
+        input_tokens=alt.input_tokens + run.input_tokens,
+        output_tokens=alt.output_tokens + run.output_tokens,
+        cost_usd=alt.cost_usd + run.cost_usd,
+    )
+    return neu
+
+
+def event_payload(run: Run) -> dict[str, object]:
+    """Was vom Lauf ins Event-Log darf: ZAHLEN und der Modellname. Sonst nichts.
+
+    Ausdruecklich NICHT dabei: `note` und `session_id`. Beide tragen freien Text, und ein
+    Verbrauchszaehler ist kein Ort fuer Gespraechsinhalte — das Log ist append-only, ein
+    Inhalt darin bleibt fuer immer. Dieselbe Grenze wie bei `crashreport`: Struktur, nie Inhalt.
+    """
+    return {
+        "model": run.model or "",
+        "ok": bool(run.ok),
+        "duration_s": round(max(0.0, float(run.duration_s)), 3),
+        "input_tokens": int(run.input_tokens),
+        "output_tokens": int(run.output_tokens),
+        "cache_read": int(run.cache_read),
+        "cache_write": int(run.cache_write),
+        "cost_usd": round(float(run.cost_usd), 6),
+        "cost_source": run.cost_source or "",
+    }
+
+
+def snapshot_from_events(payloads) -> Snapshot:
+    """Den Verbrauch aus dem Event-Log zurueckrechnen — so ueberlebt er einen Neustart.
+
+    Unbrauchbare Zeilen fallen weg statt umzufallen: das Log ist aelter als dieses Format.
+    """
+    gesamt = Snapshot()
+    for roh in payloads:
+        if not isinstance(roh, dict):
+            continue
+        try:
+            run = Run(
+                at=0.0,
+                ok=bool(roh.get("ok", True)),
+                duration_s=float(roh.get("duration_s") or 0.0),
+                model=str(roh.get("model") or ""),
+                input_tokens=int(roh.get("input_tokens") or 0),
+                output_tokens=int(roh.get("output_tokens") or 0),
+                cache_read=int(roh.get("cache_read") or 0),
+                cache_write=int(roh.get("cache_write") or 0),
+                cost_usd=float(roh.get("cost_usd") or 0.0),
+                cost_source=str(roh.get("cost_source") or ""),
+            )
+        except (TypeError, ValueError):
+            continue
+        gesamt = replace(
+            gesamt,
+            runs=gesamt.runs + 1,
+            failed=gesamt.failed + (0 if run.ok else 1),
+            seconds=gesamt.seconds + max(0.0, run.duration_s),
+            input_tokens=gesamt.input_tokens + run.input_tokens,
+            output_tokens=gesamt.output_tokens + run.output_tokens,
+            cache_read=gesamt.cache_read + run.cache_read,
+            cache_write=gesamt.cache_write + run.cache_write,
+            cost_usd=gesamt.cost_usd + run.cost_usd,
+            cost_override_usd=gesamt.cost_override_usd
+            + (run.cost_usd if run.cost_source == "override" else 0.0),
+            last=run,
+            per_model=_mit_modell(gesamt.per_model, run),
+        )
+    return gesamt

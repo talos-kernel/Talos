@@ -12,6 +12,12 @@ from talos.api_reasoner import ApiReasoner
 from talos.reasoner import ClaudeCliReasoner, HermesCliReasoner, PLAN_PROTOCOL, TOOL_PROTOCOL
 
 
+def _prompt_arg(argv: list[str]) -> str:
+    """Der vollstaendige Prompt steht nach dem Wert-Flag des Modus, nicht an einem
+    festen Index: chat/-Q/-q <prompt> bzw. -z <prompt> (kimi-cli)."""
+    return argv[argv.index("-q") + 1] if "-q" in argv else argv[argv.index("-z") + 1]
+
+
 def _write(path: Path, text: str) -> Path:
     path.write_text(text, encoding="utf-8")
     return path
@@ -148,8 +154,9 @@ def test_cli_and_api_use_the_same_system_prompt_assembly(monkeypatch, tmp_path: 
     cli = HermesCliReasoner(
         str(binary), 30, provider="test", model="test", skills=lambda: "CLI-SKILLS"
     )
-    args = cli.argv_for("hello")
-    assert marker in args[args.index("-q") + 1]
+    # Der Prompt wandert im chat/-Q/-q-Mode nicht mehr an Index 2 — ueber das
+    # Flag finden statt ueber die Position.
+    assert marker in _prompt_arg(cli.argv_for("hello"))
 
     captured: list[list[str]] = []
 

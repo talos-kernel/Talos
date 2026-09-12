@@ -288,6 +288,7 @@ def test_tools_lists_gating_per_tool(tmp_path: Path) -> None:
 
 def test_whoami_reports_admission(tmp_path: Path) -> None:
     center = _center(tmp_path)
+    # /whoami antwortet seit dem Pi-Port (35b3bd8) englisch: „Allowed: yes/no".
     assert "Allowed: yes" in (center.dispatch("whoami", "", principal=OWNER, conversation=CHAT).reply or "")
     assert "Allowed: no" in (center.dispatch("whoami", "", principal=STRANGER, conversation=CHAT).reply or "")
 

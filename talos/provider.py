@@ -8,7 +8,7 @@ import sys
 import inspect
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import ModuleType
 from typing import Callable, Iterable
@@ -128,6 +128,13 @@ class ModelRouter:
                                            kind="unknown", fallback_allowed=False)
         self._current = selected
         self._reasoner = reasoner
+
+    def replace_registry(self, registry: ProviderRegistry) -> None:
+        """Refresh allowed choices without changing the active reasoner or its log."""
+        if not isinstance(registry, ProviderRegistry):
+            raise TypeError("expected a provider registry")
+        with self._lock:
+            self._registry = registry
 
     def _build_validated(self, selection: ModelSelection) -> object:
         reasoner = self._build(selection)
@@ -517,8 +524,37 @@ class _PickerState:
     principal: Principal
     conversation: str
     expires_at: float
+    # Bind indices to this immutable menu; a refresh cannot retarget old buttons.
+    registry: ProviderRegistry
     selected_provider: int | None = None
     selecting: bool = False
+
+
+def _switch_failure_text(result: SwitchResult) -> str:
+    """Present an actionable cause, never provider stderr, URLs or auth payloads."""
+    error = result.error.casefold()
+    if any(word in error for word in ("refresh token", "refresh_token", "expired oauth", "signing in", "token_expired")):
+        detail = "🔐 Sign-in expired. Reconnect this provider on the machine running Talos."
+    elif any(word in error for word in ("api key rejected", "http 401", "http 403", "auth failed")):
+        detail = "🔐 Provider access was rejected. Check its sign-in or API key."
+    elif "configured" in error and any(word in error for word in ("key", "auth")):
+        detail = "🔑 This provider needs its own configured sign-in or API key."
+    elif any(word in error for word in ("http 410", "http 404", "model_not_found")):
+        detail = "📦 This model is no longer available at the configured provider. Choose another model."
+    elif any(word in error for word in ("network failure", "connection refused", "newconnection", "connectionerror")):
+        detail = "🔌 Model server unreachable. Check that the server and its connection are running."
+    elif any(word in error for word in ("timeout", "timed out", "zeitlimit")):
+        detail = "⏱ The model did not respond in time. Retry or choose another provider."
+    elif any(word in error for word in ("http 429", "rate limit", "quota")):
+        detail = "⏳ Provider usage limit reached. Retry later or choose another provider."
+    elif any(word in error for word in ("busy", "running")):
+        detail = "⏳ Another task is running. Wait for it to finish or use /stop."
+    elif any(word in error for word in ("cancelled", "abgebrochen")):
+        detail = "⏹ Model selection cancelled."
+    else:
+        detail = "⚠️ The model could not be verified. Retry or choose another provider."
+    return ("⚠️ Model unchanged\n\n" + detail +
+            f"\n\n✓ Still active: {result.selection.model}\nProvider: {result.selection.provider}")
 
 
 class ModelPicker:
@@ -533,6 +569,7 @@ class ModelPicker:
         clock: Callable[[], float] = time.time,
         token_factory: Callable[[], str] | None = None,
         can_select: Callable[[], bool] = lambda: True,
+        refresh_registry: Callable[[], ProviderRegistry] | None = None,
     ) -> None:
         self.registry = registry
         self.router = router
@@ -540,18 +577,38 @@ class ModelPicker:
         self._clock = clock
         self._token_factory = token_factory or (lambda: secrets.token_urlsafe(9))
         self._can_select = can_select
+        self._refresh_registry = refresh_registry
+        self._refresh_lock = threading.Lock()
         self._states: dict[str, _PickerState] = {}
         self._lock = threading.Lock()
 
+    def _refresh_catalog(self) -> None:
+        if self._refresh_registry is None:
+            return
+        # Helper imports and network I/O are serialized, outside the state lock.
+        # An outage must leave the last usable menu and active model intact.
+        with self._refresh_lock:
+            try:
+                registry = self._refresh_registry()
+                if not isinstance(registry, ProviderRegistry):
+                    return
+                self.router.replace_registry(registry)
+                with self._lock:
+                    self.registry = registry
+            except Exception:
+                return
+
     def open(self, *, principal: Principal, conversation: str) -> StructuredMessage:
+        self._refresh_catalog()
         token = self._token_factory()
         with self._lock:
             self._states[token] = _PickerState(
                 principal=principal,
                 conversation=conversation,
                 expires_at=self._clock() + self._ttl_s,
+                registry=self.registry,
             )
-        return self._provider_view(token)
+            return self._provider_view(token, self._states[token])
 
     def select_typed(self, raw: str, *, principal: Principal) -> StructuredMessage:
         parts = raw.split()
@@ -559,9 +616,10 @@ class ModelPicker:
             return StructuredMessage("Usage: /model <provider> <model>. Nothing changed.")
         if not self._can_select():
             return StructuredMessage("Model not changed: another task is running.")
+        self._refresh_catalog()
         result = self.router.select(parts[0], parts[1], principal=principal)
         if not result.ok:
-            return StructuredMessage(f"Model not changed: {result.error}")
+            return StructuredMessage(_switch_failure_text(result))
         return StructuredMessage(
             f"Model switched to {result.selection.model}\nProvider: {result.selection.provider}"
         )
@@ -587,20 +645,20 @@ class ModelPicker:
                 self._states.pop(token, None)
                 return StructuredMessage("Model selection cancelled.")
             if operation == "b":
-                state.selected_provider = None
-                return self._provider_view(token)
+                token, state = self._rotate_view(token, state, None)
+                return self._provider_view(token, state)
             if operation == "n":
                 return self._model_view(token, state, value)
             if operation == "p":
-                if value < 0 or value >= len(self.registry.providers):
+                if value < 0 or value >= len(state.registry.providers):
                     return StructuredMessage("Picker invalid or expired. Nothing changed.")
-                state.selected_provider = value
+                token, state = self._rotate_view(token, state, value)
                 return self._model_view(token, state, 0)
             if operation == "g":
                 return self._model_view(token, state, value)
             if operation != "m" or state.selected_provider is None:
                 return StructuredMessage("Picker invalid or expired. Nothing changed.")
-            provider = self.registry.providers[state.selected_provider]
+            provider = state.registry.providers[state.selected_provider]
             if value < 0 or value >= len(provider.models):
                 return StructuredMessage("Picker invalid or expired. Nothing changed.")
             target = ModelSelection(provider.slug, provider.models[value])
@@ -621,15 +679,36 @@ class ModelPicker:
                 else:
                     state.selecting = False
         if not result.ok:
-            return StructuredMessage(f"Model not changed: {result.error}")
+            # Preserve the server-bound picker after a failed probe. The old model
+            # remains active and the operator can retry or choose another provider.
+            with self._lock:
+                alive = self._states.get(token) is state and state.expires_at > self._clock()
+            keyboard = (
+                (Button("↻ Retry", self._data(token, "m", value)),
+                 Button("◀ Providers", self._data(token, "b"))),
+                (Button("✗ Cancel", self._data(token, "x")),),
+            ) if alive else ()
+            return StructuredMessage(_switch_failure_text(result), keyboard)
         return StructuredMessage(
             f"Model switched to {result.selection.model}\nProvider: {result.selection.provider}"
         )
 
-    def _provider_view(self, token: str) -> StructuredMessage:
+    def _rotate_view(
+        self, token: str, state: _PickerState, provider: int | None,
+    ) -> tuple[str, _PickerState]:
+        """Replace a view under the picker lock; old callbacks cannot change meaning."""
+        fresh = secrets.token_urlsafe(9)
+        while fresh in self._states:
+            fresh = secrets.token_urlsafe(9)
+        updated = replace(state, selected_provider=provider)
+        self._states.pop(token)
+        self._states[fresh] = updated
+        return fresh, updated
+
+    def _provider_view(self, token: str, state: _PickerState) -> StructuredMessage:
         current = self.router.current
         buttons = []
-        for index, provider in enumerate(self.registry.providers):
+        for index, provider in enumerate(state.registry.providers):
             mark = "✓ " if provider.slug == current.provider else ""
             buttons.append(Button(f"{mark}{provider.label} ({len(provider.models)})", self._data(token, "p", index)))
         rows = [tuple(buttons[index:index + 2]) for index in range(0, len(buttons), 2)]
@@ -643,8 +722,8 @@ class ModelPicker:
 
     def _model_view(self, token: str, state: _PickerState, page: int) -> StructuredMessage:
         if state.selected_provider is None:
-            return self._provider_view(token)
-        provider = self.registry.providers[state.selected_provider]
+            return self._provider_view(token, state)
+        provider = state.registry.providers[state.selected_provider]
         total = len(provider.models)
         pages = max(1, (total + MODEL_PAGE_SIZE - 1) // MODEL_PAGE_SIZE)
         page = max(0, min(page, pages - 1))
@@ -845,6 +924,24 @@ def with_local_provider(registry: ProviderRegistry, wanted: ModelSelection) -> P
     return ProviderRegistry(
         (*registry.providers, Provider(wanted.provider, info.label, (wanted.model,)))
     )
+
+
+def with_custom_providers(registry: ProviderRegistry, infos) -> ProviderRegistry:
+    """Die eigenen Anbieter des Betreibers in den Katalog — mit ihren Modellen.
+
+    Ein Eintrag, dessen Name schon vergeben ist, faellt weg: `ProviderRegistry` verlangt
+    eindeutige Slugs, und ein Duplikat liesse den START scheitern. Eine Betreiberdatei
+    darf den Waechter nie toeten (dieselbe Lehre wie beim doppelten `openai-api`).
+    """
+    vorhanden = {provider.slug for provider in registry.providers}
+    zusatz = [
+        Provider(info.slug, info.label, tuple(info.models))
+        for info in infos
+        if info.slug and info.slug not in vorhanden and info.models
+    ]
+    if not zusatz:
+        return registry
+    return ProviderRegistry((*registry.providers, *zusatz))
 
 
 def _looks_like_claude_model(model: str) -> bool:

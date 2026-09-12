@@ -1,7 +1,799 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Compare Talos, OpenClaw and Hermes · Talos</title><meta name="description" content="Compare documented permission controls, execution environments and evidence. An honest, source-linked look at Talos, OpenClaw and Hermes."><meta name="theme-color" content="#090a0b">
-<link rel="canonical" href="https://talos-agent.ch/vergleich/"><link rel="icon" href="/brand/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
-<meta property="og:type" content="website"><meta property="og:site_name" content="Talos"><meta property="og:title" content="Compare Talos, OpenClaw and Hermes · Talos"><meta property="og:description" content="Compare documented permission controls, execution environments and evidence. An honest, source-linked look at Talos, OpenClaw and Hermes."><meta property="og:url" content="https://talos-agent.ch/vergleich/"><meta property="og:image" content="https://talos-agent.ch/brand/og-logo.png"><meta name="twitter:card" content="summary_large_image">
-<link rel="preload" href="/fonts/geist-var.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/pages.css"><link rel="stylesheet" href="/navigation.css"><script src="/interface.js" defer></script><script src="/pages.js" defer></script></head>
-<body class="talos-page page-compare"><nav class="site-nav"><div class="wrap"><a class="brand" href="/" aria-label="Talos home"><img src="/brand/talos-wordmark-dark.svg" alt="Talos" width="115" height="20"></a><a class="lnk" href="/#computer">Computer</a><a class="lnk " href="/docs/">Docs</a><a class="lnk " href="/registry/">Registry</a><a class="lnk " href="/redteam/">Evidence</a><a class="lnk " href="/vergleich/" aria-current="page">Compare</a><a class="lnk " href="/console.html">Console</a><a class="lnk nav-cta" href="/setup/">Get started</a></div></nav><main id="main-content"><header class="page-hero wrap" id="top"><div><p class="eyebrow">COMPARE / CHOOSE BY THE WORK</p><h1>Different agents.<br><span>Different priorities.</span></h1><p class="lede">Talos focuses on a small, inspectable permission kernel. OpenClaw and Hermes offer different ecosystems and execution options. Choose the fit for your work, then verify it.</p></div></header><section class="wrap agent-profiles" id="staerken"><article class="agent-profile featured"><span class="eyebrow">01 / INSPECTABLE AUTHORITY</span><h2>Talos</h2><p>A self-hosted agent with an explicit path from a tool proposal to a permission decision, a short-lived execution grant and a recorded result.</p><a class="text-link" href="/docs/">Explore Talos ↗</a></article><article class="agent-profile"><span class="eyebrow">02 / CONFIGURABLE ECOSYSTEM</span><h2>OpenClaw</h2><p>Separate controls for sandbox placement, tool availability and elevated execution. Its documentation covers channels, nodes and a broad gateway surface.</p><a class="text-link" href="https://docs.openclaw.ai/">OpenClaw documentation ↗</a></article><article class="agent-profile"><span class="eyebrow">03 / EXECUTION OPTIONS</span><h2>Hermes</h2><p>An agent with a wide tool surface and terminal backends that include local execution, containers, SSH and cloud sandboxes.</p><a class="text-link" href="https://hermes-agent.nousresearch.com/docs/user-guide/features/tools/">Hermes tool reference ↗</a></article></section><section class="page-section wrap" id="tabelle"><div class="section-head"><div><p class="eyebrow">THE PRACTICAL DIFFERENCES</p><h2>Compare the mechanisms.</h2></div><p>Documentation-based comparison, checked 7 September 2026. Configuration and versions change the result.</p></div><div class="filter-row" role="group" aria-label="Filter comparison"><button type="button" data-compare="all" aria-pressed="true">All criteria</button><button type="button" data-compare="control" aria-pressed="false">Control</button><button type="button" data-compare="execution" aria-pressed="false">Execution</button><button type="button" data-compare="extend" aria-pressed="false">Extensibility</button><button type="button" data-compare="evidence" aria-pressed="false">Evidence</button></div><p class="small muted" id="compare-count" role="status">7 criteria shown. Scroll horizontally on smaller screens.</p><div class="table-scroll" tabindex="0" role="region" aria-label="Agent comparison table"><table class="comparison"><thead><tr><th scope="col">Criterion</th><th scope="col">Talos<a href="/docs/">SOURCE REFERENCE</a></th><th scope="col">OpenClaw<a href="https://docs.openclaw.ai/gateway/sandbox-vs-tool-policy-vs-elevated">OFFICIAL DOCUMENTATION</a></th><th scope="col">Hermes<a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/tools/">OFFICIAL DOCUMENTATION</a></th></tr></thead><tbody><tr data-compare-row data-category="control"><td>Permission structure</td><td>A deterministic kernel checks the principal, tool effect, arguments and authority before dispatch.</td><td>Tool policy controls availability; sandbox policy controls location; elevated execution has separate rules. <a href="https://docs.openclaw.ai/gateway/sandbox-vs-tool-policy-vs-elevated" aria-label="OpenClaw source for Permission structure">[O]</a></td><td>Toolsets control available capabilities; the selected terminal backend determines where commands run. <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/tools/" aria-label="Hermes source for Permission structure">[H]</a></td></tr><tr data-compare-row data-category="control"><td>Execution approval</td><td>A granted tool call receives an argument-bound, single-use token with a 30-second lifetime.</td><td>Exec approvals support once-only decisions and durable grants, with command and context binding. <a href="https://docs.openclaw.ai/tools/exec-approvals" aria-label="OpenClaw source for Execution approval">[O]</a></td><td>Review the approval behaviour of the specific tools and terminal backend you enable. <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/tools/" aria-label="Hermes source for Execution approval">[H]</a></td></tr><tr data-compare-row data-category="execution"><td>Where code runs</td><td>A sandboxed shell and confined workers; an experimental persistent ARM64 KVM Computer.</td><td>Configurable host or sandbox execution, including required sandbox policies for operator roles. <a href="https://docs.openclaw.ai/gateway/sandbox-vs-tool-policy-vs-elevated" aria-label="OpenClaw source for Where code runs">[O]</a></td><td>Local, Docker, SSH, Singularity, Modal, Daytona and Vercel Sandbox terminal backends. <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/tools/" aria-label="Hermes source for Where code runs">[H]</a></td></tr><tr data-compare-row data-category="execution"><td>Persistent workspace</td><td>Computer projects persist between jobs. Interrupted writes require an explicit new attempt.</td><td>Consult the selected sandbox and workspace configuration for persistence and access. <a href="https://docs.openclaw.ai/gateway/sandbox-vs-tool-policy-vs-elevated" aria-label="OpenClaw source for Persistent workspace">[O]</a></td><td>Docker can retain workspace state across calls; restart persistence is configurable. <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/tools/" aria-label="Hermes source for Persistent workspace">[H]</a></td></tr><tr data-compare-row data-category="extend"><td>MCP integration</td><td>Operator-defined server names, intersected allowlists and a confined Claude worker job.</td><td>Configured MCP servers are subject to applicable tool and sandbox policies. <a href="https://docs.openclaw.ai/gateway/sandbox-vs-tool-policy-vs-elevated" aria-label="OpenClaw source for MCP integration">[O]</a></td><td>Consult the current tool reference and enabled integrations for the deployment you choose. <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/tools/" aria-label="Hermes source for MCP integration">[H]</a></td></tr><tr data-compare-row data-category="evidence"><td>What you can inspect</td><td>Kernel source, tool manifest, append-only event records and public regression suites.</td><td>Sandbox inspection commands and documented policy, approval and gateway audit behaviour. <a href="https://docs.openclaw.ai/gateway/sandbox-vs-tool-policy-vs-elevated" aria-label="OpenClaw source for What you can inspect">[O]</a></td><td>Public tools documentation, backend settings and runtime diagnostics. <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/tools/" aria-label="Hermes source for What you can inspect">[H]</a></td></tr><tr data-compare-row data-category="evidence"><td>What this page does not prove</td><td>No claim of universal safety, higher intelligence or better task success. Measure a real workflow.</td><td>No task-success or security ranking is inferred from configuration documentation. <a href="https://docs.openclaw.ai/gateway/sandbox-vs-tool-policy-vs-elevated" aria-label="OpenClaw source for What this page does not prove">[O]</a></td><td>No task-success or security ranking is inferred from the list of integrations. <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/tools/" aria-label="Hermes source for What this page does not prove">[H]</a></td></tr></tbody></table></div><p class="source-note">Sources: <a href="/docs/">Talos field manual</a>, <a href="https://docs.openclaw.ai/gateway/sandbox-vs-tool-policy-vs-elevated">OpenClaw sandbox and tool policy</a>, <a href="https://docs.openclaw.ai/tools/exec-approvals">OpenClaw exec approvals</a>, <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/tools/">Hermes tools and terminal backends</a>. Descriptions summarise documented mechanisms; they are not independent security audits or performance benchmarks.</p></section><section class="page-section wrap" id="wahl"><div class="section-head"><div><p class="eyebrow">TRY THE SAME TASK</p><h2>Let the work decide.</h2></div><p>The useful comparison is one you can reproduce on your own machine.</p></div><div class="decision-grid"><div><span class="num">01</span><h3>Start with a clear result.</h3><p>Use the same small repository and failing test. Define which file should change and which test must pass.</p></div><div><span class="num">02</span><h3>Watch the decisions.</h3><p>Observe what executes automatically, what needs approval and what happens after a denied action.</p></div><div><span class="num">03</span><h3>Inspect what remains.</h3><p>Check the actual diff, test output and interrupted-job behaviour. A confident final message is not the result.</p></div></div><div class="actions"><a class="btn" href="/setup/">Try Talos <span aria-hidden="true">↗</span></a><a class="text-link" href="/console.html">Explore an example receipt ↗</a></div></section><div id="cmd"></div><div id="samples"></div><div id="verdict"></div><div id="vGlyph"></div><div id="vWord"></div><div id="vWhy"></div><div id="chain"></div><section class="page-section wrap" id="doktrin"><div class="split"><div><p class="eyebrow">WHY THIS PROJECT EXISTS</p><h2>Capable work.<br>Readable authority.</h2></div><div><p>Talos brings models, workers and tools together around a permission path you can read. Its experimental Computer adds a persistent place for work without replacing that path.</p><p id="demo">Try the <a href="/#kernel">interactive kernel illustration</a>, read the <a href="/redteam/">adversarial cases</a>, then run the source checks yourself.</p></div></div></section></main><aside class="source-rail wrap" aria-label="Source verification"><p>Source checks<br><a href="/console.html#measured">Release details ↗</a></p><div><b>2785</b><span>collected tests</span></div><div><b>230</b><span>adversarial cases</span></div><div><b>913</b><span>kernel lines</span></div><div><b>31</b><span>gated tools</span></div></aside><footer class="site-footer"><div class="wrap"><div class="footer-top"><a class="brand" href="/"><img src="/brand/talos-wordmark-dark.svg" alt="Talos" width="115" height="20"></a><p>Give intelligence a place to work.<br>Keep the authority to decide.</p><a class="text-link" href="https://github.com/talos-kernel/talos">Open source on GitHub ↗</a></div><div class="footer-links"><a href="/">Home</a><a href="/docs/">Docs</a><a href="/registry/">Registry</a><a href="/redteam/">Evidence</a><a href="/vergleich/">Compare</a><a href="/console.html">Console</a><a href="/setup/">Get started</a></div><div class="footer-meta"><span>MIT licensed · Self-hosted · Built to be inspected</span><a href="/console.html#measured">Release &amp; source checks ↗</a></div></div></footer></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="../brand/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="../brand/apple-touch-icon.png">
+
+<!--
+  This page was written for people who already run OpenClaw or Hermes and want to know
+  what Talos does differently. It was originally German for that audience; the site is
+  English throughout now, this page included. The URL stays /vergleich/ — the address
+  was linked and sent around, and a dead address is worse than a German path segment.
+  Machine terms (DENY, sandbox, append-only, the kernel verdicts) stay as they are,
+  like everywhere: the machine console does not translate.
+
+  The tone is deliberate: the others can do more, and the page says so first.
+  A comparison that hides its own weakness is advertising — and advertising would
+  contradict the one property this page is trying to sell.
+-->
+<title>Talos vs. OpenClaw vs. Hermes — an honest comparison</title>
+<meta name="description" content="OpenClaw and Hermes can do more: channels, skills, browser automation, cron fleets. Talos has a deterministic policy kernel, a sandbox and a provable log. The gap is doctrine, and this page says so first.">
+<link rel="canonical" href="https://talos-agent.ch/vergleich/">
+<meta name="theme-color" content="#17140F">
+<script>document.documentElement.classList.add('js')</script>
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Talos">
+<meta property="og:title" content="Talos vs. OpenClaw vs. Hermes — an honest comparison">
+<meta property="og:description" content="The others can do more. Talos can prove every step it takes. The gap is doctrine, and this page says so first.">
+<meta property="og:image" content="https://talos-agent.ch/brand/og-logo.png">
+<meta property="og:url" content="https://talos-agent.ch/vergleich/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Talos vs. OpenClaw vs. Hermes — an honest comparison">
+<meta name="twitter:description" content="The others can do more. Talos can prove every step it takes.">
+<meta name="twitter:image" content="https://talos-agent.ch/brand/og-logo.png">
+
+<style>
+/* ── fonts (lokal, kein Drittanbieter) — /vergleich/ liegt eine Ebene tiefer ── */
+@font-face { font-family:"VT323"; src:url("../fonts/vt323.woff2") format("woff2");
+             font-weight:400; font-display:swap; }
+@font-face { font-family:"Sometype Mono"; src:url("../fonts/sometype-mono-var.woff2") format("woff2");
+             font-weight:400 700; font-style:normal; font-display:swap; }
+@font-face { font-family:"Sometype Mono"; src:url("../fonts/sometype-mono-italic.woff2") format("woff2");
+             font-weight:400; font-style:italic; font-display:swap; }
+
+/* Dieselben Tokens wie die Hauptseite — ein System, ein Look. */
+:root{
+  --bg:    oklch(0.115 0.012 75);
+  --bg2:   oklch(0.145 0.016 78);
+  --amber: oklch(0.80 0.155 80);
+  --hot:   oklch(0.92 0.13 85);
+  --dim:   oklch(0.56 0.09 80);
+  --faint: oklch(0.38 0.055 80);
+  --line:  oklch(0.28 0.04 80);
+  --deny:  oklch(0.64 0.19 32);
+  --allow: oklch(0.74 0.14 145);
+  --crt:   "VT323", monospace;
+  --mono:  "Sometype Mono", monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth; scroll-padding-top:80px; -webkit-text-size-adjust:100%}
+body{
+  background:var(--bg); color:var(--amber);
+  font-family:var(--mono); font-size:14.5px; line-height:1.8;
+  font-variant-numeric:tabular-nums; overflow-x:hidden;
+}
+::selection{background:var(--amber); color:var(--bg)}
+a{color:var(--hot)}
+b,strong{color:var(--hot);font-weight:600}
+.wrap{max-width:1080px;margin:0 auto;padding:0 clamp(18px,4vw,52px)}
+
+/* ── CRT-Overlay: wie auf /docs/ dezent dosiert — die Seite ist zum Lesen da. ── */
+.crt-fx{position:fixed; inset:0; pointer-events:none; z-index:90}
+.crt-fx::before{
+  content:""; position:absolute; inset:0;
+  background:repeating-linear-gradient(0deg, oklch(0 0 0/.13) 0 1px, transparent 1px 3px);
+}
+.crt-fx::after{
+  content:""; position:absolute; inset:0;
+  background:radial-gradient(ellipse at 50% 40%, transparent 62%, oklch(0 0 0/.34) 100%);
+}
+
+/* ── nav (fixiert, wie überall) ───────────────── */
+nav{position:fixed;inset:0 0 auto 0;z-index:50;border-bottom:1px solid var(--line);
+  background:color-mix(in oklch, var(--bg) 88%, transparent);backdrop-filter:blur(8px)}
+nav .wrap{display:flex;gap:26px;align-items:baseline;padding-top:14px;padding-bottom:14px}
+.brand{font-family:var(--crt);font-size:26px;color:var(--hot);text-decoration:none;
+  text-shadow:0 0 10px oklch(0.8 0.155 80/.6);letter-spacing:.1em;
+  display:inline-flex;align-items:center;gap:11px}
+.brand .mark{width:26px;height:26px;display:block}
+nav a.lnk{font-size:11.5px;color:var(--dim);text-decoration:none;letter-spacing:.18em;text-transform:uppercase}
+nav a.lnk:hover{color:var(--hot)}
+nav a.lnk.on{color:var(--hot);text-shadow:0 0 8px oklch(0.8 0.155 80/.55)}
+nav a.lnk.on::before{content:"[";color:var(--faint)}
+nav a.lnk.on::after{content:"]";color:var(--faint)}
+nav .sp{flex:1}
+.status{font-size:11px;color:var(--faint);letter-spacing:.12em}
+.status i{color:var(--allow);font-style:normal;animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.3}}
+@media(max-width:760px){nav a.lnk,.status{display:none}}
+
+/* ── hero ─────────────────────────────────────── */
+.hero{padding:clamp(120px,18vh,180px) 0 clamp(50px,8vh,80px)}
+.doc-line{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);
+  display:flex;gap:26px;flex-wrap:wrap;margin-bottom:26px}
+.doc-line::before{content:"● ";color:var(--allow)}
+h1{font-family:var(--crt);font-weight:400;font-size:clamp(42px,6.4vw,84px);line-height:.98;
+  color:var(--hot);text-shadow:0 0 18px oklch(0.8 0.155 80/.5), 0 0 60px oklch(0.8 0.155 80/.22);
+  max-width:20ch;text-wrap:balance}
+.hero .lede{margin-top:24px;max-width:64ch;color:var(--dim)}
+.hero .lede + .lede{margin-top:12px}
+.spec-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;
+  background:var(--line);border:1px solid var(--line);margin-top:36px}
+.spec{background:var(--bg);padding:20px 22px;font-size:12px;color:var(--dim);line-height:1.6}
+.spec b{display:block;font-family:var(--crt);font-weight:400;font-size:clamp(26px,3.2vw,38px);
+  color:var(--hot);line-height:1.1;letter-spacing:.03em;
+  text-shadow:0 0 14px oklch(0.8 0.155 80/.45)}
+
+/* ── sections ─────────────────────────────────── */
+section{padding:clamp(60px,9vh,110px) 0;border-top:1px solid var(--line)}
+.sec-tag{font-family:var(--crt);font-size:19px;color:var(--dim);letter-spacing:.1em;margin-bottom:10px}
+.sec-tag::before{content:"┌─[ "}.sec-tag::after{content:" ]"}
+h2{font-family:var(--crt);font-weight:400;font-size:clamp(30px,4vw,52px);line-height:1.05;color:var(--hot);
+  text-shadow:0 0 14px oklch(0.8 0.155 80/.4);max-width:26ch;text-wrap:balance}
+.sub{color:var(--dim);max-width:64ch;margin-top:18px}
+.sub strong{color:var(--hot)}
+p{max-width:66ch}
+code{background:var(--bg2);border:1px solid var(--line);padding:0 5px;font-size:.92em;color:var(--hot)}
+
+/* Stärken-Liste — anerkennend, nicht kleinlaut */
+.ahead{list-style:none;margin-top:30px;max-width:76ch}
+.ahead li{padding:14px 0 14px 34px;position:relative;color:var(--dim);border-bottom:1px solid var(--line)}
+.ahead li:last-child{border-bottom:none}
+.ahead li::before{content:"▲";position:absolute;left:4px;top:12px;font-size:14px;color:var(--allow)}
+.ahead li b{color:var(--hot)}
+
+/* ── Vergleichstabelle ────────────────────────── */
+.tw{overflow-x:auto;margin-top:34px;border:1px solid var(--line);background:var(--bg)}
+table{border-collapse:collapse;width:100%;font-size:12.5px;min-width:780px}
+th,td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);
+  font-weight:400;background:var(--bg2)}
+th.t{color:var(--hot);text-shadow:0 0 8px oklch(0.8 0.155 80/.4)}
+tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:var(--bg2)}
+td.k{color:var(--hot);white-space:normal;min-width:150px}
+td{color:var(--dim)}
+td.t{color:var(--amber)}
+
+/* ── Doktrin-Liste („warum bewusst weniger") ──── */
+.why-list{border:1px solid var(--line);background:var(--bg2);margin-top:34px}
+.why{display:grid;grid-template-columns:210px 1fr;border-bottom:1px solid var(--line);
+  padding:16px 20px;gap:18px;font-size:13px}
+.why:last-child{border-bottom:none}
+.why:hover{background:var(--bg)}
+.why code{font-family:var(--crt);font-size:19px;color:var(--hot);background:none;border:none;padding:0}
+.why span{color:var(--dim);max-width:66ch}
+.why span b{color:var(--hot)}
+@media(max-width:600px){.why{grid-template-columns:1fr}}
+.doctrine-foot{color:var(--faint);font-size:12.5px;margin-top:22px;max-width:70ch}
+
+/* ── Notiz-Kästen (wie /docs/) ────────────────── */
+.note{border:1px solid var(--line);border-left:3px solid var(--faint);
+  background:var(--bg2);padding:13px 16px;margin-top:22px;max-width:70ch}
+.note.warn{border-left-color:var(--deny)}
+.note.good{border-left-color:var(--allow)}
+.note b{display:block;font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:6px;font-weight:700}
+.note.warn b{color:var(--deny)}
+.note.good b{color:var(--allow)}
+.note p{margin:0;font-size:13.5px;max-width:none;color:var(--amber)}
+.note p + p{margin-top:8px}
+
+/* ── Kernel-Demo ─────────────────────────────────────────────
+   Der Browser-Port von policy.py steht weiter unten inline im Dokument —
+   self-contained wie der Rest der Site, keine Datei, kein Request. */
+.demo{border:1px solid var(--line);background:var(--bg2);margin-top:34px;
+  box-shadow:0 0 60px oklch(0.8 0.155 80/.07)}
+.demo-head{display:flex;gap:14px;align-items:center;border-bottom:1px solid var(--line);
+  padding:12px 20px;font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+.demo-head .dot{width:9px;height:9px;border-radius:50%;background:var(--allow);animation:pulse 2s infinite}
+.demo-head .r{margin-left:auto;color:var(--faint)}
+.demo-body{padding:clamp(18px,3vw,34px)}
+.prompt-line{display:flex;gap:12px;align-items:baseline;border:1px solid var(--line);
+  padding:14px 18px;background:var(--bg)}
+.prompt-line .sig{color:var(--allow);font-weight:600}
+#cmd{flex:1;background:none;border:none;outline:none;color:var(--hot);
+  font-family:var(--mono);font-size:15px;caret-color:var(--amber);min-width:0}
+.samples{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.mini{font-family:var(--mono);font-size:11.5px;background:none;border:1px solid var(--line);
+  color:var(--dim);padding:6px 12px;cursor:pointer;transition:all .2s}
+.mini:hover{border-color:var(--amber);color:var(--hot)}
+.verdict{margin-top:24px;display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
+.v-glyph{font-family:var(--crt);font-size:27px;line-height:1}
+#vWord{font-family:var(--crt);font-size:22px;letter-spacing:.08em;text-transform:uppercase}
+#vWhy{font-size:12px;color:var(--dim)}
+.verdict.v-allow .v-glyph,.verdict.v-allow #vWord{color:var(--allow);text-shadow:0 0 12px oklch(0.74 0.14 145/.4)}
+.verdict.v-ask   .v-glyph,.verdict.v-ask   #vWord{color:var(--amber);text-shadow:0 0 12px oklch(0.8 0.155 80/.45)}
+.verdict.v-deny  .v-glyph,.verdict.v-deny  #vWord{color:var(--deny);text-shadow:0 0 12px oklch(0.64 0.19 32/.5)}
+.chain{margin-top:18px;display:grid;gap:1px;background:var(--line);border:1px solid var(--line)}
+.step{display:grid;grid-template-columns:26px 1fr auto;gap:12px;align-items:baseline;
+  padding:10px 14px;background:var(--bg);font-size:12.5px}
+.step .n{font-size:11px;color:var(--faint)}
+.step .what{color:var(--dim)}
+.step .what b{color:var(--hot)}
+.step .res{font-size:11px;color:var(--faint);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.step.hit{background:var(--bg2)}
+.step.hit .res{color:var(--amber)}
+.step.dim{opacity:.4}
+.verdict.turn .v-glyph{animation:stamp .42s cubic-bezier(.22,1,.36,1) both}
+@keyframes stamp{0%{opacity:0;transform:scale(1.5)}60%{opacity:1}100%{transform:scale(1)}}
+.chain.turn .step{animation:stepIn .34s cubic-bezier(.22,1,.36,1) both;animation-delay:calc(var(--i)*52ms)}
+@keyframes stepIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.demo-note{font-size:12px;color:var(--faint);margin-top:22px;max-width:70ch}
+@media(max-width:620px){
+  .step{grid-template-columns:20px 1fr}
+  .step .res{grid-column:2;font-size:10.5px}
+}
+
+/* ── Empfehlung ───────────────────────────────── */
+.pick{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+  border:1px solid var(--line);margin-top:34px}
+@media(max-width:760px){.pick{grid-template-columns:1fr}}
+.pick > div{background:var(--bg);padding:26px 26px}
+.pick h3{font-family:var(--crt);font-weight:400;font-size:22px;color:var(--hot);margin-bottom:10px}
+.pick p{color:var(--dim);font-size:13.5px}
+
+footer{border-top:1px solid var(--line);padding:36px 0 50px;font-size:12px;color:var(--faint)}
+footer .wrap{display:flex;gap:26px;flex-wrap:wrap}
+footer a{color:var(--dim);text-decoration:none}
+footer a:hover{color:var(--hot)}
+footer .sp{flex:1}
+
+/* scroll rule */
+.rule{position:fixed;top:0;left:0;width:100%;height:2px;z-index:60;
+  background:var(--amber);box-shadow:0 0 12px oklch(0.8 0.155 80/.55);
+  transform:scaleX(0);transform-origin:0 50%}
+
+/* reveals — hinter dem js-Gate: ohne JS steht einfach alles da */
+html.js .rv{opacity:0;transform:translateY(20px);transition:opacity .8s cubic-bezier(.19,1,.22,1),transform .8s cubic-bezier(.19,1,.22,1)}
+html.js .rv.in{opacity:1;transform:none}
+
+/* a counted number lands like a stamp */
+.spec b.set{animation:settle .7s cubic-bezier(.19,1,.22,1)}
+@keyframes settle{0%{transform:scale(1.06)}100%{transform:scale(1)}}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  html.js .rv{opacity:1;transform:none}
+  .rule{display:none}
+  html{scroll-behavior:auto}
+}
+</style>
+<link rel="stylesheet" href="/interface.css">
+<script src="/interface.js" defer></script>
+</head>
+<body>
+
+<div class="rule" id="rule" aria-hidden="true"></div>
+<div class="crt-fx" aria-hidden="true"></div>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="/"><img class="mark" src="../brand/sigil-78.png" alt="" width="26" height="26">TALOS</a>
+    <a class="lnk" href="/">Home</a>
+    <a class="lnk" href="/#kernel">Kernel</a>
+    <a class="lnk" href="/#ledger">Ledger</a>
+    <a class="lnk" href="/docs/">Docs</a>
+    <a class="lnk on" href="/vergleich/" aria-current="page">Compare</a>
+    <a class="lnk" href="/console.html">Console</a>
+    <a class="lnk" href="https://github.com/talos-kernel/talos">GitHub</a>
+    <span class="sp"></span>
+    <span class="status"><i>●</i> COMPARISON · AS OF 2026-08-28</span>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="doc-line">
+      <span>Subject: three agent architectures</span>
+      <span>Classification: public</span>
+      <span>Tone: no spin</span>
+    </div>
+    <h1>The others can do more.</h1>
+    <p class="lede">That is not false modesty. It is the first fact on this page.
+    <strong>OpenClaw</strong> and <strong>Hermes</strong> have more channels,
+    more skills, browser automation and mature cron fleets. If that breadth is what you
+    are after, you are better served there. I will not talk it away.</p>
+    <p class="lede">Talos trades breadth for something else: a <strong>deterministic
+    policy kernel</strong> between model and effect, a sandbox around the shell, and a
+    log whose integrity you can <strong>prove</strong> instead of having to believe.
+    The gap is doctrine, not backlog. That is what this page is about.</p>
+    <p class="lede">If you are looking at an <strong>OpenClaw alternative</strong> or a
+    <strong>self-hosted Hermes-style agent</strong> because you want to hand an agent a
+    shell without handing it your trust model: that is what I built Talos for.
+    Same league of autonomy — sub-agents, MCP, scheduled runs, browser work,
+    live dashboard — but every effect passes one small kernel first, and the agent can
+    never grant itself anything. The numbers below are the ones my test suite enforces
+    on every page of this site.</p>
+    <div class="spec-row">
+      <div class="spec"><b>31</b>tools here, every one gated</div>
+      <div class="spec"><b>100+</b>skills there — counted honestly</div>
+      <div class="spec"><b>2702</b>unit tests</div>
+      <div class="spec"><b>252/252</b>adversarial cases</div>
+      <div class="spec"><b>915</b>gate lines</div>
+      <div class="spec"><b>0</b>inbound ports</div>
+      <div class="spec"><b>0</b>default identities</div>
+    </div>
+  </div>
+</header>
+
+<section id="staerken">
+  <div class="wrap">
+    <p class="sec-tag rv">§1 · where the others lead</p>
+    <h2 class="rv">What OpenClaw and Hermes do better</h2>
+    <p class="sub rv">The other side first, in full. If you run either project,
+    nothing you use every day should be missing here.</p>
+    <ul class="ahead">
+      <li class="rv"><b>Channels.</b> Several messengers, companion apps, media
+      pipelines for images, audio and documents. Talos has four ways in
+      (Telegram, mail, CLI, WhatsApp over an operator-controlled broker) — and
+      all four only fetch.</li>
+      <li class="rv"><b>Skills and plugins.</b> Catalogues in the hundreds, from calendars
+      to image generation. Talos has 29 tools, worker-confined MCP behind an
+      operator-owned registry, and a sub-agent DAG — and the number grows slowly,
+      on purpose, see §3.</li>
+      <li class="rv"><b>Browser automation.</b> Filling in forms, clicking, driving
+      entire flows, as a first-class tool. The Talos browser renders and reads;
+      automation exists only inside the confined worker (MCP, double opt-in),
+      never as a native tool.</li>
+      <li class="rv"><b>Everyday automation.</b> Cron fleets, watchdogs,
+      morning reports — both projects have matured here. Talos ships installable
+      blueprints and a live dashboard, but every schedule runs under a hard
+      ceiling (§3).</li>
+      <li class="rv"><b>Model routing.</b> Multiple sources, local models,
+      mature fallback chains. Talos has provider routes with fallback —
+      solid, but narrower.</li>
+    </ul>
+    <p class="sub rv" style="margin-top:26px">Both projects also move faster.
+    There, a new capability is a <strong>feature question</strong>. Here it is a
+    <strong>kernel question</strong>: every new tool needs a verdict that survives
+    252 adversarial cases.</p>
+  </div>
+</section>
+
+<section id="tabelle">
+  <div class="wrap">
+    <p class="sec-tag rv">§2 · the table</p>
+    <h2 class="rv">Row by row</h2>
+    <p class="sub rv">The left half of the table reads as if Talos were winning.
+    The right half says the opposite. <strong>Both are true</strong> — they are two
+    different questions.</p>
+    <div class="tw rv">
+      <table>
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th class="t">Talos</th>
+            <th>OpenClaw</th>
+            <th>Hermes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="k">Decision on every effect</td>
+            <td class="t">Deterministic policy kernel, deny-by-default. The model proposes, <code>decide()</code> judges — per call, bound to the exact arguments, valid for 30 seconds, once.</td>
+            <td>Approvals as settings and dialogs; no deterministic kernel as its own layer between model and effect.</td>
+            <td>Rights hang on the process; no policy layer binding each effect individually.</td>
+          </tr>
+          <tr>
+            <td class="k">Shell</td>
+            <td class="t">Sandboxed (bubblewrap / sandbox-exec): root read-only, network off, the workspace the only writable place. Without isolation: <strong>refuse</strong>, not run unprotected.</td>
+            <td>Full shell with the rights of the process.</td>
+            <td>Full shell with the rights of the process.</td>
+          </tr>
+          <tr>
+            <td class="k">Audit log</td>
+            <td class="t">Append-only, SHA-256 hash chain. <code>talos verify</code> proves nothing was edited after the fact; <code>talos anchor</code> pins the chain head against truncation.</td>
+            <td>Session logs exist, not tamper-evident.</td>
+            <td>Logs exist, not tamper-evident.</td>
+          </tr>
+          <tr>
+            <td class="k">Report vs. reality</td>
+            <td class="t">The final answer is held against the event log: failed tool calls appear in the reply, read from the log, not from the model's memory.</td>
+            <td>The model's answer is the report.</td>
+            <td>The model's answer is the report.</td>
+          </tr>
+          <tr>
+            <td class="k">Identities</td>
+            <td class="t">Channel-qualified allowlist, zero default identities. Mail senders only via the receiving server's <code>Authentication-Results</code>, fail-closed.</td>
+            <td>Pairing and configuration per channel.</td>
+            <td>Depends on configuration.</td>
+          </tr>
+          <tr>
+            <td class="k">Channels</td>
+            <td class="t">4 — Telegram (long-poll), mail (IMAP pull), CLI, WhatsApp (SSH pull from an operator-controlled broker). Every way in fetches; none opens a port.</td>
+            <td>Many messengers, in both directions, incl. webhooks and companion apps.</td>
+            <td>WhatsApp broker with media pipeline, mail, more.</td>
+          </tr>
+          <tr>
+            <td class="k">Tools / skills</td>
+            <td class="t">26, each with a declared effect in the manifest. Without an entry in <code>TARGET_EXTRACTORS</code>: DENY by construction.</td>
+            <td>Plugin and skill ecosystem, in the hundreds.</td>
+            <td>Skill catalogue around a hundred, plus sub-agent CLIs.</td>
+          </tr>
+          <tr>
+            <td class="k">Browser</td>
+            <td class="t">Renders and reads, inside the resolver cage. Clicking, typing, forms: does not exist — such actions have no derivable target.</td>
+            <td>Full browser automation.</td>
+            <td>Browser automation available.</td>
+          </tr>
+          <tr>
+            <td class="k">Scheduled runs</td>
+            <td class="t">Schedules under <code>UnattendedCeiling</code>: whatever would need a human becomes DENY — nobody is watching, so nobody asks.</td>
+            <td>Cron jobs, used broadly and productively.</td>
+            <td>Cron fleets with watchdogs, used broadly.</td>
+          </tr>
+          <tr>
+            <td class="k">Models</td>
+            <td class="t">Provider routes with a fallback chain; one credential per provider, resolved at the moment of the call.</td>
+            <td>Routing across multiple sources, incl. local models.</td>
+            <td>Multi-stage fallback chains across multiple providers.</td>
+          </tr>
+          <tr>
+            <td class="k">Inbound webhooks</td>
+            <td class="t">None. Deliberately — a webhook turns an outbound-only process into a reachable one.</td>
+            <td>Present.</td>
+            <td>Possible.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note rv">
+      <b>Fairness</b>
+      <p>I build Talos, and I wrote this page, so it is not neutral. It is honest:
+      as of 2026-08-28, from public documentation and daily use of all
+      three systems. OpenClaw and Hermes move fast; if a row is no longer
+      true, <a href="https://github.com/talos-kernel/talos/issues">tell me</a>.</p>
+    </div>
+  </div>
+</section>
+
+<section id="doktrin">
+  <div class="wrap">
+    <p class="sec-tag rv">§3 · why deliberately less</p>
+    <h2 class="rv">Every missing row has a reason</h2>
+    <p class="sub rv">None of this is backlog. Every entry was considered and rejected,
+    and the boundary next to it is held by a red-team case. Retrofit one of
+    these rows and you are not building Talos plus a feature. You are building a different product.</p>
+    <div class="why-list rv">
+      <div class="why"><code>inbound webhook</code>
+        <span>Every way in <b>fetches</b>: Telegram long-polls, mail is pulled over
+        IMAP, WhatsApp is pulled over SSH from an operator-controlled broker. A
+        webhook needs a port the world can reach — an outbound-only process
+        would become a reachable one. That is why the Cloud-API WhatsApp variant
+        stays delivery-only, and why the broker variant pulls instead of
+        listening. Deliberate, not “not built yet”.</span></div>
+      <div class="why"><code>browser automation</code>
+        <span>Clicking, typing and submitting have <b>no derivable target</b> — the
+        kernel could not judge what is about to happen. A tool without a target is
+        DENY by construction. So <code>browse</code> renders and reads, inside the
+        resolver cage, so that even a redirect cannot leave the host that was checked.</span></div>
+      <div class="why"><code>skill catalogue</code>
+        <span>Breadth is cheap — <b>gated breadth is not</b>. Every tool needs a
+        declared effect and a target extractor, otherwise there is nothing to
+        judge. The 29 tools are the ones where the kernel can justify every verdict;
+        tool number 29 had to pass the same test.</span></div>
+      <div class="why"><code>yolo mode</code>
+        <span>The autonomy dial can only ever <b>tighten</b>, never widen. A mode
+        that grants rights next to the kernel would be a second source of permission —
+        exactly the problem capability tokens were built to remove.</span></div>
+      <div class="why"><code>plan approval</code>
+        <span>Approving a plan would mean approving actions <b>nobody has
+        seen</b>. A plan may set an order and an abort condition; every
+        step still passes the gate on its own. A plan can only end a run
+        earlier, never allow anything.</span></div>
+      <div class="why"><code>cron fleet</code>
+        <span>Unattended means: <b>NEEDS_HUMAN becomes DENY</b>. A question dropped
+        into a chat where a different conversation is going on is the most reliable way
+        to land a “yes” on the wrong thing. That is why the schedule list looks short —
+        it runs under the ceiling, not above it.</span></div>
+    </div>
+    <p class="doctrine-foot rv">The short version: <strong>the model proposes, it
+    never decides.</strong> What would soften that order is not missing. I rejected it.
+    Feature parity with OpenClaw or Hermes is explicitly not a goal.</p>
+  </div>
+</section>
+
+<section id="demo">
+  <div class="wrap">
+    <p class="sec-tag rv">§4 · type into policy.decide()</p>
+    <h2 class="rv">The difference, hands-on</h2>
+    <p class="sub rv">On an agent with a full shell, every one of these lines simply runs.
+    Here it walks through six steps, and the page shows <strong>where it gets
+    stuck</strong>. Nothing leaves the page.</p>
+    <div class="demo rv">
+      <div class="demo-head">
+        <span class="dot"></span><span>policy.py · browser port, inline in this page</span>
+        <span class="r">the Python original is authoritative</span>
+      </div>
+      <div class="demo-body">
+        <label class="prompt-line">
+          <span class="sig">$</span>
+          <input id="cmd" type="text" spellcheck="false" autocomplete="off" autocapitalize="off"
+                 value="cat ~/.ssh/id_ed25519" aria-label="Shell command for the kernel to judge">
+        </label>
+        <div class="samples" id="samples"></div>
+        <div class="verdict" id="verdict" aria-live="polite">
+          <span class="v-glyph" id="vGlyph"></span>
+          <span id="vWord"></span>
+          <span id="vWhy"></span>
+        </div>
+        <div class="chain" id="chain"></div>
+        <p class="demo-note">Steps and verdicts speak the machine console's language —
+        the console does not translate, not in the real Talos either. Simplified: the Python
+        original knows more patterns than this port, and the
+        252 adversarial cases run against the original on every install.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="wahl">
+  <div class="wrap">
+    <p class="sec-tag rv">§5 · which agent for what</p>
+    <h2 class="rv">The honest recommendation</h2>
+    <div class="pick rv">
+      <div>
+        <h3>OpenClaw or Hermes,</h3>
+        <p>if an agent is meant to carry your day-to-day: messengers in both directions,
+        browser flows, a broad skill catalogue, automation around the clock.
+        That breadth is real, it has matured, and Talos will not offer it.</p>
+      </div>
+      <div>
+        <h3>Talos,</h3>
+        <p>if an agent gets a shell on a machine where something can
+        break — and it must be provable afterwards what it did and what it
+        did not. Kernel, sandbox, hash chain: that is what I built it for, and little else.</p>
+      </div>
+    </div>
+    <div class="note good rv">
+      <b>No contradiction</b>
+      <p>Running both at once is the obvious split: the broad agent for the work,
+      the narrow one for the machine you hand a shell to. This page is meant to
+      sharpen the choice, not make it for you.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <a href="https://talos-agent.ch">talos-agent.ch</a>
+    <a href="/docs/">Docs</a>
+    <a href="/#ledger">Ledger</a>
+    <a href="/vergleich/">Compare</a>
+    <a href="/console.html">Console</a>
+    <a href="https://github.com/talos-kernel/talos">GitHub</a>
+    <span class="sp"></span>
+    <span>MIT · the gate is why the work can be trusted</span>
+  </div>
+</footer>
+
+<script>
+/* The kernel, re-implemented for the browser — inline, like the rest of the site.
+   ----------------------------------------------------------------------------
+   Mirrors talos/policy.py + command_floor.py. The order matters and is the same:
+   system floor → hardline → secrets → persistence → effect. The Python version is
+   the authoritative one and the one the adversarial suite runs against; this
+   exists so the rules can be read without installing anything. Nothing leaves
+   the page.
+
+   The one thing added for the web: when the verdict lands on a different step
+   than before, the chain replays top to bottom. The animation is the argument —
+   the kernel walks these in order, and you can watch where it stops.
+   ---------------------------------------------------------------------------- */
+(function () {
+  "use strict";
+
+  var HOME = "/home/you";
+
+  var HARDLINE = [
+    [/\brm\s+(-\S*\s+)*-\S*[rf][^\n]*\s["']?\/(\s|["']|$|\*)/, "recursive delete of the root filesystem"],
+    [/\brm\s+(-\S*\s+)*-\S*[rf][^\n]*(\/root|\/etc|\/usr|\/var|\/bin|\/sbin|\/boot|\/lib)\b/, "recursive delete of a system directory"],
+    [/\brm\s+(-\S*\s+)*-\S*[rf][^\n]*["']?\/home(\/[^\s/"';&|]+)?(\/\*?|\/)?["']?(\s|$)/, "recursive delete of a home directory"],
+    [/\brm\s+(-\S*\s+)*-\S*[rf][^\n]*(~|\$\{?HOME\}?)(\/\*)?(\s|$)/, "recursive delete of the home directory"],
+    [/\bmkfs(\.[a-z0-9]+)?\b/, "formatting a filesystem (mkfs)"],
+    [/\bdd\b[^\n]*\bof=\/dev\/(sd|nvme|hd|mmcblk|vd|xvd)/, "dd onto a raw block device"],
+    [/>\s*\/dev\/(sd|nvme|hd|mmcblk|vd|xvd)[a-z0-9]*\b/, "redirect onto a raw block device"],
+    [/:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/, "fork bomb"],
+    [/\bkill\s+(-\S+\s+)*-1\b/, "killing every process"],
+    [/(^|[;&|]\s*)(sudo\s+)?(shutdown|reboot|halt|poweroff)\b/, "system shutdown or reboot"]
+  ];
+
+  var DANGEROUS = [
+    [/\b(curl|wget)\b[^\n|]*\|\s*(sudo\s+)?(ba)?sh\b/, "piping the network into a shell"],
+    [/(^|[;&|]\s*)(sudo\s+)?rm\s+(-\S*\s+)*-\S*r/, "recursive delete"],
+    [/\bchmod\s+(-\S+\s+)*-R\b/, "recursive chmod"],
+    [/\bchown\s+(-\S+\s+)*-R\b/, "recursive chown"],
+    [/\bgit\s+reset\s+--hard\b/, "git reset --hard"],
+    [/\bgit\s+clean\s+-\S*[fx]/, "git clean -fx"],
+    [/\bgit\s+push\b[^\n]*--force/, "force push"]
+  ];
+
+  var SYSTEM = ["/etc", "/boot", "/root", "/usr", "/bin", "/sbin", "/lib"];
+  var SECRET = [HOME + "/.secrets", HOME + "/.ssh", HOME + "/.claude/.credentials.json", HOME + "/.aws"];
+  var PERSIST = [HOME + "/.bashrc", HOME + "/.zshrc", HOME + "/.profile",
+                 HOME + "/.config/systemd", HOME + "/.local/bin"];
+
+  // Path-ish tokens only. Deliberately literal — this is the limitation the page
+  // states out loud rather than hides.
+  function paths(cmd) {
+    var out = [], re = /(~|\$\{?HOME\}?|\/)[^\s;|&'"]*/g, m;
+    while ((m = re.exec(cmd)) !== null) {
+      var p = m[0].replace(/^~|^\$\{?HOME\}?/, HOME);
+      if (p.length > 1) out.push(p);
+    }
+    return out;
+  }
+  function under(p, roots) {
+    for (var i = 0; i < roots.length; i++) {
+      if (p === roots[i] || p.indexOf(roots[i] + "/") === 0) return roots[i];
+    }
+    return null;
+  }
+  function match(cmd, table) {
+    for (var i = 0; i < table.length; i++) {
+      if (table[i][0].test(cmd)) return table[i][1];
+    }
+    return null;
+  }
+
+  var STEPS = [
+    { n: "1", label: "System floor",         note: "/etc /boot /usr /bin — never, not even with approval" },
+    { n: "2", label: "Hardline command",     note: "no recovery path exists" },
+    { n: "3", label: "Secrets",              note: "reading refused, writing asks" },
+    { n: "4", label: "Persistence",          note: "runs later or grants rights" },
+    { n: "5", label: "Risky but recoverable", note: "asks you once" },
+    { n: "6", label: "Ordinary work",        note: "runs" }
+  ];
+
+  function judge(cmd) {
+    var trail = [null, null, null, null, null, null];
+    var found = paths(cmd);
+
+    for (var i = 0; i < found.length; i++) {
+      if (under(found[i], SYSTEM)) {
+        trail[0] = "deny · " + found[i];
+        return { v: "deny", why: "system path (hardline)", trail: trail, at: 0 };
+      }
+    }
+    var hard = match(cmd, HARDLINE);
+    if (hard) { trail[1] = "deny · " + hard; return { v: "deny", why: hard, trail: trail, at: 1 }; }
+
+    for (var j = 0; j < found.length; j++) {
+      if (under(found[j], SECRET)) {
+        trail[2] = "deny · " + found[j];
+        return { v: "deny", why: "reading secrets refused", trail: trail, at: 2 };
+      }
+    }
+    for (var k = 0; k < found.length; k++) {
+      if (under(found[k], PERSIST)) {
+        trail[3] = "ask · " + found[k];
+        return { v: "ask", why: "will be executed later", trail: trail, at: 3 };
+      }
+    }
+    var risky = match(cmd, DANGEROUS);
+    if (risky) { trail[4] = "ask · " + risky; return { v: "ask", why: risky, trail: trail, at: 4 }; }
+
+    trail[5] = "allow";
+    return { v: "allow", why: "nothing protected in the command", trail: trail, at: 5 };
+  }
+
+  var GLYPH = { allow: "✓", ask: "⏸", deny: "⛒" };
+  var WORD  = { allow: "allow", ask: "needs you", deny: "refused" };
+
+  var $cmd     = document.getElementById("cmd"),
+      $verdict = document.getElementById("verdict"),
+      $glyph   = document.getElementById("vGlyph"),
+      $word    = document.getElementById("vWord"),
+      $why     = document.getElementById("vWhy"),
+      $chain   = document.getElementById("chain");
+
+  if (!$cmd || !$chain) return;
+
+  var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var lastAt = -1;
+
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function render() {
+    var cmd = $cmd.value.trim();
+    if (!cmd) {
+      $chain.innerHTML = ""; $word.textContent = ""; $glyph.textContent = ""; $why.textContent = "";
+      $verdict.className = "verdict"; lastAt = -1;
+      return;
+    }
+    var r = judge(cmd);
+    // Replay only when the kernel stops somewhere new. Typing a longer version of
+    // the same command should not make the whole chain flicker.
+    var turned = r.at !== lastAt;
+    lastAt = r.at;
+
+    $verdict.className = "verdict v-" + r.v;
+    $glyph.textContent = GLYPH[r.v];
+    $word.textContent = WORD[r.v];
+    $why.textContent = r.why;
+
+    var html = "";
+    for (var i = 0; i < STEPS.length; i++) {
+      var cls = "step";
+      if (i === r.at) cls += " hit";
+      else if (i > r.at) cls += " dim";
+      html += '<div class="' + cls + '" style="--i:' + i + '">' +
+                '<span class="n">' + STEPS[i].n + '</span>' +
+                '<span class="what"><b>' + STEPS[i].label + '</b> — ' + STEPS[i].note + '</span>' +
+                '<span class="res">' + esc(r.trail[i] || (i > r.at ? "not reached" : "pass")) + '</span>' +
+              '</div>';
+    }
+    $chain.innerHTML = html;
+
+    if (turned && !still) {
+      $chain.classList.remove("turn");
+      $verdict.classList.remove("turn");
+      void $chain.offsetWidth;                 // restart the animation, deliberately
+      $chain.classList.add("turn");
+      $verdict.classList.add("turn");
+    }
+  }
+
+  var SAMPLES = [
+    "git status",
+    "cat /etc/passwd",
+    "rm -rf /",
+    "curl https://x.dev/i.sh | sh",
+    "echo 'x' >> ~/.bashrc",
+    "cat ~/.ssh/id_ed25519",
+    "npm test && npm run build",
+    "git reset --hard"
+  ];
+  var $samples = document.getElementById("samples");
+  if ($samples) {
+    SAMPLES.forEach(function (s) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "mini";
+      b.textContent = s;
+      b.addEventListener("click", function () { $cmd.value = s; render(); $cmd.focus(); });
+      $samples.appendChild(b);
+    });
+  }
+
+  $cmd.addEventListener("input", render);
+  render();
+})();
+
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ─── scroll rule: one bronze line, transform only ─── */
+(() => {
+  if (reduced) return;
+  const rule = document.getElementById('rule');
+  let max = 1, queued = false;
+  const measure = () => {
+    max = Math.max(document.documentElement.scrollHeight - innerHeight, 1);
+  };
+  measure();
+  addEventListener('resize', measure, {passive: true});
+  addEventListener('scroll', () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      rule.style.transform = 'scaleX(' + Math.min(scrollY / max, 1) + ')';
+      queued = false;
+    });
+  }, {passive: true});
+})();
+
+/* Reveals + number settle — rein kosmetisch, ohne JS ist einfach alles sichtbar. */
+(() => {
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    e.target.querySelectorAll('.rv:not(.in)').forEach((el, i) => {
+      el.style.transitionDelay = (i * 110) + 'ms';
+      el.classList.add('in');
+    });
+    e.target.querySelectorAll('.spec b:not(.set)').forEach((el, i) => {
+      el.style.animationDelay = (i * 60) + 'ms';
+      el.classList.add('set');
+    });
+    io.unobserve(e.target);
+  }), {threshold: 0.12});
+  document.querySelectorAll('section, header.hero').forEach(el => io.observe(el));
+})();
+</script>
+</body>
+</html>

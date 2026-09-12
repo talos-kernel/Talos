@@ -1,30 +1,26 @@
 # Talos
 
-> A self-hosted AI agent with a deterministic permission kernel. The model proposes tool calls; the kernel decides whether they may execute. Source is public and MIT licensed.
+> An autonomous AI agent you can hand a shell to. It can prove what it will not do. Tool calls pass a small permission kernel (allow / needs-human / deny). Runs land in a hash-chained audit log. Updates are Ed25519-signed tarballs, verified before anything is unpacked.
 
-## Source snapshot
+## Facts
 
-- Permission kernel: 913 lines of Python.
-- 31 tools in the manifest, gated before dispatch.
-- 2785 collected tests in the current source tree; platform-dependent checks may skip.
-- 230/230 adversarial cases passed in that source run.
-- Published release metrics are separate: https://talos-agent.ch/status.json
-- Grants bind one tool call's exact arguments, are single-use and expire after 30 seconds.
-- Confined Claude and Codex coding workers. MCP runs in the Claude worker from an operator-owned registry.
-- Experimental Computer: persistent ARM64 KVM Linux workspace, headless by default, optional desktop. Available in 0.19.1-alpha; the Computer requires separate provisioning.
-- Updates are signed tarballs, verified before unpacking; dependencies are pinned and hashed.
+- Permission kernel: 915 lines of Python, the only code that decides
+- 31 tools, all gated; unattended runs cannot escalate
+- 2702 tests, 252/252 red-team cases green at release time
+- MCP servers run only inside a UID-separated worker, from an operator-owned registry — no marketplace, no third-party code in the agent process
+- Channels: Telegram, mail (IMAP pull), CLI, WhatsApp via an operator-controlled broker — every channel fetches; no inbound port, no webhook
+- Updates: signed tarballs, verified before anything is unpacked; dependencies pinned and hashed, installed with --require-hashes
+- License: MIT
 
 ## Pages
 
-- [Home](https://talos-agent.ch/): capabilities, Computer, illustrative chat and kernel demos.
-- [Get started](https://talos-agent.ch/setup/): guided terminal or Telegram setup.
-- [Documentation](https://talos-agent.ch/docs/): searchable configuration and operation reference.
-- [MCP Registry](https://talos-agent.ch/registry/): explicit server examples and worker boundaries.
-- [Evidence](https://talos-agent.ch/redteam/): attack categories, case studies and runnable checks.
-- [Compare](https://talos-agent.ch/vergleich/): source-linked comparison with OpenClaw and Hermes.
-- [Console](https://talos-agent.ch/console.html): illustrative session walkthrough and published release data.
+- [Home](https://talos-agent.ch/): what it is, live policy-kernel demo in the browser
+- [Field manual](https://talos-agent.ch/docs/): install, identity, memory, channels, commands
+- [The MCP registry](https://talos-agent.ch/registry/): extension model without a marketplace
+- [Honest comparison](https://talos-agent.ch/vergleich/): Talos vs. OpenClaw vs. Hermes, including what Talos does not have
+- [Console](https://talos-agent.ch/console.html): one real session, replayed
 - [Changelog](https://talos-agent.ch/dist/CHANGELOG.md)
 
 ## Source
 
-- [GitHub](https://github.com/talos-kernel/talos)
+- [github.com/talos-kernel/talos](https://github.com/talos-kernel/talos)

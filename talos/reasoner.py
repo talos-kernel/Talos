@@ -576,7 +576,7 @@ class ClaudeCliReasoner:
             )
         except OSError as error:
             self._record(started, ok=False, note="process unavailable")
-            raise ReasonerFailure("Claude CLI could not start.", kind="unknown",
+            raise ReasonerFailure(f"(Reasoner nicht startbar: {error})", kind="unknown",
                                   provider="claude-cli", model=self._model or "",
                                   fallback_allowed=False) from None
 

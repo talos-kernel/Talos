@@ -52,24 +52,6 @@ def test_render_von_leer_ist_leer():
     assert render(()) == ""
 
 
-def test_interrupted_request_is_bounded_isolated_and_cleared_with_the_conversation():
-    from talos.memory import RUN_STATUS
-
-    mem = Memory(max_turns=4)
-    mem.remember_interrupted(CHAT, asked="x" * 500_000)
-    turns = mem.recall(CHAT)
-    assert len(turns[0].text) == MAX_TURN_CHARS
-    assert turns[1].speaker == RUN_STATUS
-    assert "Completion is unverified" in turns[1].text
-    assert mem.recall(OTHER) == mem.recall(FOREIGN) == ()
-    for index in range(4):
-        mem.remember_interrupted(CHAT, asked=f"unfinished {index}")
-    assert mem.stats(CHAT)[0] == 4
-    assert mem.pop_last(CHAT) == "unfinished 3"
-    assert mem.forget(CHAT) == 2
-    assert mem.recall(CHAT) == ()
-
-
 # --- Trennung: der eigentliche Sicherheitsteil --------------------------------------
 def test_zwei_konversationen_sehen_einander_nicht():
     mem = Memory()

@@ -1083,6 +1083,24 @@ class CommandCenter:
                 f"Davon ${snap.cost_override_usd:.2f} nach Betreiber-Preisen aus "
                 f"{modelinfo.ENV_VAR} — fuer diese Laeufe meldete der Anbieter keinen Preis."
             )
+        # Die Zuordnung: welches Modell hat den Verbrauch getrieben. Ohne sie sagt die
+        # Summe nur, DASS viel verbraucht wurde — und genau das half nicht, als ein Abo
+        # mitten in der Arbeit auslief.
+        if len(snap.per_model) > 1 or (snap.per_model and not snap.last):
+            lines.append("")
+            lines.append("Nach Modell:")
+            for name, t in sorted(snap.per_model.items(),
+                                  key=lambda paar: (-paar[1].cost_usd, -paar[1].runs)):
+                zeile = (f"  {_short_model(name) or 'unbekannt'}: {t.runs} Lauf"
+                         f"{'e' if t.runs != 1 else ''}")
+                if t.failed:
+                    zeile += f" ({t.failed} ohne Ergebnis)"
+                zeile += f" · {_duration(t.seconds)}"
+                if t.input_tokens or t.output_tokens:
+                    zeile += f" · {_tokens(t.input_tokens)}/{_tokens(t.output_tokens)} Token"
+                if t.cost_usd:
+                    zeile += f" · ${t.cost_usd:.2f}"
+                lines.append(zeile)
         last = snap.last
         if last is not None:
             detail = f"{_clock(last.at)} · {_short_model(last.model) or 'Modell unbekannt'} · {last.duration_s:.0f}s"

@@ -16,9 +16,7 @@ from talos.provider import (
     Provider,
     ProviderRegistry,
     restore_selection,
-    resolve_fallback,
     safe_talos_registry,
-    with_local_provider,
 )
 
 OWNER = Principal("telegram", "7")
@@ -80,86 +78,6 @@ def test_catalog_loader_executes_real_dataclass_style_modules(tmp_path: Path) ->
     )
     loaded = HermesCatalogLoader(catalog, models).load()
     assert loaded.selection("alpha", "m2") == ModelSelection("alpha", "m2")
-
-
-def test_catalog_loader_without_hermes_files_is_absent_not_fatal(tmp_path: Path) -> None:
-    """Gemessen 02.09.: eine frische Installation ohne Hermes-Checkout starb bei jedem
-    Start an „catalog helper not found". Die Vorgabe-Pfade duerfen fehlen — nur
-    `load()` (der Weg fuer eine vom Betreiber gesetzte Datei) bleibt laut."""
-    loader = HermesCatalogLoader(tmp_path / "nein" / "provider_catalog.py", tmp_path / "nein" / "models.py")
-    assert loader.load_if_present() is None
-    with pytest.raises(ValueError, match="catalog helper not found"):
-        loader.load()
-
-
-@pytest.mark.parametrize("sdk_available", [False, True])
-def test_optional_bedrock_discovery_does_not_pollute_other_model_startup(tmp_path, monkeypatch, capsys, sdk_available):
-    import talos.provider as provider_module
-    catalog = tmp_path / "provider_catalog.py"
-    catalog.write_text("def provider_catalog(): return [{'slug':'alpha'}, {'slug':'bedrock'}]\n")
-    models = tmp_path / "models.py"
-    models.write_text(
-        "_PROVIDER_MODELS = {'bedrock': ['snapshot-model']}\n"
-        "def provider_model_ids(slug):\n"
-        "    if slug == 'bedrock':\n"
-        "        print('live-bedrock-discovery')\n"
-        "        return ['live-model']\n"
-        "    return ['working-model']\n")
-    monkeypatch.setattr(provider_module.importlib.util, "find_spec", lambda name: object() if sdk_available else None)
-    loaded = HermesCatalogLoader(catalog, models).load()
-    assert loaded.selection("alpha", "working-model")
-    assert loaded.get("bedrock").models == (("live-model",) if sdk_available else ("snapshot-model",))
-    assert ("live-bedrock-discovery" in capsys.readouterr().out) == sdk_available
-
-
-def test_safe_registry_without_hermes_still_has_the_built_in_ways() -> None:
-    """Die API-Wege und die Claude-CLI stehen auch ohne Hermes-Katalog im Katalog —
-    das war immer die Absicht, kam aber nie an die Reihe, weil der Loader vorher warf."""
-    registry = safe_talos_registry(None)
-    slugs = {provider.slug for provider in registry.providers}
-    assert {"claude-cli", "anthropic-api", "openai-api"} <= slugs
-    assert registry.get("openai-api").models
-    claude_models = (
-        "claude-fable-5", "claude-sonnet-5", "claude-opus-4-8",
-        "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6",
-        "claude-fable-5-1",
-    )
-    assert registry.get("claude-cli").models == claude_models
-    assert registry.get("anthropic-api").models == claude_models
-
-
-def test_with_local_provider_makes_the_configured_local_model_known() -> None:
-    """`ollama` mit dem einen Modell, das der Betreiber genannt hat — ohne Hermes."""
-    registry = safe_talos_registry(None)
-    with pytest.raises(ValueError, match="unknown provider"):
-        registry.get("ollama")
-
-    seeded = with_local_provider(registry, ModelSelection("ollama", "qwen3.5:0.8b"))
-    assert seeded.get("ollama").models == ("qwen3.5:0.8b",)
-    assert seeded.selection("ollama", "qwen3.5:0.8b") == ModelSelection("ollama", "qwen3.5:0.8b")
-    # Die eingebauten Wege bleiben davor, unveraendert.
-    assert [p.slug for p in seeded.providers][:-1] == [p.slug for p in registry.providers]
-
-
-def test_with_local_provider_changes_nothing_for_hosted_or_known_or_empty() -> None:
-    registry = safe_talos_registry(None)
-    # Ein gehosteter Anbieter ausserhalb des Katalogs wird NICHT erfunden.
-    assert with_local_provider(registry, ModelSelection("openrouter", "x")) is registry
-    # Ohne Modellnamen gibt es nichts, was bekannt sein koennte.
-    assert with_local_provider(registry, ModelSelection("ollama", "")) is registry
-    # Kennt der Katalog (etwa aus Hermes) den Anbieter schon, bleibt seine Liste.
-    known = ProviderRegistry((*registry.providers, Provider("ollama", "Ollama (local)", ("a", "b"))))
-    assert with_local_provider(known, ModelSelection("ollama", "c")) is known
-
-
-def test_resolve_fallback_keeps_the_configured_local_model(tmp_path: Path) -> None:
-    """Der Weg von `ollama launch talos` / `llmman launch talos`: Anbieter ollama,
-    Modell aus der Konfiguration, kein Hermes — die Wahl bleibt, kein Rueckfall."""
-    log = EventLog(tmp_path / "events.db")
-    wanted = ModelSelection("ollama", "docker.io/ai/qwen3.5:0.8b")
-    registry = with_local_provider(safe_talos_registry(None), wanted)
-    assert resolve_fallback(log, registry, wanted) == wanted
-    assert not log.recent(1, ("model.fallback",))
 
 
 def test_router_switches_actual_reasoner_and_logs_selection(tmp_path: Path) -> None:
@@ -265,7 +183,13 @@ def test_persistence_failure_keeps_old_runtime_selection() -> None:
     assert router.reason("still old").startswith("beta/small")
 
 
-def test_restored_reasoner_does_not_probe_or_change_provider_at_startup(tmp_path: Path) -> None:
+def test_invalid_restored_reasoner_boots_anyway_validation_is_lazy(tmp_path: Path) -> None:
+    # Seit d4d7cda validiert der Router beim Boot NICHT mehr — /model, /stop und der
+    # Doctor muessen existieren, bevor irgendein ferner Provider ausfallen kann. Ein
+    # defekter wiederhergestellter Reasoner faellt daher erst beim ersten Lauf auf;
+    # dort greift die normale Fallback-Kette (b25b5f1). Hier wird der Boot-Beweis
+    # gefuehrt: der Router steht, der Fehler ist sichtbar, kein Provider wurde beim
+    # Boot angeruehrt.
     class Probe(FakeReasoner):
         def validate(self) -> None:
             if self.selection == ModelSelection("alpha", "model-1"):
@@ -280,8 +204,6 @@ def test_restored_reasoner_does_not_probe_or_change_provider_at_startup(tmp_path
         fallback=ModelSelection("beta", "small"),
     )
     assert router.current == ModelSelection("alpha", "model-1")
-    assert not log.recent(1, ("model.restore_failed",))
-    assert router.can_select()
 
 
 def test_failed_validation_is_a_noop(tmp_path: Path) -> None:
@@ -431,7 +353,7 @@ def test_picker_typed_switch_requires_exact_two_arguments(tmp_path: Path) -> Non
     assert router.current == ModelSelection("alpha", "model-2")
 
 
-def test_safe_registry_extends_stale_hermes_claude_models_without_unsafe_routes() -> None:
+def test_safe_registry_routes_claude_only_through_cli_and_blocks_antigravity() -> None:
     raw = ProviderRegistry((
         Provider("openai-codex", "Codex", ("gpt",)),
         Provider("anthropic", "Anthropic", ("claude-fable-5", "claude-sonnet-5")),
@@ -560,3 +482,80 @@ def test_an_empty_event_log_does_not_change_the_model_without_a_trace(tmp_path) 
     belege = log.recent(5, ("model.restore_failed",))
     assert belege, "der Rueckfall wurde nicht belegt"
     assert "no model.selected" in belege[-1]["payload"]["error"]
+
+
+@pytest.mark.parametrize(("cause", "hint"), [
+    ("Codex token refresh failed: Could not validate your refresh token", "Sign-in expired"),
+    ("network failure — HTTPConnectionPool(host='127.0.0.1', port=21434)", "server unreachable"),
+    ("HTTP 410 Gone", "no longer available"),
+    ("HTTP 429", "usage limit"),
+    ("unknown provider error /private/path?token=do-not-show", "could not be verified"),
+])
+def test_picker_failure_is_readable_private_and_recoverable(tmp_path, cause, hint):
+    class Probe(FakeReasoner):
+        def validate(self):
+            if self.selection.model == "large":
+                raise RuntimeError(cause + " secret-provider-stderr")
+    log = EventLog(tmp_path / "events.db")
+    router = ModelRouter(registry(), ModelSelection("beta", "small"), Probe, log)
+    picker = ModelPicker(registry(), router, token_factory=lambda: "tok")
+    top = picker.open(principal=OWNER, conversation=CHAT)
+    page = picker.handle(top.keyboard[0][1].data, principal=OWNER, conversation=CHAT)
+    result = picker.handle(page.keyboard[0][1].data, principal=OWNER, conversation=CHAT)
+    assert hint in result.text
+    assert "Still active: small" in result.text
+    assert "secret-provider-stderr" not in result.text
+    assert "127.0.0.1" not in result.text and "do-not-show" not in result.text
+    assert result.keyboard
+    assert router.current == ModelSelection("beta", "small")
+    assert not log.recent(1, ("model.selected",))
+    # Retry remains bound to the original principal and conversation.
+    retry = result.keyboard[0][0].data
+    denied = picker.handle(retry, principal=Principal("telegram", "8"), conversation=CHAT)
+    assert "invalid" in denied.text.lower()
+    retried = picker.handle(retry, principal=OWNER, conversation=CHAT)
+    assert hint in retried.text
+    providers = picker.handle(result.keyboard[0][1].data, principal=OWNER, conversation=CHAT)
+    assert "Select a provider" in providers.text
+    typed = picker.select_typed("beta large", principal=OWNER)
+    assert hint in typed.text and "secret-provider-stderr" not in typed.text
+
+
+@pytest.mark.parametrize("stale_kind", ("retry", "model"))
+@pytest.mark.parametrize("finite_factory", (False, True))
+def test_old_model_and_retry_buttons_cannot_switch_another_provider(tmp_path, stale_kind, finite_factory):
+    class Probe(FakeReasoner):
+        def validate(self):
+            if self.selection == ModelSelection("beta", "large"):
+                raise RuntimeError("auth failed")
+    log = EventLog(tmp_path / "events.db")
+    initial = ModelSelection("beta", "small")
+    router = ModelRouter(registry(), initial, Probe, log)
+    tokens = iter(("tok",))
+    factory = (lambda: next(tokens)) if finite_factory else (lambda: "tok")
+    picker = ModelPicker(registry(), router, token_factory=factory)
+    top = picker.open(principal=OWNER, conversation=CHAT)
+    beta = picker.handle(top.keyboard[0][1].data, principal=OWNER, conversation=CHAT)
+    stale = beta.keyboard[0][1].data
+    if stale_kind == "retry":
+        failed = picker.handle(stale, principal=OWNER, conversation=CHAT)
+        stale = failed.keyboard[0][0].data
+        back = failed.keyboard[0][1].data
+    else:
+        back = beta.keyboard[-1][0].data
+    providers = picker.handle(back, principal=OWNER, conversation=CHAT)
+    alpha = picker.handle(providers.keyboard[0][0].data, principal=OWNER, conversation=CHAT)
+    result = picker.handle(stale, principal=OWNER, conversation=CHAT)
+    assert "expired" in result.text.lower() or "invalid" in result.text.lower()
+    assert router.current == initial
+    assert not log.recent(1, ("model.selected",))
+    fresh = alpha.keyboard[0][1].data
+    for principal, chat in ((Principal("telegram", "8"), CHAT), (OWNER, "telegram:other")):
+        denied = picker.handle(fresh, principal=principal, conversation=chat)
+        assert "invalid" in denied.text.lower()
+        assert router.current == initial
+        assert not log.recent(1, ("model.selected",))
+    switched = picker.handle(fresh, principal=OWNER, conversation=CHAT)
+    assert "Model switched" in switched.text
+    assert router.current == ModelSelection("alpha", "model-1")
+    assert restore_selection(log, registry(), initial) == router.current

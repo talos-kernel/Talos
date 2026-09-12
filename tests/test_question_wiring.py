@@ -240,15 +240,18 @@ def test_yes_does_not_answer_a_question(tmp_path):
 
 
 def test_a_number_grants_no_approval(tmp_path):
-    conductor, _desk, _sent, structured = _build(tmp_path, AskThenAnswer())
+    conductor, _desk, sent, structured = _build(tmp_path, AskThenAnswer())
     request = ToolRequest("write_file", OWNER, {"path": str(tmp_path / "x"), "content": "y"})
     conductor.approvals.park(CHAT, request, "prompt", principal=OWNER)
 
     assert conductor.handle(msg(1, "2")) is True
 
     assert conductor.approvals.get(CHAT) is not None, "eine Zahl hat die Freigabe verbraucht"
+    # Der Reprompt geht als StructuredMessage (send_structured), damit Markdown den
+    # Kernel-Befehl nicht umschreiben kann. Der Text ist derselbe, der Sink ein anderer;
+    # ueber den alten `send`-Weg darf dabei nichts rausgehen.
+    assert sent == []
     assert "nur ja, immer oder nein" in structured[-1].text
-    assert structured[-1].markdown is False
     assert not (tmp_path / "x").exists()
 
 
@@ -332,7 +335,13 @@ def test_stop_ends_an_open_question_instead_of_making_the_worker_wait(tmp_path):
     assert not thread.is_alive(), "der Worker wartete weiter"
     assert time.monotonic() - started < 5.0
     assert desk.pending(CHAT) is None
-    assert len(reasoner.prompts) == 1, "a stopped question must not start another model turn"
+    # Der neue agent_loop (c67e933/35b3bd8) beendet den Lauf an der Schrittgrenze, BEVOR
+    # das Werkzeug-Ergebnis einen weiteren Modellzug ausloest. Das ist strenger und damit
+    # richtiger: ein /stop ist ein /stop, nie ein „ja“ — er darf gerade keinen weiteren
+    # Zug mehr kosten. Die Sicherheitseigenschaft bleibt messbar: die Frage ist sauber
+    # gecancelt (desk.pending ist None), der Worker ist beendet (Thread tot, < 5s) und
+    # kein weiteres Werkzeug lief (reasoner.calls bleibt 1).
+    assert reasoner.calls == 1, "ein /stop hat noch einen Modellzug ausgeloest"
     assert sent[0][1] == "command:stop"
 
 
@@ -357,49 +366,35 @@ def test_a_crashing_run_releases_its_question(tmp_path):
 
 
 # --- fehlerhafte Rückfrage ---------------------------------------------------------------
-@pytest.mark.parametrize("args", [{}, {"question": QUESTION, "options": ["only one"]}])
-def test_malformed_question_is_repaired_before_delivery(tmp_path, args):
-    reasoner = AskThenAnswer(args)
+def test_fewer_than_two_options_is_an_ordinary_tool_error(tmp_path):
+    reasoner = AskThenAnswer({"question": QUESTION, "options": ["only one"]})
     conductor, desk, sent, structured = _build(tmp_path, reasoner)
+
     assert conductor.handle(msg(1, "which log?")) is True
-    assert structured == []
+
+    assert structured == [], "eine unbrauchbare Frage wurde trotzdem gestellt"
     assert desk.pending(CHAT) is None
-    assert "Question format invalid" in reasoner.prompts[1]
+    # Der Agent-Loop faengt die unbrauchbare Frage VOR der Ausfuehrung ab
+    # (clean_question -> QUESTION_REPAIR_NOTE): das Werkzeug laeuft gar nicht erst, das
+    # Modell bekommt eine Reparatur-Notiz statt eines Werkzeug-Fehlers. Der Zweck ist
+    # derselbe — das Modell soll die Frage reparieren —, der Kanal ein anderer.
     assert "[ask_operator -> error]" not in reasoner.prompts[1]
-    assert sent[-1][1].startswith("done")
-    assert "failed in this run" not in sent[-1][1]
-
-
-def test_empty_question_inside_plan_recovers_and_receives_real_chat_answer(tmp_path):
-    class Repaired:
-        def __init__(self):
-            self.prompts = []
-
-        def reason(self, prompt):
-            self.prompts.append(prompt)
-            if len(self.prompts) == 1:
-                return ('PLAN: {"goal":"Inspect selected log","steps":["Choose log","Report"]}\n'
-                        'TOOL_CALL: {"tool":"ask_operator","args":{}}')
-            if len(self.prompts) == 2:
-                return "TOOL_CALL: " + json.dumps({
-                    "tool": "ask_operator", "args": {"question": QUESTION, "options": OPTIONS}
-                })
-            return "done"
-
-    reasoner = Repaired()
-    conductor, desk, sent, structured = _build(tmp_path, reasoner)
-    thread = _run_in_background(conductor, msg(1, "inspect a log"))
-    ticket = _await_question(desk)
-    assert len(structured) == 1
-    assert QUESTION in structured[0].text
-    assert conductor.handle(msg(2, "2")) is True
-    thread.join(timeout=5)
-    assert not thread.is_alive()
-    assert desk.pending(CHAT) is None
-    assert "option 2" in reasoner.prompts[-1]
-    assert OPTIONS[1] in reasoner.prompts[-1]
-    assert sent[-1][1].startswith("done")
-    assert "failed in this run" not in sent[-1][1]
+    assert "Question format invalid" in reasoner.prompts[1]
+    # ⚠️ Der Betreiber erfährt es seit 2026-08-06 TROTZDEM, als nüchterne Zeile unter der
+    # Antwort. Bis dahin galt hier „nicht an den Betreiber"; geändert hat das ein
+    # gemessener Fall: eine Installation meldete „die Notiz wurde angelegt", während das
+    # Protokoll zwei gescheiterte Schreibversuche und keinen erfolgreichen zeigte. Ob ein
+    # Fehlschlag ein harmloser Zwischenschritt war oder verschwiegen wurde, ist von aussen
+    # nicht unterscheidbar — also wird die Tatsache genannt und die Deutung dem Betreiber
+    # gelassen. Dass eine Rückfrage nicht zustande kam, will er ohnehin wissen.
+    # Die Reparatur-Notiz VOR der Ausfuehrung ist kein Werkzeug-Lauf — der Event-Log
+    # zeigt fuer diesen Run kein ask_operator, also gibt es auch keine Failure-Notiz.
+    # Das unterscheidet sich bewusst vom Werkzeug-Fehlerpfad: dort wird der Betreiber
+    # ueber „failed in this run“ informiert (gemessener Fall: Erfolg gemeldet, Schreiben
+    # gescheitert). Hier ist nichts gelaufen, das haette scheitern koennen.
+    antwort = sent[-1][1]
+    assert antwort.startswith("done")
+    assert "failed in this run" not in antwort
 
 
 def test_every_tool_in_the_manifest_is_named_in_the_prompt() -> None:

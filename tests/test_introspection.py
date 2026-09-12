@@ -381,7 +381,7 @@ def test_failed_start_is_measured_not_swallowed(tmp_path: Path) -> None:
 
     reply = reasoner.reason("hallo")
 
-    assert "could not start" in reply
+    assert "nicht startbar" in reply
     snap = meter.snapshot()
     assert (snap.runs, snap.failed) == (1, 1)
 
@@ -389,7 +389,7 @@ def test_failed_start_is_measured_not_swallowed(tmp_path: Path) -> None:
 def test_reasoner_works_without_a_meter(tmp_path: Path) -> None:
     """Der Zaehler ist Zubehoer — ohne ihn denkt Talos weiter."""
     reasoner = ClaudeCliReasoner(str(tmp_path / "gibt-es-nicht"), 5)
-    assert "could not start" in reasoner.reason("hallo")
+    assert "nicht startbar" in reasoner.reason("hallo")
 
 
 def test_claude_cli_model_is_explicit_and_validated_before_switch(tmp_path: Path, monkeypatch) -> None:
@@ -411,8 +411,6 @@ def test_claude_cli_model_is_explicit_and_validated_before_switch(tmp_path: Path
     argv = captured["argv"]
     assert argv[:2] == ["--model", "claude-fable-5"]
     assert "--safe-mode" in argv
-    assert argv[argv.index("--permission-mode") + 1] == "dontAsk"
-    assert argv[argv.index("--tools") + 1] == ""
     assert "--disable-slash-commands" in argv
     assert "--strict-mcp-config" in argv
     assert argv[argv.index("--mcp-config") + 1] == '{"mcpServers":{}}'

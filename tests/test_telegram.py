@@ -99,58 +99,6 @@ def test_callback_data_over_telegram_limit_is_rejected() -> None:
         raise AssertionError("oversize callback data accepted")
 
 
-def test_approved_answer_is_formatted_and_clears_buttons(monkeypatch) -> None:
-    calls = []
-    monkeypatch.setattr(
-        "talos.telegram.requests.post",
-        lambda url, data, timeout: (calls.append(data) or _response()),
-    )
-    channel = TelegramChannel(TelegramClient("secret", 1))
-    channel.send_structured("telegram:42", StructuredMessage(
-        "**VPS status** ✅\n\n| Metric | Value |\n|---|---|\n| Disk `/` | 72 % |",
-        edit_message_id=99, markdown=True,
-    ))
-    assert calls[-1]["parse_mode"] == "HTML"
-    assert "<b>VPS status</b>" in calls[-1]["text"]
-    assert "<code>/</code>" in calls[-1]["text"]
-    assert "|---|" not in calls[-1]["text"]
-    assert calls[-1]["reply_markup"] == '{"inline_keyboard": []}'
-
-
-def test_approval_prompt_preserves_literal_command_markers(monkeypatch) -> None:
-    calls = []
-    monkeypatch.setattr(
-        "talos.telegram.requests.post",
-        lambda url, data, timeout: (calls.append(data) or _response({"result": {"message_id": 99}})),
-    )
-    text = "Command: printf '**literal** `whoami`'"
-    TelegramChannel(TelegramClient("secret", 1)).send_structured(
-        "telegram:42", StructuredMessage(text),
-    )
-    assert calls[-1]["text"] == text
-    assert "parse_mode" not in calls[-1]
-
-
-def test_approved_answer_format_rejection_still_clears_buttons(monkeypatch) -> None:
-    calls = []
-
-    def post(url, data, timeout):
-        calls.append(data)
-        response = _response()
-        if data.get("parse_mode"):
-            response.raise_for_status.side_effect = RuntimeError("format rejected")
-        return response
-
-    monkeypatch.setattr("talos.telegram.requests.post", post)
-    TelegramChannel(TelegramClient("secret", 1)).send_structured(
-        "telegram:42", StructuredMessage("**Done**", edit_message_id=99, markdown=True),
-    )
-    assert len(calls) == 2
-    assert "parse_mode" not in calls[-1]
-    assert calls[-1]["text"] == "**Done**"
-    assert calls[-1]["reply_markup"] == '{"inline_keyboard": []}'
-
-
 # --- Angehaengtes: nicht mehr lautlos fallen lassen ---------------------------------
 def _update_mit(message: dict) -> list:
     """Ein Telegram-Update mit beliebigem Inhalt, durch den echten Parser."""

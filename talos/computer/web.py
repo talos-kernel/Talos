@@ -12,7 +12,28 @@ import sqlite3
 import time
 from urllib.parse import urlsplit, parse_qs
 
-from websockify import auth_plugins, websocketproxy
+try:
+    from websockify import auth_plugins, websocketproxy
+
+    _ProxyBase = websocketproxy.ProxyRequestHandler
+except ImportError:  # pragma: no cover - siehe unten
+    # ⚠️ `websockify` liegt auf dem COMPUTER-Host (apt, `deploy/computer-setup.py`),
+    # nicht im venv des Agenten. Bis zum 12.09. stand der Import hart am Modulkopf,
+    # und `tests/test_computer_web.py` uebersprang sich deshalb auf jeder Maschine
+    # ohne diese Bibliothek — auch in der CI. Uebersprungen waren ausgerechnet die
+    # Faelle, die die Sitzungssignatur und die Login-Bremse pruefen: zwei
+    # Sicherheitseigenschaften, die damit nirgends belegt waren.
+    #
+    # Nur der PROXY braucht die Bibliothek. Signatur, Cookie-Pruefung und Rate-Limit
+    # sind reines Python und gehoeren geprueft, wo immer die Tests laufen. Der
+    # Platzhalter macht das Modul importierbar; wer den Server wirklich startet,
+    # bekommt in `main()` eine klare Ansage statt eines AttributeError.
+    auth_plugins = websocketproxy = None
+
+    class _ProxyBase:
+        pass
+
+
 from .contract import slug
 
 CONFIG = {}
@@ -79,7 +100,7 @@ class Auth:
                 raise auth_plugins.AuthenticationError(response_code=409)
 
 
-class Handler(websocketproxy.ProxyRequestHandler):
+class Handler(_ProxyBase):
     def log_message(self, *_):
         pass
 
@@ -194,6 +215,11 @@ class Handler(websocketproxy.ProxyRequestHandler):
 
 def main():
     global CONFIG
+    if websocketproxy is None:
+        raise SystemExit(
+            "websockify is not installed. The workbench proxy runs on the Computer "
+            "host, where deploy/computer-setup.py installs it."
+        )
     CONFIG = json.loads(Path("/etc/talos-computer.json").read_text())
     server = websocketproxy.WebSocketProxy(
         RequestHandlerClass=Handler, listen_host="127.0.0.1", listen_port=8830,

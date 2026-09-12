@@ -362,30 +362,57 @@ def test_fact_review_retries_once_then_marks_unverified_instead_of_looping(tmp_p
     assert "NOT VERIFIED" in result.text and "no Atlas API evidence" in result.text
 
 
-@pytest.mark.parametrize("limit", [1, 2, 8])
-def test_question_repair_respects_hard_budget_and_stops_without_a_plan(tmp_path, limit):
-    executor = _executor(tmp_path)
-    result = run_agent(lambda history: _tool_call("ask_operator", {}, []),
-                       executor, OWNER, "invalid-no-plan", max_steps=limit)
-    assert result.status is AgentStatus.STEP_LIMIT
-    assert result.steps == min(limit, 3)
-    assert not any(event["type"] == "exec.intent"
-                   for event in executor.log.by_run("invalid-no-plan"))
+# --- Native TOOL_CALL mit kaputter JSON ------------------------------------------------
+# Der Fall stammt vom 10.09. aus dem echten Telegram-Lauf: das Modell setzte `host` und
+# `command` neben statt in `args` und schloss mit einer Klammer zu viel. `parse_tool_call`
+# lieferte None, `looks_foreign` griff nicht, und die rohe Zeile kam als Antwort beim
+# Betreiber an — waehrend nichts lief.
+KAPUTTE_TOOL_ZEILE = (
+    "Hole den PC-Status live per remote_exec auf pc.\n"
+    'TOOL_CALL: {"tool": "remote_exec", "host": "pc", "command": "powershell -File x.ps1"}}'
+)
 
 
-@pytest.mark.parametrize("prefix", [
-    "Verstanden: echt. Ausführen kann ich es in diesem Turn trotzdem noch nicht, "
-    "der Plan-Modus ist weiterhin aktiv und blockiert jede schreibende Aktion.",
-    "Ich kann die Anmeldung momentan leider noch nicht ausführen, weil mein Plan-Modus aktiv ist.",
-])
-def test_self_blocked_opening_is_recognized_even_before_a_long_plan(prefix):
-    reply = prefix + "\n" + "Nächster Schritt: das Formular prüfen. " * 40
-    assert len(reply) > agent_loop.MAX_SELF_BLOCK_CHARS
-    assert agent_loop.looks_self_blocked(reply)
+def test_a_malformed_tool_call_line_is_recognised() -> None:
+    """Regex trifft, JSON parst nicht — genau die Luecke zwischen den beiden Waechtern."""
+    from talos.agent_loop import looks_foreign, looks_malformed_tool_call
+
+    assert parse_tool_call(KAPUTTE_TOOL_ZEILE) is None
+    assert not looks_foreign(KAPUTTE_TOOL_ZEILE)
+    assert looks_malformed_tool_call(KAPUTTE_TOOL_ZEILE)
+    # Eine gueltige Zeile und blosse Prosa sind es nicht.
+    assert not looks_malformed_tool_call(_tool_call("read_file", {"path": "x"}, []))
+    assert not looks_malformed_tool_call("nur prosa")
 
 
-def test_operator_declining_an_action_is_not_a_self_blocked_refusal():
-    assert not agent_loop.looks_self_blocked(
-        "Ich schreibe die Plan-Datei nicht, weil du diese Aktion abgelehnt hast. "
-        "Die nächste erlaubte Prüfung kann ich durchführen."
-    )
+def test_a_malformed_tool_call_is_retried_not_delivered(tmp_path: Path) -> None:
+    """Die rohe Zeile darf nie als Antwort ankommen; nach der Nachfassung zaehlt die Prosa."""
+    from talos.agent_loop import MALFORMED_NOTE
+
+    antworten = iter([KAPUTTE_TOOL_ZEILE, "Fertig, nichts lief."])
+    gesehen: list[list[str]] = []
+
+    def propose(h: list[str]) -> str:
+        gesehen.append(list(h))
+        return next(antworten)
+
+    result = run_agent(propose, _executor(tmp_path), OWNER, "pc status")
+    assert result.status is AgentStatus.ANSWERED
+    assert result.text == "Fertig, nichts lief."
+    assert "TOOL_CALL" not in result.text
+    assert MALFORMED_NOTE in gesehen[1]
+
+
+def test_malformed_tool_call_nagging_is_bounded(tmp_path: Path) -> None:
+    """Dasselbe Budget wie Fremdsyntax: nach MAX_FOREIGN_RETRIES wird ausgeliefert."""
+    from talos.agent_loop import MAX_FOREIGN_RETRIES
+
+    zuege = [0]
+
+    def propose(_h: list[str]) -> str:
+        zuege[0] += 1
+        return KAPUTTE_TOOL_ZEILE
+
+    result = run_agent(propose, _executor(tmp_path), OWNER, "hartnaeckig")
+    assert result.status is AgentStatus.ANSWERED
+    assert zuege[0] == MAX_FOREIGN_RETRIES + 1

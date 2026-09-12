@@ -115,12 +115,13 @@ def worker(tmp_path, sock_dir):
             daemon=True,
         )
         thread.start()
-        # Bereit heisst VERBINDBAR, nicht nur sichtbar: die Socket-Datei legt `bind()`
-        # an, Verbindungen nimmt der Worker erst ab `listen()` an — dazwischen
-        # (chmod/chown) bekommt ein Client unter Last ECONNREFUSED, und der Test
-        # misst einen Netzfehler statt des Worker-Protokolls. Die Probe spricht
-        # kein Protokoll; eine stille Verbindung kostet den Daemon nichts.
-        for _ in range(200):
+        # Auf sock.exists() zu warten ist zu frueh: die Datei entsteht schon bei bind(),
+        # doch erst nach listen() nimmt der Worker Verbindungen an. Wer in dieser Luecke
+        # connectet, bekommt ECONNREFUSED — auf langsameren Laeufern (macOS-CI) meldete
+        # der Client das dann faelschlich als `network_failed` statt `key_rejected`.
+        # Warte deshalb, bis wirklich verbunden werden kann; die leere Probe liest der
+        # Worker als inhaltslose Verbindung und ignoriert sie (`_bediene`: roh is None).
+        for _ in range(500):
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
                     probe.settimeout(0.5)
@@ -129,7 +130,7 @@ def worker(tmp_path, sock_dir):
             except OSError:
                 time.sleep(0.01)
         else:  # pragma: no cover — waere ein Defekt des Fixtures selbst
-            raise RuntimeError("Worker-Socket ist nicht verbindbar")
+            raise RuntimeError("Worker-Socket nahm keine Verbindung an")
         stops.append(stop)
         return str(sock)
 
@@ -143,14 +144,14 @@ def _frage(pfad: str, roh: bytes) -> dict:
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as verbindung:
         verbindung.settimeout(10)
         verbindung.connect(pfad)
+        verbindung.sendall(roh)
         try:
-            verbindung.sendall(roh)
             verbindung.shutdown(socket.SHUT_WR)
         except OSError:
-            # Ein Frame ueber dem Limit beantwortet der Server sofort und schliesst,
-            # waehrend der Client noch sendet — der RST macht send/shutdown zum
-            # Fehler, die Antwort liegt aber schon im Empfangspuffer. Genau diese
-            # Antwort (und das Ueberleben des Daemons) ist die Testaussage.
+            # Der Worker darf schon geantwortet und geschlossen haben — dann meldet
+            # macOS ENOTCONN (Errno 57), Linux schweigt. Die Antwortzeile ist durch
+            # "\n" terminiert; das EOF-Signal ist nur Hoeflichkeit, kein Teil des
+            # Protokolls. Gleiches Muster wie in tests/test_claudeworker.py.
             pass
         puffer = bytearray()
         while True:

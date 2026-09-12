@@ -40,7 +40,13 @@ class FakeResponse:
 
 
 class QueueHttp:
-    """Antwortet der Reihe nach aus einer Warteschlange — die Modellprobe zuerst."""
+    """Antwortet der Reihe nach aus einer Warteschlange.
+
+    ⚠️ Seit d4d7cda baut der Router beim Boot OHNE Probe (lazy validation):
+    die READY-Marker-Antwort gehoert nicht mehr in die Queue des Primaer-
+    Reasoners. Wer einen Lauf-Fehlschlag simuliert, legt die Fehler-Antwort
+    an ERSTER Stelle — was beim Boot gefressen wuerde, frueher als Probe
+    ausgegeben wurde, gibt es seit dem lazy Router nicht mehr."""
 
     def __init__(self, *responses: FakeResponse) -> None:
         self._queue = list(responses)
@@ -75,7 +81,10 @@ def registry() -> ProviderRegistry:
 
 
 def failing_primary(tmp_path: Path, status: int, meter: UsageMeter | None = None):
-    """Router + ApiReasoner, dessen Probe gelingt und dessen Lauf mit `status` endet."""
+    """Router + ApiReasoner, dessen Lauf mit `status` endet.
+
+    Der lazy Router (d4d7cda) baut beim Boot ohne Probe: der einzige HTTP-
+    Aufruf ist der Lauf selbst, also traegt die Queue nur die Fehler-Antwort."""
     http = QueueHttp(FakeResponse([], status_code=status, text="fehler"))
 
     def build(selection: ModelSelection) -> ApiReasoner:
@@ -217,9 +226,10 @@ def test_the_persisted_selection_is_never_touched(tmp_path: Path) -> None:
 
 
 def test_each_attempt_is_its_own_measured_run(tmp_path: Path) -> None:
-    """Fehlschlag des Primaeren UND Erfolg des Hops zaehlen als eigene Laeufe — plus die
-    Probe des Routers beim Bauen. Ein Zaehler, der den Fehlversuch verschlueckt, laesst
-    genau das verschwinden, wonach man sucht, wenn es klemmt."""
+    """Fehlschlag des Primaeren UND Erfolg des Hops zaehlen als eigene Laeufe.
+    Ein Zaehler, der den Fehlversuch verschlueckt, laesst genau das verschwinden,
+    wonach man sucht, wenn es klemmt. (Zwei Laeufe, nicht drei: der lazy Router
+    probt beim Bauen nicht mehr — d4d7cda.)"""
     meter = UsageMeter()
     router, _http = failing_primary(tmp_path, 429, meter=meter)
     log = EventLog(tmp_path / "events.db")
@@ -228,7 +238,7 @@ def test_each_attempt_is_its_own_measured_run(tmp_path: Path) -> None:
     kette.reason("x")
 
     stand = meter.snapshot()
-    assert stand.runs == 2   # Primary + explicitly configured hop; no boot inference.
+    assert stand.runs == 2   # Primaer (fehlgeschlagen) + Hop (ok)
     assert stand.failed == 1
     assert stand.last is not None and stand.last.ok
 

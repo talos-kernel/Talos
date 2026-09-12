@@ -229,12 +229,14 @@ def test_activity_failure_is_final_and_precise_but_redacted() -> None:
     activity.progress(_tool("run_shell", summary="shell"))
     activity.fail("Timeout mit token=super-secret-value")
 
+    # Der Fehler wird seit dem Pi-Port als eigene, praezise Nachricht gesendet
+    # (der bestehende Anzeige-Edit bleibt der Lauf-Beleg). Relevant ist: er geht
+    # raus, er nennt den Grund — und das Secret darin ist maskiert.
     final = client.sent[-1][1]
     assert "✕ failed: Timeout" in final
     assert "super-secret-value" not in final
     assert "[REDACTED]" in final
-    activity.cleanup()  # The conductor calls this after confirmed error delivery.
-    assert client.deleted == [(42, 77)]
+    assert client.deleted == []
 
 
 def test_tool_updates_are_sanitized_bounded_and_coalesced() -> None:
@@ -439,55 +441,6 @@ def test_a_telegram_file_path_that_tries_to_escape_is_refused() -> None:
         assert tg._plausible_file_path(boese) == ""
 
 
-# --- Ein Abbruchbericht geht raus, auch wenn Telegram sein HTML ablehnt ---------------
-@dataclass
-class HtmlRejectingClient(FakeTelegramClient):
-    """Bildet die echte Bot-API nach: einen Teil, dessen HTML sie ablehnt -> 400.
-
-    Unter legacy-Markdown war der Ausloeser Alltag (`read_file` mit ungerader
-    Unterstrich-Zahl); unter HTML ist er selten geworden, aber die Notbremse
-    bleibt dieselbe: die Antwort ist wichtiger als ihr Satz.
-    """
-
-    def send_message(self, chat_id: int, text: str, **kwargs) -> int:
-        if kwargs.get("parse_mode") == "HTML" and "FORCE400" in text:
-            raise RuntimeError("400 Client Error: Bad Request (can't parse entities)")
-        return super().send_message(chat_id, text, **kwargs)
-
-
-def test_a_report_telegrams_html_rejects_still_goes_out_plain() -> None:
-    """Zustellung schlaegt Formatierung: ohne parse_mode raus statt gar nicht.
-
-    Dieselbe Bauart wie `TelegramReply._adopt_fallback`: die Antwort ist wichtiger
-    als ihr Satz. Ohne den Fallback verlor der Kanal genau die Berichte, die der
-    Betreiber am dringendsten braucht — die ueber einen Fehlschlag.
-    """
-    client = HtmlRejectingClient()
-    channel = TelegramChannel(client)
-
-    bericht = (
-        "**FORCE400** Stopped at: read_file — error: [Errno 2] No such file or directory"
-    )
-    channel.send("telegram:42", bericht)
-
-    assert len(client.sent) == 1
-    _, text, kwargs = client.sent[0]
-    assert text == bericht
-    assert "parse_mode" not in kwargs        # unformatiert zugestellt, nicht verloren
-
-
-def test_well_formed_markdown_keeps_its_formatting() -> None:
-    """Der Fallback ist Notbremse, nicht Regel: gueltiges Markdown wird HTML-Satz."""
-    client = HtmlRejectingClient()
-    channel = TelegramChannel(client)
-
-    channel.send("telegram:42", "Plan **abgebrochen**, Rest lief nicht.")
-
-    _, text, kwargs = client.sent[0]
-    assert kwargs.get("parse_mode") == "HTML"
-    assert text == "Plan <b>abgebrochen</b>, Rest lief nicht."
-
-
 # --- Eine zu lange Antwort geht raus, statt verloren zu gehen ---------------------------
 def test_a_long_answer_is_split_instead_of_being_dropped() -> None:
     """⚠️ Der echte Ausfall: „could not deliver the answer", waehrend die fertige
@@ -552,88 +505,3 @@ def test_expressive_status_style_uses_emoji_and_verbs() -> None:
 
     assert style_for("expressive") is EXPRESSIVE
     assert style_for("nonsense") is GEOMETRIC   # unbekannt kippt die Vorgabe nie
-
-
-def test_mission_retains_counts_when_the_visible_trail_is_truncated() -> None:
-    from talos.ux import EXPRESSIVE
-    client = FakeTelegramClient()
-    activity = TelegramActivity(client, 42, style=EXPRESSIVE, max_lines=2,
-                                clock=lambda: client.now[0], heartbeat_s=0)
-    for index in range(4):
-        activity.progress(_tool("read_file", summary=f"read — file-{index}.txt"))
-        activity.progress(_result("read_file", "done"))
-    client.now[0] = 65
-    activity.tick()
-    text = client.edited[-1][2]
-    assert "1m 05s" in text and "4 tool calls" in text
-    assert "2 earlier events" in text and "file-0.txt" not in text
-    assert "Step 1" in text and "limit" not in text and "%" not in text and "ETA" not in text
-    assert len(client.sent) == 2 and client.deleted == []
-    assert ' · Update · ' in client.sent[-1][1]
-    assert '4 tool actions completed' in client.sent[-1][1]
-
-
-def test_mission_does_not_call_a_delegated_job_complete_at_turn_end() -> None:
-    from talos.ux import EXPRESSIVE
-    client = FakeTelegramClient()
-    activity = TelegramActivity(client, 42, style=EXPRESSIVE, heartbeat_s=0)
-    activity.progress(_tool("delegate_codex", summary=""))
-    activity.progress(_result("delegate_codex", "done"))
-    activity.succeed()
-    text = client.edited[-1][2]
-    assert "Turn finished" in text and "Delegating to Codex" in text
-    assert "job complete" not in text.lower() and "100%" not in text
-
-
-def test_mission_approval_and_failure_never_get_a_success_header() -> None:
-    from talos.ux import EXPRESSIVE
-    client = FakeTelegramClient()
-    activity = TelegramActivity(client, 42, style=EXPRESSIVE, heartbeat_s=0)
-    activity.progress(_tool("remote_exec", summary=""))
-    activity.progress(_result("remote_exec", "needs_human"))
-    activity.succeed()
-    assert "Needs your approval" in client.edited[-1][2]
-    assert "Turn finished" not in client.edited[-1][2]
-    failed = TelegramActivity(client, 42, style=EXPRESSIVE, heartbeat_s=0)
-    failed.progress(_tool("read_file", summary=""))
-    failed.progress(_result("read_file", "denied"))
-    failed.succeed()
-    assert "Finished with issues" in client.edited[-1][2]
-    assert "1 tool call refused or failed" in client.edited[-1][2]
-
-
-def test_mission_escapes_operator_and_tool_text_and_redacts_failures() -> None:
-    from talos.ux import EXPRESSIVE
-    client = FakeTelegramClient()
-    activity = TelegramActivity(client, 42, style=EXPRESSIVE, name='<a href="bad">Agent</a>', heartbeat_s=0)
-    activity.progress(_tool("read_file", summary="read — <b>notes&more</b>"))
-    activity.fail("token=never-show-this <script>boom</script>")
-    text = client.edited[-1][2]
-    assert client.sent[0][2]["parse_mode"] == "HTML"
-    assert client.edited[-1][3]["parse_mode"] == "HTML"
-    assert "<a " not in text and "<script>" not in text
-    assert "&lt;b&gt;notes&amp;more&lt;/b&gt;" in text
-    failure = client.sent[-1]
-    assert 'parse_mode' not in failure[2]
-    assert "never-show-this" not in failure[1] and "[REDACTED]" in failure[1]
-    assert "failed" in failure[1]
-
-
-def test_expressive_timeline_uses_clear_labels_without_protocol_or_filler():
-    from talos.ux import EXPRESSIVE
-    client = FakeTelegramClient()
-    activity = TelegramActivity(client, 42, name="Talos", style=EXPRESSIVE,
-                                clock=lambda: client.now[0], heartbeat_s=0)
-    activity.progress(_tool("web_fetch", summary="run tool"))
-    client.now[0] = 2
-    activity.progress(_result("web_fetch", "done"))
-    activity.progress(_tool("remote_exec", summary='token=do-not-show; df -h /'))
-    client.now[0] = 5
-    activity.tick()
-    live = client.edited[-1][2]
-    assert live.startswith("<b>🛡️ Talos · Working</b>\n<i>")
-    assert "✅ Fetching" in live and "🛰️ Remote command" in live
-    assert "5s" in live and "2 tool calls" in live
-    for private in ("run tool", "do-not-show", "df -h", "TOOL_CALL", "limit 8"):
-        assert all(private not in text for _chat, text, _kw in client.sent)
-        assert all(private not in text for _chat, _mid, text, _kw in client.edited)

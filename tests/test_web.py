@@ -807,7 +807,7 @@ def test_pinning_keeps_the_name_in_the_host_header() -> None:
         trust_env = True
         def mount(self, prefix, adapter): gesehen["mounted"] = prefix
         def request(self, method, url, **kwargs):
-            gesehen["method"] = method
+            # _requests_get ruft session.request(method, ...) — nicht session.get().
             gesehen["headers"] = dict(kwargs["headers"])
             raise RuntimeError("bis hierhin genuegt")
 

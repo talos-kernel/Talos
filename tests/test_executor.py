@@ -10,35 +10,8 @@ from talos.manifest import Effect, ToolManifest, ToolSpec
 from talos.policy import PolicyKernel, ToolRequest
 from talos.snapshot import Snapshotter
 from talos.channel import Principal
-from talos.policy import Decision, Verdict
-from talos.executor import done_detail
 
 OWNER = Principal("telegram", "100000001")
-
-
-def test_auto_approved_receipt_does_not_request_approval_again():
-    decision = Decision(Verdict.ALLOW, "attended auto-approval: computer action — needs your approval")
-    assert done_detail(decision) == "ran under your attended auto-approval setting"
-
-
-def test_failed_read_never_restores_its_source(tmp_path):
-    source = tmp_path / "screen.png"
-    source.write_bytes(b"original")
-    class NoReadSnapshot(Snapshotter):
-        def take(self, targets):
-            assert targets == (), "a read must not gain a rollback write"
-            return super().take(targets)
-    policy = PolicyKernel(ToolManifest().with_tool(ToolSpec("read_file", Effect.READ, reversible=True)), frozenset({OWNER}))
-    mint = CapabilityMint(policy)
-    def failed_reader(req):
-        # Another writer updates the source while the read fails. Keep that update.
-        source.write_bytes(b"new frame")
-        raise RuntimeError("reader unavailable")
-    ex = Executor(policy, EventLog(tmp_path / "read.db"), NoReadSnapshot(tmp_path / "snap"),
-                  GrantedRunner(mint=mint, runners={"read_file": failed_reader}), mint)
-    out = ex.run(ToolRequest("read_file", OWNER, {"path": str(source)}), "failed-read")
-    assert out.status is Status.ERROR
-    assert source.read_bytes() == b"new frame"
 
 
 def _manifest() -> ToolManifest:

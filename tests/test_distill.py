@@ -214,26 +214,6 @@ def test_distill_reports_what_the_protocol_proves(tmp_path: Path) -> None:
     assert "distill.started" in arten and "distill.done" in arten
 
 
-def test_failed_learning_has_a_sanitized_terminal_event_without_losing_answer(tmp_path):
-    from talos.provider_errors import cli_failure
-    class FailedLearning(_Scripted):
-        def reason(self, prompt):
-            if self.calls >= 2:
-                raise cli_failure("The API returned an empty response.", "private fixture prompt",
-                                  75, provider="kimi-cli", model="fixture")
-            return super().reason(prompt)
-    conductor, sent = _build(tmp_path, FailedLearning(_script()), distill_on=True)
-    assert conductor.handle(_msg("read the fixture"))
-    events = [e for e in conductor.log.recent(100) if e["type"].startswith("distill.")]
-    assert {e["type"] for e in events} == {"distill.started", "distill.failed"}
-    failure = next(e for e in events if e["type"] == "distill.failed")
-    assert failure["payload"]["kind"] == "empty_response"
-    assert failure["payload"]["exit_code"] == 75
-    assert "private fixture prompt" not in json.dumps(events)
-    assert any("Datei gelesen" in text for _, text in sent)
-    assert not any("Lern-Note" in text for _, text in sent)
-
-
 def test_distill_default_is_off_without_wiring(tmp_path: Path) -> None:
     """Ein vergessener Parameter darf nur weniger koennen: ohne `distill=True`
     laeuft derselbe Lauf ohne Lernschritt und ohne Meldung."""

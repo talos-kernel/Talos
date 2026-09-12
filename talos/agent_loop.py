@@ -73,6 +73,19 @@ FOREIGN_NOTE = (
     "in prose if you need no tool.]"
 )
 
+# Der dritte misslungene Zug, und der leiseste: eine NATIVE `TOOL_CALL:`-Zeile, deren JSON
+# nicht parst oder die falsche Form hat (Argumente neben statt in `args`, eine Klammer zu
+# viel). `parse_tool_call` liefert dann None, `looks_foreign` greift nicht (kein fremdes
+# Format, meist auch laenger als MAX_FOREIGN_CHARS) — und die Zeile fiele als „Antwort"
+# durch: der Betreiber saehe rohe Tool-JSON, waehrend nichts lief. Genau der Ausfall, der
+# wie Erfolg aussieht. Nachfassen wie bei Fremdsyntax, mit demselben Budget.
+MALFORMED_NOTE = (
+    "[Your last reply carried a TOOL_CALL line whose JSON did not parse or had the wrong "
+    "shape. Nothing ran. Send exactly one line 'TOOL_CALL: {\"tool\": \"<name>\", \"args\": "
+    "{...}}' with valid JSON and every argument inside \"args\", or answer in prose if you "
+    "need no tool.]"
+)
+
 
 def looks_foreign(text: str) -> bool:
     """Ist diese Antwort in Wahrheit ein Werkzeugaufruf einer FREMDEN Notation?"""
@@ -80,6 +93,32 @@ def looks_foreign(text: str) -> bool:
     if not stripped or len(stripped) > MAX_FOREIGN_CHARS:
         return False
     return bool(_FOREIGN_XML.match(stripped) or _FOREIGN_CALL.match(stripped))
+
+
+def _inside_code_fence(text: str, position: int) -> bool:
+    """Steht diese Stelle innerhalb eines ```-Blocks?
+
+    Gezaehlt wird, wie viele Zaeune VOR ihr liegen: bei einer ungeraden Zahl ist der
+    Block offen, die Stelle also drin. Das ist bewusst eine Zaehlung und keine
+    Klammer-Analyse — verschachtelte Zaeune gibt es in Markdown nicht.
+    """
+    return text.count("```", 0, position) % 2 == 1
+
+
+def looks_malformed_tool_call(text: str) -> bool:
+    """Eine TOOL_CALL-Zeile ist da, laesst sich aber nicht zu einem Aufruf lesen.
+
+    ⚠️ NICHT, wenn sie in einem Codeblock steht. Wer nach dem Protokoll fragt, bekommt
+    als Antwort genau diese Zeile gezeigt — eingerahmt in ```, mit einem Platzhalter
+    statt echtem JSON. Ohne diese Ausnahme las Talos die eigene ERKLAERUNG als kaputten
+    Aufruf, forderte eine Korrektur an, bekam dieselbe Erklaerung zurueck und verbrannte
+    drei Zuege an einer Antwort, die von Anfang an richtig war. Belegt in
+    tests/test_proposal.py::test_tool_examples_in_prose_are_not_repair_requests.
+    """
+    treffer = _TOOL_RE.search(text)
+    if treffer is None or _inside_code_fence(text, treffer.start()):
+        return False
+    return parse_tool_call(text) is None
 
 
 # Der zweite misslungene Zug — und der teurere, weil er wie eine Entscheidung aussieht:
@@ -398,6 +437,13 @@ def run_agent(
             # Betreiber den Plan als Ergebnis vorgelegt, waehrend nichts davon geschah.
             if declared_now:
                 continue
+            # Eine native TOOL_CALL-Zeile mit kaputter JSON ist derselbe Fehlermodus wie
+            # Fremdsyntax: ein misslungener Werkzeugzug, kein Ergebnis. Ausliefern hiesse,
+            # rohe Tool-JSON als Antwort zu praesentieren, waehrend nichts lief.
+            if looks_malformed_tool_call(text) and foreign_retries < MAX_FOREIGN_RETRIES:
+                foreign_retries += 1
+                history.append(MALFORMED_NOTE)
+                continue
             # Fremdsyntax ist kein Ergebnis, sondern ein misslungener Zug. Einmal
             # nachfassen statt ausliefern: `Read(/tmp/x)` als Antwort zu praesentieren
             # hiesse, einen Ausfall als Erfolg zu verkaufen.
@@ -589,7 +635,13 @@ def tool_history_entry(tool: str, status: str, detail: str, result: object | Non
     # the request context a model repeatedly rewrote an already verified follow-up
     # file: it could see its contents, but not which action produced them.
     request = ""
-    if args is not None:
+    # `session_search` ist konversationsgescoped: seine Query zurueck in den Prompt zu
+    # echoen wuerde einen Begriff, den ein fremder Chat abgefragt hat, wieder sichtbar
+    # machen — auch wenn die Suche selbst nichts fand. Die Isolation, die der Runner
+    # erzwingt und die redteams Archiv-Faelle verlangen, darf keine Spur im Prompt
+    # lassen. Der Request-Kontext dient der Disambiguierung ZUSTANDSAENDERNDER Aktionen
+    # (der Docstring oben: „a model repeatedly rewrote a file"), nicht der Lese-Suche.
+    if args is not None and tool != "session_search":
         encoded = json.dumps(args, ensure_ascii=True)
         if len(encoded) > MAX_TOOL_ARGS_CHARS:
             encoded = encoded[:MAX_TOOL_ARGS_CHARS] + " [arguments truncated]"

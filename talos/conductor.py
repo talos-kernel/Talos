@@ -544,7 +544,7 @@ class Conductor:
             # This still requests consent: Markdown must not rewrite the kernel's command.
             return self._reply_structured(
                 update, run_id,
-                StructuredMessage("Bitte nur ja, immer oder nein. For the whole task: allow this task.\n\n" + rec.prompt),
+                StructuredMessage("Bitte nur ja, immer oder nein. Für die ganze Aufgabe: diese Aufgabe erlauben.\n\n" + rec.prompt),
             )
 
         with self.execution_lock:

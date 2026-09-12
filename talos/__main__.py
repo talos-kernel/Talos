@@ -15,6 +15,7 @@ sofort im Poll-Thread beantwortet werden (`Conductor.is_inline`).
 from __future__ import annotations
 
 import os
+import re
 import sys
 import threading
 import time
@@ -25,6 +26,7 @@ from typing import Callable
 import requests
 
 from . import background, claudejobs, consult, continuity, dag, notify, tools
+from . import catalog as provider_catalog, customproviders
 from . import apiclient, gitops
 from .api_reasoner import SUPPORTED_PROVIDERS, ApiReasoner
 from .approval import ApprovalPicker, ApprovalStore
@@ -46,17 +48,18 @@ from .policy import WORKSPACE_DIR, PolicyKernel, claude_work_root
 from .question import QuestionDesk
 from .recall import Recall
 from .schedule import ScheduleStore, UnattendedCeiling
-from .scheduler import start_scheduler
 from .subagent import ReadOnlyCeiling
 from .transcript import TranscriptStore
 from .provider import (
     HermesCatalogLoader,
     ModelPicker,
     ModelRouter,
+    ProviderRegistry,
     ModelSelection,
     resolve_fallback,
     restore_selection,
     with_local_provider,
+    with_custom_providers,
     safe_talos_registry,
 )
 from .reasoner import ClaudeCliReasoner, HermesCliReasoner
@@ -64,7 +67,7 @@ from .skills import SkillSource
 from .snapshot import Snapshotter
 from .telegram import TelegramChannel, TelegramClient
 from . import browser, frames, hearing, models, speech, vision, web
-from .usage import UsageMeter
+from .usage import UsageMeter, event_payload as usage_event_payload
 from .mail import MailChannel
 from .whatsapp import WhatsAppChannel
 from .wabroker import BrokerWhatsAppChannel
@@ -187,13 +190,26 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
         )
     registry = ChannelRegistry(
         channels,
+        # ⚠️ Der Fehlertext eines Kanals traegt die angefragte URL — bei Telegram also
+        # `https://api.telegram.org/bot<TOKEN>/getUpdates`. Das Log ist append-only und
+        # hash-verkettet: was einmal drinsteht, bleibt drin und laesst sich nicht
+        # nachtraeglich entfernen, ohne die Kette zu brechen. Also wird der Token hier
+        # entfernt, BEVOR die Zeile geschrieben wird, nicht beim Lesen.
         on_error=lambda name, error: log.append(
-            Event("poll", "ingress", "channel.error", {"channel": name, "error": str(error)})
+            Event("poll", "ingress", "channel.error",
+                  {"channel": name, "error": _ohne_token(str(error))})
         ),
     )
     # Der Zaehler haengt am aktiven Reasoner, nicht am Kommando: gezaehlt wird, was wirklich lief.
     # Der Katalog ist injizierbar, die Auswahl exakt validiert und im Event-Log restauriert.
-    meter = UsageMeter()
+    # Der Verbrauch gehoert ins append-only Log, nicht nur in den Arbeitsspeicher: sonst
+    # ist nach jedem Neustart nicht mehr nachvollziehbar, WELCHES Modell das Kontingent
+    # verbraucht hat. Die Nutzlast traegt nur Zahlen (siehe usage.event_payload).
+    meter = UsageMeter(
+        on_record=lambda run: log.append(
+            Event(new_run_id(), "usage", "model.usage", usage_event_payload(run))
+        )
+    )
     # Der kuratierte Katalog, ergaenzt um die zuletzt live geholten Namen. Gelesen wird
     # nur von der Platte: ein Netzaufruf beim Hochfahren machte aus einer Stoerung beim
     # Anbieter eine Stoerung hier. Gefuellt wird der Zwischenspeicher mit
@@ -212,8 +228,23 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
             "path": str(config.hermes_provider_catalog),
         }))
     wanted_selection = ModelSelection(config.model_provider, config.model_name)
+    # Eigene Anbieter des Betreibers: benannt, mit ihren Modellen, aus einer Datei.
+    # Ein OAuth-Proxy vor einem Abo hat keinen Platz in einem ausgelieferten Katalog —
+    # ohne das blieb nur, den Namen eines fremden Anbieters zu borgen, und das Protokoll
+    # log dann. `customproviders` verwirft alles Unbrauchbare still; ein Katalogname
+    # wird nie ueberschrieben.
+    eigene_anbieter = customproviders.load(config.custom_providers_file)
+    if eigene_anbieter:
+        uebernommen = provider_catalog.register(eigene_anbieter)
+        log.append(Event("boot", "provider", "catalog.custom_providers", {
+            "file": str(config.custom_providers_file),
+            "providers": list(uebernommen),
+        }))
     model_registry = models.merged(
-        with_local_provider(safe_talos_registry(hermes_registry), wanted_selection),
+        with_custom_providers(
+            with_local_provider(safe_talos_registry(hermes_registry), wanted_selection),
+            eigene_anbieter,
+        ),
         models.load_cache(Path(MODEL_CACHE)),
     )
     # ⚠️ EINMAL aufgeloest, bevor irgendjemand sie benutzt: `restore_selection` und
@@ -274,7 +305,27 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     reasoner = FallbackReasoner(
         reasoner, parse_chain(config.model_fallbacks), build_reasoner, log
     )
-    model_picker = ModelPicker(model_registry, reasoner, can_select=reasoner.can_select)
+    def refresh_model_registry() -> ProviderRegistry:
+        """Liest den Hermes-Katalog NEU — `/model --refresh` haengt daran.
+
+        Ohne diese Funktion bekam der Picker `refresh_registry=None` und lieferte
+        stumm den Stand vom Systemstart: ein Modell, das der Betreiber nachtraeglich
+        freischaltete, tauchte nie auf. Auch das war vorhanden und unverdrahtet.
+        """
+        latest = (hermes_catalog.load() if config.hermes_catalog_configured
+                  else hermes_catalog.load_if_present())
+        return models.merged(
+            with_custom_providers(
+                with_local_provider(safe_talos_registry(latest), wanted_selection),
+                eigene_anbieter,
+            ),
+            models.load_cache(Path(MODEL_CACHE)),
+        )
+
+    model_picker = ModelPicker(
+        model_registry, reasoner, can_select=reasoner.can_select,
+        refresh_registry=refresh_model_registry,
+    )
     kernel = PolicyKernel(
         manifest=tools.default_manifest(agy_backend=config.agy_backend,
                                         codex_backend=config.codex_backend),
@@ -507,8 +558,10 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     # `conductor` erst beim Aufruf, wenn längst alles verdrahtet ist.
     worker = Worker(
         handle=lambda update: conductor.handle(update),
+        # Dieselbe Regel wie bei channel.error: ein Fehlertext kann die API-URL und
+        # damit den Token tragen, und das Log vergisst nichts.
         on_error=lambda error: log.append(
-            Event("worker", "worker", "error", {"error": str(error)})
+            Event("worker", "worker", "error", {"error": _ohne_token(str(error))})
         ),
     )
     # Ein Store, zwei Nutzer: der Conductor parkt, das CommandCenter zeigt/entscheidet.
@@ -575,6 +628,11 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
         send_structured=registry.send_structured,
         # Dateianhaenge (MEDIA:-Tags): Kanaele ohne `send_file` melden ehrlich False.
         send_file=registry.send_file,
+        # ⚠️ Beide Felder existierten im Conductor und in der Konfiguration, wurden hier
+        # aber NICHT uebergeben — die Fassung 0.19.1 verdrahtete sie, `main` nicht mehr.
+        # Damit fragte der Conductor nie, ob ein Kanal ueberhaupt Dateien nimmt, und
+        # `TALOS_CLEANUP_SENT_MEDIA=1` war eine Einstellung ohne Wirkung. Kein Test konnte
+        # das sehen (CLAUDE.md, Falle 7): die Felder haben Vorgabewerte, also lief alles.
         supports_files=registry.supports_files,
         cleanup_sent_media=config.cleanup_sent_media,
         usage_footer=lambda: _usage_footer(meter),
@@ -608,11 +666,40 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     # Decke wie der Lauf. Das Modul hat keinen anderen Weg zur Shell als `executor.run`.
     continuity_desk = continuity.Continuity(schedules=schedules, log=log, execute=executor.run)
 
-    start_scheduler(
-        service_mode=not (ask or chat), interval_s=SCHEDULE_TICK_S,
-        schedules=schedules, registry=registry, allowed_principals=config.allowed_principals,
-        unattended=unattended, continuity=continuity_desk, conductor=conductor, log=log,
-    )
+    def tick_schedules() -> None:
+        while True:
+            time.sleep(SCHEDULE_TICK_S)
+            try:
+                for task in schedules.due():
+                    schedules.mark_run(task.id)
+                    principal = Principal.parse(task.principal)
+                    if principal not in config.allowed_principals:
+                        # Die Erlaubnis kann sich geaendert haben, seit der Auftrag entstand.
+                        # Ein Zeitplan darf keine Identitaet konservieren, die heute nicht
+                        # mehr gilt — sonst waere er ein Weg, eine entzogene Zulassung
+                        # weiterlaufen zu lassen.
+                        log.append(Event(new_run_id(), "schedule", "schedule.refused",
+                                         {"id": task.id, "reason": "principal no longer allowed"}))
+                        continue
+                    with unattended.active():
+                        # Sonde und Gedaechtnis VOR dem Lauf, unter derselben Decke:
+                        # `None` heisst „unveraendert" — im Log belegt, kein Modellzug.
+                        bereit = continuity_desk.prepare(task, principal, run_id=new_run_id())
+                        if bereit is None:
+                            continue
+                        update = Inbound(
+                            principal=principal,
+                            conversation=task.conversation,
+                            text=bereit.text,
+                            dedup_key=f"schedule:{task.id}:{int(time.time())}",
+                        )
+                        log.append(Event(new_run_id(), "schedule", "schedule.fired", {"id": task.id}))
+                        conductor.handle(update, before_reply=bereit.before_reply)
+            except Exception as error:  # ein kaputter Zeitplan darf den Agenten nicht anhalten
+                log.append(Event(new_run_id(), "schedule", "schedule.error", {"error": _ohne_token(str(error))}))
+
+    if schedules.available:
+        threading.Thread(target=tick_schedules, daemon=True, name="talos-schedules").start()
 
     # Der Completion-Push: dieselbe Bauart wie der Zeitplan-Ticker — ein eigener Takt,
     # der den Worker nach den angemeldeten Jobs fragt und bei einem Endzustand eine
@@ -644,7 +731,7 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
                     log=log,
                 )
             except Exception as error:  # ein kaputter Push darf den Agenten nicht anhalten
-                log.append(Event(new_run_id(), "notify", "notify.error", {"error": str(error)}))
+                log.append(Event(new_run_id(), "notify", "notify.error", {"error": _ohne_token(str(error))}))
 
     if config.completion_push and config.claude_worker_enabled:
         threading.Thread(target=tick_completions, daemon=True, name="talos-notify").start()
@@ -763,16 +850,24 @@ def delegate_propose(reasoner: object):
     """
 
     def fuer(question: str):
+        # ⚠️ NICHT der Reasoner vom Systemstart, sondern der gerade aktive: nach einem
+        # Modellwechsel waere sonst der Untergebene beim alten Modell geblieben, waehrend
+        # der Hauptlauf laengst woanders denkt. `fork()` gibt ihm zudem eine EIGENE
+        # Instanz — nur dann kann `propose.cancel` ihn abbrechen, ohne den Lauf
+        # mitzunehmen, aus dem er stammt. Beides gab es hier schon (provider.fork,
+        # run_control.current_reasoner), es war nur nicht verdrahtet.
         from .run_control import current_reasoner
         parent = current_reasoner() or reasoner
         fork = getattr(parent, "fork", None)
         child = fork() if callable(fork) else parent
+
         def propose(history: list[str]) -> str:
             if not history:
                 return child.reason(question)
             return child.reason(
                 f"{question}\n\n[Tool results so far]\n" + "\n".join(history)
             )
+
         if child is not parent:
             propose.cancel = child.cancel
         return propose
@@ -836,12 +931,33 @@ def _notify_full(registry: ChannelRegistry, conversation: str) -> None:
         pass  # Zustellung des Hinweises darf den Poll-Loop nicht killen
 
 
-def _notify_queued(registry: ChannelRegistry, conversation: str, worker: Worker, item=None) -> None:
+_TOKEN_IM_TEXT = re.compile(r"bot\d+:[A-Za-z0-9_-]+")
+
+
+def _ohne_token(text: str) -> str:
+    """Entfernt einen Telegram-Bot-Token aus einem Fehlertext.
+
+    Der Token steht in jeder API-URL. Ein Kanalfehler wandert als Ereignis ins
+    append-only Log — und dort bliebe er fuer immer lesbar, fuer jeden, der
+    `talos events` oder `talos report` aufruft. Die Ersetzung greift am Muster
+    `bot<ziffern>:<rest>`, also genau an der Stelle, an der das Geheimnis steht,
+    und laesst den Rest der Meldung unangetastet: eine Fehlermeldung, die man
+    nicht mehr lesen kann, hilft bei der Fehlersuche niemandem.
+    """
+    return _TOKEN_IM_TEXT.sub("bot***", text)
+
+
+def _notify_queued(registry: ChannelRegistry, conversation: str, worker: Worker,
+                   item=None) -> None:
     """Sagt Bescheid, dass gewartet wird — nur, wenn wirklich schon etwas laeuft."""
     seit = worker.busy_since()
     if seit is None:
         return  # der Auftrag startet sofort; ein Wartehinweis waere schlicht falsch
     if item is not None:
+        # Kanaele, die es koennen, bekommen eine MITLAUFENDE Notiz statt einer
+        # einmaligen Zeile: sie aktualisiert sich, wenn der Auftrag vorrueckt, statt
+        # als veraltete Behauptung stehenzubleiben. `begin_queue_notice` gab es in
+        # telegram.py bereits — aufgerufen hat es hier niemand.
         channel = registry.get(conversation.partition(":")[0])
         begin = getattr(channel, "begin_queue_notice", None)
         if callable(begin):
@@ -960,6 +1076,15 @@ def main() -> None:
         print(f"\n  {SYM_FAIL} stopped: {fehler}\n", file=sys.stderr)
         print("  `talos doctor` says what this machine is missing.\n", file=sys.stderr)
         raise SystemExit(1) from None
+    except Exception as fehler:
+        # Hier landet nur das UNERWARTETE: die Erstlauf-Wand oben ist bereits behandelt,
+        # und die wuerde eine Fehlerablage sonst mit „Bot-Token fehlt" zumuellen. Gemeldet
+        # wird Struktur, nie Inhalt (siehe crashreport.py); ohne TALOS_GLITCHTIP_DSN
+        # passiert gar nichts. Die Spur bleibt: erst melden, dann unveraendert weiterwerfen.
+        from .crashreport import CrashReporter
+
+        CrashReporter(release=os.environ.get("TALOS_RELEASE", "")).report(fehler, where="main")
+        raise
 
 
 if __name__ == "__main__":

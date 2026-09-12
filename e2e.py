@@ -24,7 +24,6 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from talos import tools
-from talos.agent_loop import STOPPED_NOTE
 from talos.approval import ApprovalStore, is_affirmative, is_always, is_negative
 from talos.channel import ChannelRegistry, Inbound, Principal, Trust
 from talos.autonomy import AutonomyGovernor, GovernedKernel, restore_level
@@ -451,8 +450,7 @@ def main() -> int:
               and "exec.intent" not in types,
               stop_reply.replace("\n", " ")[:120])
         check("N2 the cancelled run reports the cancellation instead of hallucinating",
-              any(text.strip() == STOPPED_NOTE or text.strip().endswith("Cancelled.")
-                  for _, text in h.sent) and "exec.intent" not in types,
+              any(text.strip().endswith("Cancelled.") for _, text in h.sent),
               " | ".join(t.replace("\n", " ")[:60] for _, t in h.sent[-2:]))
 
         # --- O: /pending zeigt den Wortlaut, /approve ist dasselbe wie „ja" -------

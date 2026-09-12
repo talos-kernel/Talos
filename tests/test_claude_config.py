@@ -43,11 +43,3 @@ def test_policy_keys_not_writable_via_config_set():
     # POLICY/SECRET keys are refused by `config set` even with confirmation.
     assert not schema.BY_NAME["TALOS_CLAUDE_WORKER_ENABLED"].writable
     assert schema.BY_NAME["TALOS_CLAUDE_WORKER_MAX_PARALLEL"].writable
-
-
-@pytest.mark.parametrize("value,expected", [("0", False), ("1", True), ("yes", False)])
-def test_media_cleanup_requires_explicit_operator_opt_in(monkeypatch, value, expected):
-    cfg = _load(monkeypatch, {"TALOS_CLEANUP_SENT_MEDIA": value})
-    assert cfg.cleanup_sent_media is expected
-    assert schema.BY_NAME["TALOS_CLEANUP_SENT_MEDIA"].kind == schema.POLICY
-    assert not schema.BY_NAME["TALOS_CLEANUP_SENT_MEDIA"].writable

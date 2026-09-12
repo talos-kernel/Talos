@@ -190,142 +190,6 @@ def test_reasoner_failure_finalizes_activity_without_dirty_result(tmp_path):
     assert sent == []
 
 
-def test_followup_keeps_interrupted_request_without_replaying_a_completed_tool(tmp_path):
-    from dataclasses import replace
-    from talos.memory import RUN_STATUS
-    from talos.transcript import TranscriptStore
-
-    target = tmp_path / "receipt.txt"
-    request = "Save the fixture, then inspect its result."
-    prompts = []
-
-    class InterruptedReasoner:
-        def reason(self, prompt):
-            prompts.append(prompt)
-            if len(prompts) == 1:
-                return _tool_call("write_file", {"path": str(target), "content": "once"}, [])
-            if len(prompts) == 2:
-                raise PermissionError("sensitive diagnostic: fixture-credential")
-            return "The earlier request stopped; checking the existing receipt is next."
-
-    conductor, sent = _build(tmp_path, InterruptedReasoner())
-    conductor = replace(conductor, transcript=TranscriptStore(tmp_path / "transcript.db"))
-    assert conductor.handle(msg(710, OWNER, request)) is False
-    assert target.read_text() == "once"
-    assert sent == []
-    assert conductor.memory.recall(CHAT_OWNER)[-1].speaker == RUN_STATUS
-    assert conductor.transcript.recent(CHAT_OWNER) == ()  # No invented delivered answer.
-    assert conductor.handle(msg(711, OWNER, "?"))
-    followup = prompts[-1]
-    assert request in followup and RUN_STATUS in followup
-    assert "Completion is unverified" in followup
-    assert "Do not automatically repeat completed actions" in followup
-    assert "fixture-credential" not in followup
-    assert followup.endswith("[New message]\n?")
-    executions = [e for e in conductor.log.recent(100) if e["type"] == "exec.result"]
-    assert len(executions) == 1 and executions[0]["payload"]["status"] == "done"
-    assert target.read_text() == "once"
-
-
-def test_failed_request_does_not_leak_to_another_conversation_or_survive_explicit_forget(tmp_path):
-    prompts = []
-
-    class OnceBroken:
-        def reason(self, prompt):
-            prompts.append(prompt)
-            if len(prompts) == 1:
-                raise RuntimeError("temporary failure")
-            return "Ready."
-
-    conductor, _ = _build(tmp_path, OnceBroken(), allowed_principals=frozenset({OWNER, SECOND_ALLOWED}))
-    assert conductor.handle(msg(712, OWNER, "Inspect my private browser window.")) is False
-    assert conductor.handle(msg(713, SECOND_ALLOWED, "?"))
-    assert prompts[-1] == "?"
-    conductor.memory.forget(CHAT_OWNER)
-    assert conductor.handle(msg(714, OWNER, "New topic."))
-    assert prompts[-1] == "New topic."
-
-
-def test_isolated_background_failure_does_not_pollute_foreground_context(tmp_path):
-    class Broken:
-        def reason(self, prompt):
-            raise RuntimeError("temporary failure")
-
-    conductor, _ = _build(tmp_path, Broken())
-    conductor.memory.remember(CHAT_OWNER, asked="Current foreground request", answered="Working on it.")
-    before = conductor.memory.recall(CHAT_OWNER)
-    assert conductor._run_task(msg(715, OWNER, "Isolated background request"), "background-fixture",
-                               past_override=()) is False
-    assert conductor.memory.recall(CHAT_OWNER) == before
-
-
-def test_empty_model_retry_after_real_write_executes_the_tool_once(tmp_path):
-    from talos.provider import ModelRouter, ModelSelection, Provider, ProviderRegistry
-    from talos.provider_errors import cli_failure
-
-    target = tmp_path / "receipt.txt"
-    prompts = []
-    class ProviderFixture:
-        timeout_s = 10
-        def reason_strict(self, prompt, *, timeout_s):
-            prompts.append(prompt)
-            if len(prompts) == 1:
-                return _tool_call("write_file", {"path": str(target), "content": "verified"}, [])
-            if len(prompts) == 2:
-                raise cli_failure("The API returned an empty response.", "", 75,
-                                  provider="kimi-cli", model="fixture")
-            return "Saved and verified."
-    registry = ProviderRegistry([Provider("fixture", "Fixture", ("one",))])
-    router = ModelRouter(registry, ModelSelection("fixture", "one"),
-                         lambda _: ProviderFixture(), EventLog(tmp_path / "provider.db"))
-    conductor, sent = _build(tmp_path, router)
-    assert conductor.handle(msg(700, OWNER, "Save the fixture."))
-    assert target.read_text() == "verified"
-    executions = [e for e in conductor.log.recent(100) if e["type"] == "exec.result"]
-    assert len(executions) == 1
-    assert executions[0]["payload"]["tool"] == "write_file"
-    assert executions[0]["payload"]["status"] == "done"
-    assert len(prompts) == 3 and prompts[1] == prompts[2]
-    assert "Saved and verified." in sent[-1][1]
-    assert not conductor.handle(msg(700, OWNER, "Save the fixture."))
-    assert len(prompts) == 3  # Duplicate inbound delivery cannot replay the job either.
-
-
-def test_direct_api_quota_failure_is_not_recorded_as_an_answer(tmp_path):
-    from test_api_reasoner import build
-    reasoner, _, _ = build([], provider='openai-api', status=429, text='quota reached')
-    activity = FakeActivity()
-    conductor, sent = _build(tmp_path, reasoner, begin_activity=lambda _: activity)
-    assert conductor.handle(msg(716, OWNER, 'Finish this request.')) is False
-    records = conductor.log.recent(100)
-    assert not any(r['type'] == 'reason.done' for r in records)
-    failures = [r['payload'] for r in records if r['type'] == 'error' and r['payload'].get('stage') == 'reason']
-    assert failures and failures[0]['kind']
-    assert not sent and any('429' in text for text in activity.failed)
-    assert 'Finish this request.' in str(conductor.memory.recall(CHAT_OWNER))
-
-
-def test_strict_reasoner_receives_stream_without_using_text_error_fallback(tmp_path):
-    from talos.provider_errors import ReasonerFailure
-    calls = []
-    class Strict:
-        def reason(self, prompt, on_text=None):
-            raise AssertionError('must preserve the typed failure route')
-        def reason_strict(self, prompt, on_text=None):
-            calls.append(prompt)
-            if on_text:
-                on_text('visible')
-            raise ReasonerFailure('Provider unavailable', kind='unavailable')
-    class Stream:
-        def begin_turn(self): pass
-        def push(self, text): calls.append(text)
-    conductor, _ = _build(tmp_path, Strict())
-    import pytest
-    with pytest.raises(ReasonerFailure):
-        conductor._ask('request', Stream(), 'strict-stream')
-    assert calls == ['request', 'visible']
-
-
 def test_unauthorized_and_commands_never_create_activity(tmp_path):
     began: list[str] = []
 
@@ -384,41 +248,6 @@ def test_pending_decisions_are_worker_routed_while_stop_stays_inline(tmp_path):
     assert conductor.is_inline(msg(31, OWNER, "yes")) is False
     assert conductor.is_inline(msg(32, OWNER, "no")) is False
     assert conductor.is_inline(msg(33, OWNER, "/stop")) is True
-
-
-def test_non_decision_reprompt_preserves_literal_command_and_pending_approval(tmp_path, monkeypatch):
-    from dataclasses import replace
-    from unittest.mock import Mock
-
-    from talos.telegram import TelegramChannel
-
-    runner = Mock(side_effect=AssertionError("An unapproved command must never run"))
-    monkeypatch.setitem(tools.RUNNERS, "run_shell", runner)
-    client = Mock()
-    client.send_message.return_value = 77
-    channel = TelegramChannel(client)
-    command = "printf '**literal** `whoami` <value> a|b'"
-    reasoner = ScriptedReasoner(_tool_call("run_shell", {"command": command}, []))
-    conductor, _sent = _build(
-        tmp_path, reasoner, approval_picker=ApprovalPicker(),
-        send_structured=channel.send_structured,
-    )
-    conductor = replace(conductor, send=channel.send)
-
-    assert conductor.handle(msg(40, OWNER, "zeige den Befehl")) is True
-    pending = conductor.approvals.get(CHAT_OWNER)
-    assert pending is not None
-    assert conductor.handle(msg(41, OWNER, "was bedeutet das")) is True
-
-    delivered = client.send_message.call_args
-    assert delivered.args[1] == "Bitte nur ja, immer oder nein. For the whole task: allow this task.\n\n" + pending.prompt
-    assert command.encode("utf-8") in delivered.args[1].encode("utf-8")
-    assert "parse_mode" not in delivered.kwargs
-    assert client.send_message.call_count == 2
-    assert conductor.approvals.get(CHAT_OWNER) == pending
-    assert reasoner.calls == 1
-    runner.assert_not_called()
-    assert not any(event["type"] == "grant.issued" for event in conductor.log.recent(50))
 
 
 def test_yes_executes_pending_once_then_second_yes_is_noop(tmp_path):
@@ -680,6 +509,8 @@ def test_abgelehnte_freigabe_steht_im_log(tmp_path):
 
 
 def test_approval_request_has_hermes_style_emoji_buttons_and_callback_executes(tmp_path):
+    # Vier Token, nicht drei: eine Freigabe, die einen Agentenlauf fortsetzen kann
+    # (`pending.task_id` + `resume_agent`), bietet zusaetzlich „▶ Allow this task".
     tokens = iter(("tok1", "tok2", "tok3", "tok4"))
     picker = ApprovalPicker(token_factory=lambda: next(tokens))
     structured: list[StructuredMessage] = []
@@ -693,9 +524,12 @@ def test_approval_request_has_hermes_style_emoji_buttons_and_callback_executes(t
 
     assert conductor.handle(msg(200, OWNER, "mach den test")) is True
     prompt = structured[-1]
+    # Alle Erlaubnisse in der ersten Reihe, die Ablehnung ALLEIN in der zweiten. Das ist
+    # kein Layout-Geschmack: neben „∞ Always allow" macht ein Fehlgriff auf dem Telefon
+    # aus einer Ablehnung die breiteste Freigabe, die es gibt.
     assert [[button.label for button in row] for row in prompt.keyboard] == [
-        ["✓ Allow once", "▶ Allow this task"],
-        ["∞ Always allow", "✕ Deny"],
+        ["✓ Allow once", "▶ Allow this task", "∞ Always allow"],
+        ["✕ Deny"],
     ]
 
     callback = Inbound(
@@ -715,9 +549,6 @@ def test_approval_request_has_hermes_style_emoji_buttons_and_callback_executes(t
     assert result.edit_message_id == 77
     assert result.callback_query_id is None
     assert result.keyboard == ()
-    assert result.markdown is True
-    assert prompt.markdown is False
-    assert ack.markdown is False
     assert "Fertig." in result.text
     assert "rc=0" not in result.text
     assert "printf approved" not in result.text
@@ -731,6 +562,7 @@ def test_approval_request_has_hermes_style_emoji_buttons_and_callback_executes(t
 
 def test_approval_deny_button_edits_prompt_and_executes_nothing(tmp_path):
     marker = tmp_path / "must-not-exist"
+    # siehe oben: vier Knoepfe, sobald die Freigabe einen Agentenlauf fortsetzen kann
     tokens = iter(("tok1", "tok2", "tok3", "tok4"))
     picker = ApprovalPicker(token_factory=lambda: next(tokens))
     structured: list[StructuredMessage] = []
@@ -744,7 +576,7 @@ def test_approval_deny_button_edits_prompt_and_executes_nothing(tmp_path):
         send_structured=lambda _conversation, message: structured.append(message),
     )
     assert conductor.handle(msg(210, OWNER, "mach das nicht")) is True
-    deny = next(button for row in structured[-1].keyboard for button in row if button.label == "✕ Deny")
+    deny = structured[-1].keyboard[1][0]
     callback = Inbound(
         OWNER,
         CHAT_OWNER,

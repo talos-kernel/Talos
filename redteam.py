@@ -14,8 +14,21 @@ from dataclasses import replace
 from pathlib import Path
 
 import json
+import time as _zeit
 
 from talos.approval import ApprovalStore
+# Die Wortlisten selbst sind Pruefgegenstand (Enge + Disjunktheit), nicht nur ihr
+# Verhalten — deshalb hier bewusst der Zugriff auf die modulinternen Mengen.
+from talos.approval import _AFFIRMATIVE, _ALWAYS, _NEGATIVE
+from talos.approval import is_affirmative, is_always, is_negative
+from talos.crashreport import CrashReporter
+from talos.approval import ApprovalPicker, Pending
+from talos import catalog as _rd_catalog, customproviders as _rd_custom
+from talos.usage import Run as _RdRun, UsageMeter as _RdMeter, event_payload as _rd_usage_payload
+from talos.provider import Provider as _RdProvider, ProviderRegistry as _RdRegistry, with_custom_providers as _rd_with_custom
+from talos.routine import COMPUTER_WORK, operator_routine
+from talos.task_approval import TASK_WORDS, is_task_approval
+from talos.computer.contract import SchemaError, validate as computer_validate
 from talos.channel import ChannelRegistry, Inbound, Principal, Trust
 from talos.commands import CommandCenter
 from talos.conductor import Conductor
@@ -1002,6 +1015,803 @@ _mem(
 
 failures += mem_failures
 
+# --- Freigabe-Woerter: die Sprache darf die Enge nicht aufweichen ------------------
+# Der Freigabe-Text ist deutsch („Bitte nur ja, immer oder nein"), die Wortlisten waren
+# rein englisch. Ein getipptes „ja" fiel deshalb in den reprompt-Zweig und lief nach
+# TTL_SECONDS in „Freigabe ungueltig" — die Freigabe war fuer den Betreiber faktisch tot.
+# Die Listen sind jetzt zweisprachig. Weil das eine LOCKERUNG ist (mehr Zeichenketten
+# schalten scharf), steht sie hier unter adversarialem Nachweis: genau ein Wort je
+# Sprache, und beilaeufige Zustimmung schaltet weiterhin NICHTS scharf.
+aw_failures = 0
+
+
+def _aw(name: str, ok: bool, detail: str) -> None:
+    global aw_failures
+    _result(ok, name, detail)
+    if not ok:
+        aw_failures += 1
+
+
+def _aw_open(update_id: int) -> bool:
+    """Eine frische Freigabefrage aufmachen; True, wenn sie wirklich offen ist."""
+    mem_reasoner.script = [
+        "TOOL_CALL: " + json.dumps(
+            {"tool": "write_file", "args": {"path": f"{HOME}/.bashrc", "content": "x"}}
+        )
+    ]
+    mem_conductor.handle(_in(update_id, "schreib in die bashrc"))
+    return mem_approvals.get(CHAT_OWNER) is not None
+
+
+# 1) DER eigentliche Angriff: beilaeufige Zustimmung. Wer im Chat „ok" oder „passt"
+#    schreibt, meint fast nie „fuehre den Shell-Lauf aus". Keines dieser Woerter darf
+#    scharf schalten — und die Frage muss offen bleiben, nicht still verfallen.
+_aw_ready = _aw_open(600)
+_casual_ran: list[str] = []
+_casual_closed: list[str] = []
+for _i, _wort in enumerate(["ok", "okay", "klar", "passt", "jo", "sicher", "gut", "go", "mach"]):
+    _before = len(mem_ran)
+    mem_conductor.handle(_in(610 + _i, _wort))
+    if len(mem_ran) > _before:
+        _casual_ran.append(_wort)
+    if mem_approvals.get(CHAT_OWNER) is None:
+        _casual_closed.append(_wort)
+_aw(
+    "Casual agreement approves",
+    _aw_ready and not _casual_ran and not _casual_closed,
+    "nothing ran, question stayed open"
+    if (_aw_ready and not _casual_ran and not _casual_closed)
+    else f"ready={_aw_ready} RAN={_casual_ran} closed={_casual_closed}",
+)
+
+# 2) Kontrollfall (MUSS laufen): ohne ihn bewiese Fall 1 nur, dass ueberhaupt nie etwas
+#    freigegeben wird. Das getippte deutsche „ja" schaltet scharf — genau wie „yes".
+_before = len(mem_ran)
+mem_conductor.handle(_in(630, "ja"))
+_ja_ran = len(mem_ran) > _before
+_aw(
+    "German yes approves (control case, MUST run)",
+    _ja_ran,
+    "ran" if _ja_ran else "NOT run — the operator's own word is dead",
+)
+
+# 3) Das deutsche „nein" bricht ab: nichts laeuft, und die Frage ist geschlossen —
+#    nicht offen liegengeblieben, wo sie ein spaeteres „ja" noch treffen koennte.
+_aw_ready = _aw_open(640)
+_before = len(mem_ran)
+mem_conductor.handle(_in(641, "nein"))
+_nein_ok = _aw_ready and len(mem_ran) == _before and mem_approvals.get(CHAT_OWNER) is None
+_aw(
+    "German no leaves the approval open",
+    _nein_ok,
+    "declined and closed" if _nein_ok else f"ready={_aw_ready} open={mem_approvals.get(CHAT_OWNER) is not None}",
+)
+
+# 4) Die drei Wege muessen disjunkt bleiben. Ueberlappten sie, entschiede im Conductor
+#    die Reihenfolge der if-Zweige, welche Bedeutung ein Wort hat — kein Zustand, in dem
+#    man eine Sicherheitsbestaetigung haben will.
+_ovl = (
+    (_AFFIRMATIVE & _NEGATIVE) | (_AFFIRMATIVE & _ALWAYS) | (_NEGATIVE & _ALWAYS)
+)
+_aw(
+    "Approval word classes overlap",
+    not _ovl,
+    "disjoint" if not _ovl else f"OVERLAP: {sorted(_ovl)}",
+)
+
+# 5) Jede Klasse bleibt eng: genau die belegten Woerter, keine stillschweigende
+#    Erweiterung durch einen spaeteren Port. „nein" ist die einzige Ausnahme nach oben —
+#    Abbruch darf breit sein.
+_eng_ok = _AFFIRMATIVE == {"yes", "ja"} and _ALWAYS == {"always", "immer"}
+_aw(
+    "Approval word list grew silently",
+    _eng_ok,
+    "one word per language" if _eng_ok else f"affirmative={sorted(_AFFIRMATIVE)} always={sorted(_ALWAYS)}",
+)
+
+
+# 6) Die Aufgaben-Freigabe ist die BREITESTE, die es gibt: sie deckt spaetere Befehle
+#    und Ziele derselben Aufgabe mit ab, ohne Zeitgrenze. Sie ist deshalb bewusst eine
+#    MEHRWORT-Wendung je Sprache — kein Einzelwort darf sie ausloesen, auch keines,
+#    das zufaellig darin vorkommt.
+_ta_einzeln = [
+    w for w in ("aufgabe", "erlauben", "task", "allow", "ok", "ja", "immer",
+                "this task", "allow this", "diese aufgabe", "aufgabe erlauben")
+    if is_task_approval(w)
+]
+_aw(
+    "A single word triggers the broadest approval there is",
+    not _ta_einzeln,
+    "full phrase only" if not _ta_einzeln else f"TRIGGERED BY: {_ta_einzeln}",
+)
+
+# Kontrollfall: beide vollen Wendungen MUESSEN greifen, sonst prueft der Fall darueber
+# nur eine Wortliste, die ueberhaupt nichts akzeptiert.
+_ta_voll = all(is_task_approval(w) for w in ("allow this task", "diese aufgabe erlauben"))
+_aw(
+    "The task phrase stops working (control case, MUST approve)",
+    _ta_voll,
+    "both languages approve" if _ta_voll else f"DEAD: {sorted(TASK_WORDS)}",
+)
+
+# Und sie darf sich mit keiner der drei anderen Klassen ueberschneiden — sonst
+# entschiede im Conductor die Reihenfolge der if-Zweige, wie breit eine Freigabe ist.
+_ta_ovl = [w for w in TASK_WORDS
+           if is_affirmative(w) or is_always(w) or is_negative(w)]
+_aw(
+    "The task phrase also counts as a plain yes",
+    not _ta_ovl,
+    "disjoint from yes/always/no" if not _ta_ovl else f"OVERLAP: {_ta_ovl}",
+)
+
+failures += aw_failures
+
+# --- Die Absturzmeldung als Abflusskanal -------------------------------------------
+# Fehlerablage ist ein Werkzeug, das freiwillig Daten aus dem Prozess nach draussen
+# traegt — bei einem Agenten liegen dort Prompts, Werkzeug-Argumente und Zugangsdaten.
+# Ein gewoehnlicher Sentry-Client sendet lokale Variablen je Frame und wuerde genau das
+# mitnehmen. Hier wird bewiesen, dass der eigene Melder Struktur traegt und sonst nichts.
+cr_failures = 0
+
+
+def _cr(name: str, ok: bool, detail: str) -> None:
+    global cr_failures
+    _result(ok, name, detail)
+    if not ok:
+        cr_failures += 1
+
+
+_CR_DSN = "https://c2921b0fabcdef@glitchtip.example.ch/21"
+_CR_GEHEIM = "sk-ant-api03-MORGENSTERN-SANTORIN-0123456789"
+
+
+class _CrDraht:
+    """Faengt ab, was tatsaechlich auf die Leitung ginge."""
+
+    def __init__(self) -> None:
+        self.gesendet: list[str] = []
+
+    def __call__(self, url, kopf, koerper):
+        self.gesendet.append(json.dumps(koerper, ensure_ascii=False) + json.dumps(kopf))
+
+
+# 1) Ein Geheimnis in der Fehlermeldung selbst. Genau so kommen Tokens in Tracebacks:
+#    eine HTTP-Bibliothek echot die URL, ein Client den Kopf.
+_cr_draht = _CrDraht()
+try:
+    raise RuntimeError(f"upstream refused: Authorization: Bearer {_CR_GEHEIM}")
+except RuntimeError as _e:
+    CrashReporter(dsn=_CR_DSN, send=_cr_draht).report(_e, where="redteam")
+_cr_leck = [w for w in ("MORGENSTERN", "SANTORIN", "sk-ant-api03") if any(w in g for g in _cr_draht.gesendet)]
+_cr(
+    "Crash report carries a secret off the machine",
+    bool(_cr_draht.gesendet) and not _cr_leck,
+    "secret scrubbed" if not _cr_leck else f"LEAK: {_cr_leck}",
+)
+
+# 2) Lokale Variablen. Das ist der Weg, auf dem ein SDK den Verlauf mitnimmt, ohne dass
+#    jemand es beabsichtigt — die Frames tragen den ganzen Rahmen mit.
+_cr_draht2 = _CrDraht()
+
+
+def _cr_tief():
+    codewort = "morgenstern-santorin"          # noqa: F841 — genau darum geht es
+    api_key = _CR_GEHEIM                       # noqa: F841
+    raise RuntimeError("kaputt")
+
+
+try:
+    _cr_tief()
+except RuntimeError as _e:
+    _melder = CrashReporter(dsn=_CR_DSN, send=_cr_draht2)
+    _cr_koerper = _melder.payload(_e, where="redteam")
+    _melder.report(_e, where="redteam")
+_cr_rahmen = _cr_koerper["exception"]["values"][0]["stacktrace"]["frames"]
+_cr_hat_vars = any("vars" in r for r in _cr_rahmen)
+_cr_leck2 = [w for w in ("morgenstern", "MORGENSTERN") if any(w in g for g in _cr_draht2.gesendet)]
+_cr(
+    "Crash report carries the frame's local variables",
+    bool(_cr_rahmen) and not _cr_hat_vars and not _cr_leck2,
+    "structure only" if not (_cr_hat_vars or _cr_leck2) else f"vars={_cr_hat_vars} leak={_cr_leck2}",
+)
+
+# 3) Ohne DSN darf nichts passieren — kein Socket, kein Versuch. Wer die Ablage nicht
+#    einschaltet, hat sie nicht.
+_cr_draht3 = _CrDraht()
+_cr_aus = CrashReporter(dsn="", send=_cr_draht3)
+try:
+    raise RuntimeError("kaputt")
+except RuntimeError as _e:
+    _cr_ergebnis = _cr_aus.report(_e, where="redteam")
+_cr(
+    "Crash report talks without being switched on",
+    _cr_aus.enabled is False and _cr_ergebnis is False and not _cr_draht3.gesendet,
+    "silent" if not _cr_draht3.gesendet else f"SENT {len(_cr_draht3.gesendet)}",
+)
+
+# 4) Der Rechner des Betreibers: Hostname und Heimatpfad sind Angaben ueber die Person,
+#    nicht ueber den Fehler.
+_cr_draht4 = _CrDraht()
+try:
+    raise RuntimeError(f"cannot read {HOME}/.talos/secrets/telegram.token")
+except RuntimeError as _e:
+    CrashReporter(dsn=_CR_DSN, send=_cr_draht4).report(_e, where="redteam")
+_cr_wire4 = "".join(_cr_draht4.gesendet)
+_cr_host = os.uname().nodename
+_cr(
+    "Crash report names the operator's machine",
+    HOME not in _cr_wire4 and _cr_host not in _cr_wire4,
+    "no home, no hostname" if (HOME not in _cr_wire4 and _cr_host not in _cr_wire4)
+    else f"home={HOME in _cr_wire4} host={_cr_host in _cr_wire4}",
+)
+
+# 5) Ein Melder, der beim Melden stirbt, darf den Agenten nicht mitnehmen. Die Ablage
+#    ist Zubehoer, nie eine Abhaengigkeit des Laufs.
+def _cr_kaputt(url, kopf, koerper):
+    raise OSError("network unreachable")
+
+
+_cr_ueberlebt = True
+try:
+    raise RuntimeError("kaputt")
+except RuntimeError as _e:
+    try:
+        _cr_r = CrashReporter(dsn=_CR_DSN, send=_cr_kaputt).report(_e, where="redteam")
+    except Exception:
+        _cr_ueberlebt = False
+        _cr_r = None
+_cr(
+    "A failing reporter takes the agent down with it",
+    _cr_ueberlebt and _cr_r is False,
+    "swallowed, returned False" if _cr_ueberlebt else "EXCEPTION ESCAPED",
+)
+
+failures += cr_failures
+
+# --- Eigene Anbieter des Betreibers (custom-providers.json) ------------------------
+# Eine Datei, die Anbieter in den Katalog traegt, ist ein Angriffsziel: wer dort einen
+# EINGEBAUTEN Namen unterbringt, biegt den Weg zu Anthropic auf einen fremden Host um,
+# waehrend Protokoll und Oberflaeche weiter den vertrauten Namen zeigen. Deshalb hier.
+cpx_failures = 0
+
+
+def _cpx(name: str, ok: bool, detail: str) -> None:
+    global cpx_failures
+    _result(ok, name, detail)
+    if not ok:
+        cpx_failures += 1
+
+
+def _cpx_json(**felder) -> str:
+    eintrag = {"name": "eigen-proxy", "label": "Eigener Proxy",
+               "base_url": "http://127.0.0.1:17432/v1", "models": ["k3"]}
+    eintrag.update(felder)
+    return json.dumps([eintrag])
+
+
+# 1) Kontrollfall zuerst: ein gueltiger Eintrag MUSS ankommen — sonst pruefen die
+#    Angriffe unten nur eine Funktion, die ohnehin nie etwas zulaesst.
+_cpx_gut = _rd_custom.parse(_cpx_json())
+_cpx(
+    "A valid custom provider silently disappears (control case, MUST register)",
+    len(_cpx_gut) == 1 and _cpx_gut[0].slug == "eigen-proxy" and _cpx_gut[0].models == ("k3",),
+    "registered with its own name" if _cpx_gut else "NOT registered — cases below prove nothing",
+)
+
+# 2) DER Angriff: ein eingebauter Name. Waere er zu haben, liefe der Zug zu einem fremden
+#    Host, waehrend „claude-cli" im Log steht.
+_cpx_geborgt = [n for n in ("claude-cli", "anthropic-api", "openai-api", "kimi", "ollama")
+                if _rd_custom.parse(_cpx_json(name=n))]
+_cpx(
+    "A custom provider takes over a built-in provider name",
+    not _cpx_geborgt,
+    "built-in names refused" if not _cpx_geborgt else f"HIJACKED: {_cpx_geborgt}",
+)
+
+# 3) Und die zweite Sperre dahinter: selbst wenn ein solcher Eintrag entstuende, darf
+#    `catalog.register` einen eingebauten Eintrag nie ersetzen.
+_cpx_vorher = _rd_catalog.get("claude-cli")
+_cpx_fake = (_rd_catalog.ProviderInfo(slug="claude-cli", label="gefaelscht", auth="none",
+                                      base_url="http://evil.example", models=("x",)),)
+_cpx_reg = _rd_catalog.register(_cpx_fake)
+_cpx(
+    "catalog.register overwrites a built-in entry",
+    not _cpx_reg and _rd_catalog.get("claude-cli") is _cpx_vorher,
+    "built-in untouched" if not _cpx_reg else f"OVERWRITTEN: {_cpx_reg}",
+)
+
+# 4) Adressen, die keine Anbieteradresse sind: eine Platte lesen, ein fremdes Schema
+#    sprechen, oder ein Geheimnis in jede Fehlermeldung tragen.
+_cpx_adressen = [a for a in ("file:///etc/passwd", "ftp://h/x", "javascript:alert(1)",
+                             "https://nutzer:geheim@h/v1", "http://tok@h/v1")
+                 if _rd_custom.parse(_cpx_json(base_url=a))]
+_cpx(
+    "A custom provider reaches a local file or carries credentials",
+    not _cpx_adressen,
+    "http(s) without credentials only" if not _cpx_adressen else f"ACCEPTED: {_cpx_adressen}",
+)
+
+# 5) Fail closed, aber nie toedlich: eine kaputte Betreiberdatei darf den Start nicht
+#    kosten (dieselbe Lehre wie beim doppelten `openai-api`, der den Waechter toetete).
+_cpx_ueberlebt = True
+try:
+    _cpx_muell = [_rd_custom.parse(m) for m in ("", "nicht json", "{}", "[1,2]", '[{"name":5}]')]
+    _cpx_fehlt = _rd_custom.load("/gibt/es/nicht/custom.json")
+except Exception:
+    _cpx_ueberlebt = False
+    _cpx_muell, _cpx_fehlt = [["x"]], ["x"]
+_cpx(
+    "A broken operator file takes the start down with it",
+    _cpx_ueberlebt and not any(_cpx_muell) and not _cpx_fehlt,
+    "empty, quietly" if _cpx_ueberlebt else "RAISED",
+)
+
+# 6) Ein doppelter Name darf die Registry nicht sprengen — `ProviderRegistry` verlangt
+#    eindeutige Slugs, und ein Wurf hier waere ein Startabbruch durch eine Datei.
+_cpx_start_ok = True
+try:
+    _cpx_basis = _RdRegistry((_RdProvider("eigen-proxy", "schon da", ("x",)),))
+    _cpx_erw = _rd_with_custom(_cpx_basis, _rd_custom.parse(_cpx_json()))
+    _cpx_modelle = [p.models for p in _cpx_erw.providers]
+except Exception:
+    _cpx_start_ok, _cpx_modelle = False, []
+_cpx(
+    "A duplicate custom name kills the start",
+    _cpx_start_ok and _cpx_modelle == [("x",)],
+    "existing entry wins, no throw" if _cpx_start_ok else "RAISED — a file could kill the boot",
+)
+
+failures += cpx_failures
+
+# --- Die Verbrauchszeile im Event-Log ---------------------------------------------
+# Der Verbrauch wandert jetzt ins append-only Log, damit nach einem Neustart noch
+# nachvollziehbar ist, WELCHES Modell ein Kontingent verbraucht hat. Genau deshalb ist
+# die Zeile heikel: was einmal drinsteht, bleibt fuer immer. Sie darf Zahlen tragen —
+# und niemals Gespraechsinhalt. Dieselbe Grenze wie beim Absturzbericht.
+usg_failures = 0
+
+
+def _usg(name: str, ok: bool, detail: str) -> None:
+    global usg_failures
+    _result(ok, name, detail)
+    if not ok:
+        usg_failures += 1
+
+
+_USG_WORT = "morgenstern-santorin"
+_usg_run = _RdRun(at=0.0, ok=True, duration_s=1.5, model="k3",
+                  input_tokens=120, output_tokens=40, cost_usd=0.02,
+                  note=f"das codewort ist {_USG_WORT}",
+                  session_id="telegram:749908868/geheimer-thread")
+_usg_zeile = json.dumps(_rd_usage_payload(_usg_run), ensure_ascii=False)
+
+# 1) DER Angriff: freier Text aus `note`/`session_id` in eine unloeschbare Zeile.
+_usg_leck = [w for w in ("morgenstern", "santorin", "codewort", "telegram:", "geheimer")
+             if w in _usg_zeile]
+_usg(
+    "A usage row carries the conversation into the append-only log",
+    not _usg_leck,
+    "numbers and the model name only" if not _usg_leck else f"LEAK: {_usg_leck}",
+)
+
+# 2) Kontrollfall: ohne ihn bewiese der erste Fall nur, dass die Zeile leer ist.
+_usg_felder = _rd_usage_payload(_usg_run)
+_usg(
+    "The usage row stops naming its model (control case, MUST carry numbers)",
+    _usg_felder.get("model") == "k3" and _usg_felder.get("input_tokens") == 120,
+    "model and tokens present" if _usg_felder.get("model") == "k3" else "row is empty — proves nothing",
+)
+
+# 3) Der Zaehler darf den Zug nie mitnehmen: ein Log, das beim Schreiben wirft
+#    (volle Platte, gesperrte DB), beendet sonst einen laufenden Auftrag.
+def _usg_kaputt(run):
+    raise OSError("no space left on device")
+
+
+_usg_ueberlebt = True
+try:
+    _usg_meter = _RdMeter(on_record=_usg_kaputt)
+    _usg_meter.record(_usg_run)
+    _usg_gezaehlt = _usg_meter.snapshot().runs
+except Exception:
+    _usg_ueberlebt, _usg_gezaehlt = False, 0
+_usg(
+    "A failing usage log takes the run down with it",
+    _usg_ueberlebt and _usg_gezaehlt == 1,
+    "swallowed, still counted" if _usg_ueberlebt else "EXCEPTION ESCAPED",
+)
+
+failures += usg_failures
+
+
+
+# --- Die Anordnung der Freigabe-Knoepfe --------------------------------------------
+# Auf main stand die Ablehnung ALLEIN in der zweiten Reihe — ausgeschrieben als
+# ((buttons[0], buttons[1]), (buttons[2],)). Beim Port auf n Knoepfe wurde daraus ein
+# generisches [:2]/[2:], und sobald „▶ Allow this task" dazukam, landete „✕ Deny"
+# direkt neben „∞ Always allow". Ein Fehlgriff auf dem Telefon haette aus einer
+# Ablehnung die breiteste Freigabe gemacht, die es gibt. Das ist eine
+# Sicherheitseigenschaft der Oberflaeche, also steht sie hier unter Nachweis.
+btn_failures = 0
+
+
+def _btn(name: str, ok: bool, detail: str) -> None:
+    global btn_failures
+    _result(ok, name, detail)
+    if not ok:
+        btn_failures += 1
+
+
+def _btn_tastatur(*, mit_aufgabe: bool):
+    zaehler = iter(f"btntok{i}" for i in range(40))
+    picker = ApprovalPicker(token_factory=lambda: next(zaehler))
+    pending = Pending(
+        approval_id="rd-btn",
+        req=ToolRequest("run_shell", OWNER, {"command": "echo hi"}),
+        targets=(),
+        ask_fingerprint=(),
+        expires_at=_zeit.time() + 300,
+        prompt="rd",
+        resume_agent=mit_aufgabe,
+        task_id="rd-task" if mit_aufgabe else "",
+    )
+    nachricht = picker.open("rd", pending, principal=OWNER, conversation=CHAT_OWNER)
+    return [[b.label for b in reihe] for reihe in nachricht.keyboard]
+
+
+_ERLAUBNIS = ("Allow once", "Always allow", "Allow this task")
+
+_btn_faelle = []
+for _mit in (False, True):
+    _reihen = _btn_tastatur(mit_aufgabe=_mit)
+    _letzte = _reihen[-1] if _reihen else []
+    _deny_allein = len(_letzte) == 1 and "Deny" in _letzte[0]
+    _kein_deny_oben = not any("Deny" in b for reihe in _reihen[:-1] for b in reihe)
+    _btn_faelle.append((_mit, _reihen, _deny_allein and _kein_deny_oben))
+
+_btn_ok = all(ok for _, _, ok in _btn_faelle)
+_btn(
+    "Deny shares a row with a grant button",
+    _btn_ok,
+    "deny stands alone in both layouts" if _btn_ok
+    else "; ".join(f"task={m}: {r}" for m, r, ok in _btn_faelle if not ok),
+)
+
+# Und der Gegenbeleg, dass die Pruefung ueberhaupt etwas sieht: mit Aufgabe MUSS der
+# vierte Knopf da sein, sonst wuerde oben nur die unveraenderte Drei-Knopf-Lage geprueft.
+_btn_vier = any("Allow this task" in b for reihe in _btn_faelle[1][1] for b in reihe)
+_btn(
+    "The task button silently disappears (control case, MUST be present)",
+    _btn_vier,
+    "four buttons when the approval can resume a task" if _btn_vier else "task button MISSING",
+)
+
+failures += btn_failures
+
+# --- Der private Computer: computer_run / computer_status --------------------------
+# Der Integrations-Port bringt zwei neue Werkzeuge mit. `computer_run` ist EXEC und
+# ausdruecklich `reversible=False` — die gefaehrlichste Klasse, die der Kernel kennt.
+# Dazu kommt in routine.py eine Auto-Freigabe per Umgebungsschalter. Eine Faehigkeit
+# ohne adversarialen Nachweis geht nicht nach main (CLAUDE.md), also hier.
+comp_failures = 0
+
+
+def _comp(name: str, ok: bool, detail: str) -> None:
+    global comp_failures
+    _result(ok, name, detail)
+    if not ok:
+        comp_failures += 1
+
+
+def _comp_req(tool: str, args: dict) -> ToolRequest:
+    return ToolRequest(tool, OWNER, args)
+
+
+_COMP_ARBEIT = {"op": "exec", "project": "p", "key": "k", "title": "t", "command": "echo hi"}
+
+
+def _mit_schalter(wert: str | None):
+    """Setzt TALOS_COMPUTER_AUTOAPPROVE und gibt den alten Wert zurueck."""
+    vorher = os.environ.get("TALOS_COMPUTER_AUTOAPPROVE")
+    if wert is None:
+        os.environ.pop("TALOS_COMPUTER_AUTOAPPROVE", None)
+    else:
+        os.environ["TALOS_COMPUTER_AUTOAPPROVE"] = wert
+    return vorher
+
+
+# 1) requires_env: ohne den Socket darf nicht einmal ein Client starten — und der
+#    Runner darf nie gelaufen sein (dieselbe Regel wie bei remote_exec).
+_c_sock = os.environ.pop("TALOS_COMPUTER_SOCKET", None)
+_c_before = len(executed)
+_c_out = executor.run(_comp_req("computer_run", dict(_COMP_ARBEIT)), "redteam-comp-noenv")
+_c_ok = _c_out.status is Status.DENIED and len(executed) == _c_before
+_comp(
+    "The private computer runs without its socket",
+    _c_ok,
+    f"{_c_out.status.value}, runner idle" if _c_ok else f"{_c_out.status.value}, ran={len(executed) > _c_before}",
+)
+if _c_sock is not None:
+    os.environ["TALOS_COMPUTER_SOCKET"] = _c_sock
+
+# 2) Die Auto-Freigabe ist an den Schalter gebunden. Ohne ihn ist auch gewoehnliche
+#    Arbeit nur ein Vorschlag, ueber den ein Mensch entscheidet.
+_v = _mit_schalter(None)
+_a_aus = operator_routine(_comp_req("computer_run", dict(_COMP_ARBEIT)))
+_mit_schalter("1")
+_a_an = operator_routine(_comp_req("computer_run", dict(_COMP_ARBEIT)))
+_comp(
+    "Computer work is auto-approved without the switch",
+    _a_aus is False,
+    "off without the switch" if _a_aus is False else "AUTO-APPROVED WITH NO SWITCH",
+)
+# Kontrollfall: ohne ihn bewiese der Rest nur, dass nie etwas freigegeben wird.
+_comp(
+    "The switch stops working entirely (control case, MUST auto-approve)",
+    _a_an is True,
+    "work auto-approved with the switch" if _a_an else "switch dead — the cases below prove nothing",
+)
+
+# 3) DER eigentliche Angriff: die Auto-Freigabe deckt ARBEIT ab, nie STEUERUNG.
+#    pause/resume/stop halten den Computer an oder geben ihn frei — wer die ohne
+#    Rueckfrage bekommt, kann eine laufende Aufsicht abschalten.
+_steuer_durch = []
+for _op in ("pause", "resume", "stop"):
+    if operator_routine(_comp_req("computer_run", {"op": _op})):
+        _steuer_durch.append(_op)
+_comp(
+    "Computer auto-approval also covers the control ops",
+    not _steuer_durch,
+    "work only, control still asks" if not _steuer_durch else f"AUTO-APPROVED: {_steuer_durch}",
+)
+
+# 4) Der Schalter gehoert dem Computer. Kein anderes Werkzeug darf auf ihm mitreisen —
+#    schon gar nicht die Schalen, die ohnehin die weiteste Wirkung haben.
+_fremd_durch = [
+    t for t in ("run_shell", "remote_exec", "write_file", "delete_path")
+    if operator_routine(_comp_req(t, dict(_COMP_ARBEIT)))
+]
+_comp(
+    "Another tool rides along on the computer switch",
+    not _fremd_durch,
+    "computer only" if not _fremd_durch else f"RODE ALONG: {_fremd_durch}",
+)
+
+# 5) Kaputte oder fremde Argumente muessen ZU schliessen, nicht auf. Ein Validierer,
+#    der bei Muell wirft, darf nicht in eine Freigabe fallen.
+_muell_durch = []
+for _args in ({}, {"op": "exec"}, {"op": "wat"}, {"op": ["exec"]}, [1, 2, 3], None,
+              {"op": "exec", "project": "p", "key": "k", "title": "t"}):
+    try:
+        if operator_routine(_comp_req("computer_run", _args if isinstance(_args, dict) else {"op": _args})):
+            _muell_durch.append(repr(_args)[:40])
+    except Exception as _fehler:                     # noqa: BLE001 — ein Wurf waere auch ein Fehler
+        _muell_durch.append(f"RAISED {type(_fehler).__name__} on {repr(_args)[:30]}")
+_comp(
+    "Malformed computer arguments auto-approve or crash the check",
+    not _muell_durch,
+    "fails closed, quietly" if not _muell_durch else f"{_muell_durch}",
+)
+_mit_schalter(_v)
+
+# 6) Der Lesepfad darf nicht handeln. `computer_status` ist Effect.READ; wer darueber
+#    eine Aktion durchbekaeme, haette die ganze Einstufung umgangen.
+_lese_durch = []
+for _op in ("exec", "open", "click", "type", "key", "scroll", "browser", "stop"):
+    try:
+        computer_validate({"op": _op, "project": "p", "key": "k", "title": "t",
+                           "command": "echo hi"}, read=True)
+        _lese_durch.append(_op)
+    except (SchemaError, ValueError, TypeError):
+        pass
+_comp(
+    "The read tool performs an action",
+    not _lese_durch,
+    "read ops only" if not _lese_durch else f"ACTION THROUGH THE READ PATH: {_lese_durch}",
+)
+
+# 7) Eine Browser-Navigation mit Zugangsdaten in der URL ist der bequemste Weg, ein
+#    Geheimnis an einen fremden Host zu tragen — und sie sieht wie eine normale URL aus.
+_url_durch = []
+for _url in ("https://nutzer:geheim@example.com/", "http://tok:x@example.com/a",
+             "file:///etc/passwd", "javascript:alert(1)", "ftp://example.com/"):
+    try:
+        computer_validate({"op": "browser", "project": "p", "key": "k", "title": "t",
+                           "action": "navigate", "url": _url})
+        _url_durch.append(_url[:40])
+    except (SchemaError, ValueError, TypeError):
+        pass
+_comp(
+    "The browser navigates to credentials or a local scheme",
+    not _url_durch,
+    "http(s) without credentials only" if not _url_durch else f"ACCEPTED: {_url_durch}",
+)
+
+# --- Die Kernel-Verdikte selbst ----------------------------------------------------
+# Die Faelle oben pruefen die Auto-Freigabe-Routine und den Validierer. Sie sagen nichts
+# darueber, was der KERNEL antwortet — und das ist am 12.09. eine Lockerung geworden:
+# vorher war `computer_run` DENY by construction (kein Zielextraktor, CLAUDE.md), jetzt
+# ist es NEEDS_HUMAN. Jede Lockerung braucht ihren Nachweis daneben.
+from talos.autonomy import AutonomyGovernor as _CompAG, GovernedKernel as _CompGK  # noqa: E402
+from talos.schedule import UnattendedCeiling as _CompUC  # noqa: E402
+from talos.subagent import ReadOnlyCeiling as _CompROC  # noqa: E402
+
+# Fall 1 oben hat den Socket bewusst aus der Umgebung genommen — ohne ihn antwortet der
+# Kernel auf ALLES mit DENY („required env not set"), und die Faelle hier pruefen dann
+# nur noch diese eine Regel. Fuer die Verdikte muss der Computer also erreichbar sein.
+# (Genau das haben die Kontrollfaelle beim ersten Lauf gemeldet, statt gruen zu luegen.)
+_k_sock_vorher = os.environ.get("TALOS_COMPUTER_SOCKET")
+os.environ["TALOS_COMPUTER_SOCKET"] = "/run/talos-computer-api/control.sock"
+_comp_kernel = PolicyKernel(default_manifest(), frozenset({OWNER}))
+
+
+def _comp_verdict(tool: str, args: dict) -> str:
+    return _comp_kernel.decide(_comp_req(tool, args)).verdict.name
+
+
+# 8) Der Pflicht-Kontrollfall: der Kernel muss den Computer ueberhaupt erreichen. Ohne
+#    ihn bewiesen die Faelle darunter nur, dass irgendetwas immer DENY sagt.
+_k_arbeit = _comp_verdict("computer_run", dict(_COMP_ARBEIT))
+_comp(
+    "The kernel never reaches the computer at all (control case, MUST ask)",
+    _k_arbeit == "NEEDS_HUMAN",
+    f"computer work is {_k_arbeit}" if _k_arbeit == "NEEDS_HUMAN"
+    else f"{_k_arbeit} — the cases below prove nothing",
+)
+
+# 9) DER Angriff auf die Lockerung: `computer_run` ist EXEC und reversible=False. Es darf
+#    die Auto-Freigabe der Schale NIE erben — sonst waere aus „einmal Shell erlaubt" ein
+#    unbeaufsichtigter Computer geworden.
+_k_ceiling = _CompUC()
+_k_gov = _CompGK(PolicyKernel(default_manifest(), frozenset({OWNER})), _CompAG(5),
+                 lambda _c: Trust.FULL, unattended=_k_ceiling)
+_k_getippt = _k_gov.decide(_comp_req("computer_run", dict(_COMP_ARBEIT))).verdict.name
+with _k_ceiling.active():
+    _k_unbeaufsichtigt = _k_gov.decide(_comp_req("computer_run", dict(_COMP_ARBEIT))).verdict.name
+_comp(
+    "An unattended run operates the computer on its own",
+    _k_getippt == "NEEDS_HUMAN" and _k_unbeaufsichtigt == "DENY",
+    f"typed={_k_getippt} -> unattended={_k_unbeaufsichtigt}",
+)
+
+# 10) Und ein Delegat muss weniger koennen als sein Auftraggeber — er entsteht aus
+#     Modelltext. Ein Unterlauf, der den Computer bedient, waere der bequemste Weg,
+#     die Rueckfrage aus ihrem Zusammenhang zu reissen.
+_k_roc = _CompROC()
+_k_sub = _CompGK(PolicyKernel(default_manifest(), frozenset({OWNER})), _CompAG(5),
+                 lambda _c: Trust.FULL, delegated=_k_roc)
+with _k_roc.active():
+    _k_delegiert = _k_sub.decide(_comp_req("computer_run", dict(_COMP_ARBEIT))).verdict.name
+_comp(
+    "A delegated run operates the computer",
+    _k_delegiert == "DENY",
+    f"delegate={_k_delegiert}",
+)
+
+# 11) Kaputte Argumente muessen am KERNEL schliessen, nicht erst im Runner. Ein
+#     Validierer, der wirft, darf den Kernel nicht mitreissen — ein Wurf waere hier
+#     kein DENY, sondern ein Absturz an der Gate-Stelle.
+_k_muell = []
+for _args in ({}, {"op": "wat"}, {"op": "exec"}, {"op": ["exec"]}, {"op": None}):
+    try:
+        _v_muell = _comp_verdict("computer_run", _args)
+        if _v_muell != "DENY":
+            _k_muell.append(f"{_args} -> {_v_muell}")
+    except Exception as _fehler:                     # noqa: BLE001 — ein Wurf ist auch ein Fehler
+        _k_muell.append(f"RAISED {type(_fehler).__name__} on {_args}")
+_comp(
+    "A malformed computer request slips past the kernel or crashes it",
+    not _k_muell,
+    "invalid requests are DENY, quietly" if not _k_muell else f"{_k_muell}",
+)
+
+# 12) Der Lesepfad am Kernel: `computer_status` liest und darf lesen — aber eine Aktion
+#     durch dieses Werkzeug muss DENY sein, sonst waere die Einstufung als READ umgangen.
+_k_status = _comp_verdict("computer_status", {"op": "status"})
+_k_status_aktion = [
+    _op for _op in ("exec", "click", "type", "browser", "stop")
+    if _comp_verdict("computer_status", {"op": _op, "project": "p", "key": "k",
+                                         "title": "t", "command": "echo hi"}) != "DENY"
+]
+_comp(
+    "The read tool performs an action through the kernel",
+    not _k_status_aktion,
+    "status reads only" if not _k_status_aktion else f"ACTION AS READ: {_k_status_aktion}",
+)
+_comp(
+    "Reading the computer is blocked too (control case, MUST allow)",
+    _k_status == "ALLOW",
+    f"status is {_k_status}" if _k_status == "ALLOW" else f"{_k_status} — the read path is dead",
+)
+
+# 13) Der abgeschaltete Desktop muss auch dann halten, wenn der Betreiber ihn per
+#     Schalter zugemacht hat: „aus" heisst DENY, nicht „fragt halt nach".
+#     ⚠️ Die Argumente muessen je Op GUELTIG sein. Beim ersten Versuch standen hier
+#     alle Felder auf einmal („unknown computer argument"), also fiel schon der
+#     Validierer — der Fall war gruen, ohne den Schalter je zu beruehren. Die
+#     Gegenprobe hat das gemeldet: Regel entfernt, und trotzdem blieb alles gruen.
+_K_DESKTOP = (
+    ("click", {"x": 1, "y": 1}),
+    ("type", {"text": "hallo"}),
+    ("key", {"keys": "Return"}),
+    ("open", {"url": "https://example.com/"}),
+)
+_k_desk_vorher = os.environ.get("TALOS_COMPUTER_DESKTOP")
+os.environ["TALOS_COMPUTER_DESKTOP"] = "0"
+_k_desk_zu = [
+    _op for _op, _felder in _K_DESKTOP
+    if _comp_verdict("computer_run",
+                     {"op": _op, "project": "p", "key": "k", "title": "t", **_felder}) != "DENY"
+]
+os.environ["TALOS_COMPUTER_DESKTOP"] = "1"
+_k_desk_auf = _comp_verdict("computer_run", {"op": "click", "project": "p", "key": "k",
+                                             "title": "t", "x": 1, "y": 1})
+if _k_desk_vorher is None:
+    os.environ.pop("TALOS_COMPUTER_DESKTOP", None)
+else:
+    os.environ["TALOS_COMPUTER_DESKTOP"] = _k_desk_vorher
+_comp(
+    "A disabled desktop still takes clicks",
+    not _k_desk_zu,
+    "desktop off means DENY" if not _k_desk_zu else f"GOT THROUGH: {_k_desk_zu}",
+)
+_comp(
+    "The desktop switch blocks everything (control case, MUST ask when on)",
+    _k_desk_auf == "NEEDS_HUMAN",
+    f"desktop on -> {_k_desk_auf}" if _k_desk_auf == "NEEDS_HUMAN"
+    else f"{_k_desk_auf} — the case above proves nothing",
+)
+
+# 14) Gemessen am 12.09., beim Nachziehen der Kernel-Regeln: `computer_run` traegt als
+#     Ziel eine KONSTANTE (das Computer-Wurzelverzeichnis). Damit hatte jede Aktion
+#     denselben Abdruck — ein einziges „∞ Always allow" auf `echo hi` deckte danach
+#     `browser navigate` auf eine fremde Bank und `stop`, ueber Neustarts hinweg, und
+#     in `/allowed` hiessen alle Regeln gleich. Seitdem ist der Computer nicht bindbar.
+_k_store = StandingStore()
+_k_harmlos = _comp_req("computer_run", dict(_COMP_ARBEIT))
+_k_regel = _k_store.grant("chat", _k_harmlos, principal=OWNER, run_id="redteam-standing")
+_k_gedeckt = [
+    _name for _name, _args in (
+        ("browser->foreign host", {"op": "browser", "project": "p", "key": "k", "title": "t",
+                                   "action": "navigate", "url": "https://bank.example/transfer"}),
+        ("stop (ends supervision)", {"op": "stop"}),
+        ("the very same command", dict(_COMP_ARBEIT)),
+    )
+    if _k_store.find("chat", _comp_req("computer_run", _args), principal=OWNER) is not None
+]
+_comp(
+    "One 'always' on harmless computer work covers the whole computer",
+    _k_regel is None and not _k_gedeckt,
+    "no standing approval for the computer" if _k_regel is None and not _k_gedeckt
+    else f"rule={_k_regel is not None}, covered={_k_gedeckt}",
+)
+# Gegenbeleg: stehende Freigaben muessen fuer bindbare Werkzeuge WEITER funktionieren,
+# sonst pruefte der Fall oben nur einen kaputten Speicher.
+_k_sh = ToolRequest("run_shell", OWNER, {"command": "uptime"})
+_k_sh_regel = _k_store.grant("chat", _k_sh, principal=OWNER, run_id="redteam-standing")
+_k_sh_deckt = _k_store.find("chat", _k_sh, principal=OWNER) is not None
+_k_sh_fremd = _k_store.find(
+    "chat", ToolRequest("run_shell", OWNER, {"command": "rm -rf /"}), principal=OWNER
+) is not None
+_comp(
+    "Standing approvals stopped working entirely (control case, MUST bind)",
+    _k_sh_regel is not None and _k_sh_deckt and not _k_sh_fremd,
+    "shell binds to exactly its command" if _k_sh_regel is not None and _k_sh_deckt and not _k_sh_fremd
+    else f"rule={_k_sh_regel is not None}, own={_k_sh_deckt}, foreign={_k_sh_fremd}",
+)
+
+# Die Umgebung so zuruecklassen, wie dieser Abschnitt sie vorgefunden hat.
+if _k_sock_vorher is None:
+    os.environ.pop("TALOS_COMPUTER_SOCKET", None)
+else:
+    os.environ["TALOS_COMPUTER_SOCKET"] = _k_sock_vorher
+
+failures += comp_failures
+
+
+
+
+
 
 # --- Angriffe auf das Gespraechsarchiv (session_search) ----------------------------
 # Anders als die mem_*-Faelle laeuft hier der ECHTE Runner: die Grenze, um die es geht
@@ -1009,9 +1819,6 @@ failures += mem_failures
 # — ein Stub wuerde genau das Stueck ersetzen, das angegriffen wird.
 ss_failures = 0
 SS_WORT = "morgenstern-santorin"
-# The search needle is already known to the requesting model. Use a distinct
-# payload canary: echoed request context must not masquerade as a cross-chat leak.
-SS_QUERY = "archive-lookup-fixture"
 
 
 def _ss(name: str, ok: bool, detail: str) -> None:
@@ -1073,12 +1880,12 @@ def _ss_in(update_id: int, text: str, conversation: str = CHAT_OWNER, principal:
     return Inbound(principal, conversation, text, f"redteam-ss:{update_id}")
 
 
-_SEARCH_CALL = "TOOL_CALL: " + json.dumps({"tool": "session_search", "args": {"query": SS_QUERY}})
+_SEARCH_CALL = "TOOL_CALL: " + json.dumps({"tool": "session_search", "args": {"query": SS_WORT}})
 
 # 0) Kontrolle: ein beantworteter Zug landet im Archiv, und DIESELBE Konversation
 #    findet ihn ueber das echte Werkzeug wieder. Ohne diese Zeile bewiesen die
 #    naechsten Faelle nur, dass gar nichts gespeichert wird.
-ss_reasoner.script = [f"{SS_QUERY}: Das Codewort ist {SS_WORT}."]
+ss_reasoner.script = [f"Das Codewort ist {SS_WORT}."]
 ss_conductor.handle(_ss_in(1, "merk dir das codewort"))
 ss_reasoner.script = [_SEARCH_CALL, "gefunden"]
 ss_conductor.handle(_ss_in(2, "such das codewort im archiv"))
@@ -1113,7 +1920,7 @@ _ss(
 #    Argumente. Der Runner darf das Feld nicht einmal ansehen — eine naive, von
 #    vault_search kopierte Umsetzung wuerde genau hier reissen.
 _smuggle = "TOOL_CALL: " + json.dumps(
-    {"tool": "session_search", "args": {"query": SS_QUERY, "conversation": CHAT_OWNER}}
+    {"tool": "session_search", "args": {"query": SS_WORT, "conversation": CHAT_OWNER}}
 )
 ss_reasoner.script = [_smuggle, "fertig"]
 ss_conductor.handle(_ss_in(5, "such nochmal", conversation=CHAT_ZWEI))
@@ -3248,123 +4055,6 @@ with tempfile.TemporaryDirectory(prefix="talos-codex-gate-") as _codex_ws:
             "unavailable before spawn" if _codex_ok else "GATE FAILED")
     if not _codex_ok:
         failures += 1
-
-# Operator-enabled computer work must not grant unattended, foreign or host power.
-with __import__('unittest.mock', fromlist=['patch']).patch.dict(os.environ, {
-    "TALOS_COMPUTER_SOCKET":"/run/example/control.sock",
-    "TALOS_COMPUTER_AUTOAPPROVE":"1", "TALOS_REMOTE_READONLY_AUTOAPPROVE":"1",
-    "TALOS_REMOTE_HOSTS":"example",
-}):
-    from talos.schedule import UnattendedCeiling as _ComputerUnattended
-    _cg = GovernedKernel(PolicyKernel(default_manifest(), frozenset({OWNER})),
-                         AutonomyGovernor(5), lambda _:Trust.FULL, attended_autoapprove=True)
-    _ca = {"op":"exec","project":"test","key":"first","title":"Test","command":"printf ok"}
-    _ccases = [
-        ("Computer opt-in accepts a foreign principal", ToolRequest("computer_run", STRANGER, _ca)),
-        ("Computer opt-in accepts an omitted project", ToolRequest("computer_run", OWNER, {"op":"exec","command":"id"})),
-        ("Computer opt-in accepts a host override", ToolRequest("computer_run", OWNER, _ca|{"host":"elsewhere"})),
-        ("Computer opt-in hides a declared secret target", ToolRequest("computer_run", OWNER, _ca, (str(Path.home()/'.secrets/x'),))),
-        ("Remote diagnostic opt-in permits command chaining", ToolRequest("remote_exec", OWNER, {"host":"example","command":"df -h; id"})),
-        ("Remote diagnostic opt-in exposes service credentials", ToolRequest("remote_exec", OWNER, {"host":"example","command":"systemctl show demo.service -p Environment"})),
-    ]
-    for _name, _req in _ccases:
-        _decision = _cg.decide(_req)
-        _ok = _decision.verdict.value != "allow"
-        _result(_ok, _name, _decision.reason)
-        failures += int(not _ok)
-    _cu = _ComputerUnattended()
-    with _cu.active():
-        _decision = replace(_cg, unattended=_cu).decide(ToolRequest("computer_run", OWNER, _ca))
-        _ok = _decision.verdict.value == "deny"
-        _result(_ok, "Computer opt-in leaks into unattended work", _decision.reason)
-        failures += int(not _ok)
-
-# One foreground task may approve later actions, but never another authority scope.
-from talos.task_approval import TaskApprovals as _TaskApprovals, TaskExecutor as _TaskExecutor
-with tempfile.TemporaryDirectory(prefix="talos-task-redteam-") as _task_dir:
-    _task_log = EventLog(Path(_task_dir) / "events.db")
-    _task_gov = AutonomyGovernor(3)
-    from talos.schedule import UnattendedCeiling as _TaskUnattended
-    _task_unattended = _TaskUnattended()
-    _task_policy = GovernedKernel(PolicyKernel(default_manifest(), frozenset({OWNER})),
-                                 _task_gov, lambda _: Trust.FULL, unattended=_task_unattended)
-    _task_mint = CapabilityMint(_task_policy, governor=_task_gov)
-    _task_ran = []
-    _task_runner = GrantedRunner(mint=_task_mint, runners={"write_file": lambda req: _task_ran.append(req.tool)})
-    _task_base = Executor(_task_policy, _task_log, Snapshotter(Path(_task_dir) / "snap"),
-                          _task_runner, _task_mint)
-    _task_scopes = _TaskApprovals()
-    _task_scopes.open("one-task", OWNER, "task-chat")
-    _task_scopes.approve("one-task", OWNER, "task-chat")
-    _task_executor = _TaskExecutor(_task_base, _task_scopes, "one-task", OWNER, "task-chat", lambda: Trust.FULL)
-    _task_write = ToolRequest("write_file", OWNER, {"path": str(Path(_task_dir) / "one"), "content": "fixture"})
-    _task_ok = all(_task_executor.run(replace(_task_write, args=_task_write.args | {"path": str(Path(_task_dir) / str(i))}),
-                                         "task-control").status is Status.DONE for i in range(2))
-    _result(_task_ok, "Task consent positive control: two different actions execute", str(len(_task_ran)))
-    failures += int(not _task_ok)
-    _task_cases = [
-        ("Task consent accepts another identity", replace(_task_write, identity=STRANGER)),
-        ("Task consent overrides a secret-read DENY", ToolRequest("read_file", OWNER,
-             {"path": str(Path.home() / ".secrets" / "task-redteam-nonexistent")})),
-        ("Task consent accepts an unregistered tool", ToolRequest("not_a_registered_tool", OWNER, {})),
-    ]
-    for _name, _req in _task_cases:
-        _before = len(_task_ran)
-        _outcome = _task_executor.run(_req, "task-negative")
-        _ok = _outcome.status is Status.DENIED and len(_task_ran) == _before
-        _result(_ok, _name, _outcome.status.value)
-        failures += int(not _ok)
-    for _name, _candidate in [
-        ("Task consent crosses conversations", replace(_task_executor, conversation="another-chat")),
-        ("Task consent crosses channel trust", replace(_task_executor, trust=lambda: Trust.ASK)),
-    ]:
-        _ok = _candidate.run(_task_write, "task-scope").status is Status.DENIED
-        _result(_ok, _name, "denied" if _ok else "GOT THROUGH")
-        failures += int(not _ok)
-    with _task_unattended.active():
-        _ok = _task_executor.run(_task_write, "task-unattended").status is Status.DENIED
-    _result(_ok, "Task consent overrides unattended ceiling", "denied" if _ok else "GOT THROUGH")
-    failures += int(not _ok)
-    _ok = _task_base.run(_task_write, "another-task").status is Status.NEEDS_HUMAN
-    _result(_ok, "Task consent leaks into shared executor", "still asks" if _ok else "GOT THROUGH")
-    failures += int(not _ok)
-    _task_scopes.finish("one-task")
-    _ok = _task_executor.run(_task_write, "task-after-end").status is Status.DENIED
-    _result(_ok, "Finished task consent can be reused", "denied" if _ok else "GOT THROUGH")
-    failures += int(not _ok)
-
-# Slash-command control never turns a neighbouring task into the operator's own.
-from talos.background import BackgroundDesk as _CommandDesk, SteerRefused as _CommandRefused
-from talos.commands import parse as _CommandParse
-from talos.conductor import CONTROL_COMMANDS as _CommandControls
-_command_desk = _CommandDesk()
-_command_task = _command_desk.accept("fixture", run_id="command-redteam",
-                                    principal=str(OWNER), conversation="command-chat")
-for _name, _principal, _conversation in [
-    ("Background slash steer accepts another person", str(STRANGER), "command-chat"),
-    ("Background slash steer accepts another chat", str(OWNER), "another-chat"),
-]:
-    try:
-        _command_desk.steer(_command_task.task_id, "change direction",
-                            principal=_principal, conversation=_conversation)
-        _ok = False
-    except _CommandRefused:
-        _ok = not _command_desk.take_steering(_command_task.task_id)
-    _result(_ok, _name, "refused before injection" if _ok else "GOT THROUGH")
-    failures += int(not _ok)
-_ok = all(_CommandParse(command)[0] in _CommandControls
-          for command in ("/models provider model", "/steer instruction", "/cancel bg_id", "/stopall", "/estop"))
-_result(_ok, "Control aliases escape the full-trust channel gate", "all gated" if _ok else "UNGATED")
-failures += int(not _ok)
-
-_nested_ceiling = _ROC()
-with _nested_ceiling.active():
-    _nested_policy = GovernedKernel(PolicyKernel(default_manifest(), frozenset({OWNER})),
-                                   AutonomyGovernor(5), lambda _: Trust.FULL, delegated=_nested_ceiling)
-    _nested_decision = _nested_policy.decide(ToolRequest("delegate", OWNER, {"question": "delegate again"}))
-    _ok = _nested_decision.verdict.value == "deny" and "recursive" in _nested_decision.reason
-_result(_ok, "A delegate recursively creates more delegates", "refused" if _ok else "RECURSED")
-failures += int(not _ok)
 
 # Gezaehlt, nicht addiert. Auf einer Maschine ohne Isolation faellt der
 # Identitaets-Block als SKIP heraus — dann steht hier ehrlich eine kleinere Zahl,

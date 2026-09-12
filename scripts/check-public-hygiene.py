@@ -15,31 +15,43 @@ ROOT = Path(__file__).resolve().parents[1]
 # Private-address fixtures are allowlisted by exact file and host. A new host in the same
 # test or example still fails instead of inheriting a broad path exemption.
 ALLOWED_ENDPOINT_FIXTURE_HOSTS = {
-    # Local fake Telegram APIs for cancellation, approvals and transient progress.
-    "tests/test_background_telegram_e2e.py": frozenset({"127.0.0.1"}),
-    "tests/test_ephemeral_telegram.py": frozenset({"127.0.0.1"}),
-    "tests/test_task_approval_telegram_e2e.py": frozenset({"127.0.0.1"}),
-    "tests/test_telegram_progress_updates.py": frozenset({"127.0.0.1"}),
-    # Local HTTP double for Telegram transport and provider-failure integration.
-    "tests/test_operator_recovery_integration.py": frozenset({"127.0.0.1"}),
-    # QEMU SLIRP guest-only proxy address; no operator machine endpoint.
-    "deploy/computer-cloud-init.json": frozenset({"10.0.2.100"}),
-    "deploy/talos-guest-browser.service": frozenset({"10.0.2.100"}),
-    "talos/computer/guest.py": frozenset({"10.0.2.100"}),
-    # The browser's fixed guest-loopback CDP endpoint and its local test fixture.
-    "talos/computer/browser.py": frozenset({"127.0.0.1"}),
-    # Distinct loopback origins simulate an earlier third-party telemetry POST.
-    "tests/computer_browser_e2e.py": frozenset({"127.0.0.1", "localhost"}),
-    "tests/test_computer.py": frozenset({"127.0.0.1"}),
     "redteam.py": frozenset({"100.64.0.1", "127.0.0.1", "169.254.169.254", "192.168.1.1"}),
     "talos/catalog.py": frozenset({"localhost"}),
     "talos/web.py": frozenset({"169.254.169.254"}),
+    # Das Beispiel im Modulkopf zeigt genau den Fall, fuer den es das Modul gibt:
+    # ein OAuth-Proxy des Betreibers auf loopback.
+    "talos/customproviders.py": frozenset({"127.0.0.1"}),
+    # Der isolierte Computer hat feste interne Adressen: QEMU-User-Net-Proxy
+    # (10.0.2.100) und lokaler DevTools-Endpunkt (127.0.0.1) — keine Geheimnisse,
+    # sondern die feste Verdrahtung der Sandbox.
+    "talos/computer/guest.py": frozenset({"10.0.2.100"}),
+    "talos/computer/browser.py": frozenset({"127.0.0.1"}),
+    # Zwei E2E-Faelle starten einen echten ThreadingHTTPServer auf loopback und biegen
+    # `telegram._BASE` darauf um — der Beweis, dass die Zustellung wirklich ueber HTTP
+    # geht, statt gegen eine Attrappe. Die Adresse ist das Fixture, kein Endpunkt.
+    # Die Sandbox des Computers hat feste interne Adressen — dieselbe Begruendung wie
+    # bei talos/computer/guest.py: 10.0.2.100 ist der QEMU-User-Net-Proxy, ueber den der
+    # Gast ueberhaupt erst hinausdarf. Das ist die Verdrahtung selbst, kein Geheimnis.
+    "deploy/computer-cloud-init.json": frozenset({"10.0.2.100"}),
+    "deploy/talos-guest-browser.service": frozenset({"10.0.2.100"}),
+    # E2E-Faelle, die einen echten lokalen Server starten, statt gegen eine Attrappe zu
+    # pruefen. Die Adresse ist das Fixture.
+    "tests/computer_browser_e2e.py": frozenset({"127.0.0.1", "localhost"}),
+    "tests/test_background_telegram_e2e.py": frozenset({"127.0.0.1"}),
+    "tests/test_computer.py": frozenset({"127.0.0.1"}),
+    "tests/test_ephemeral_telegram.py": frozenset({"127.0.0.1"}),
+    "tests/test_operator_recovery_integration.py": frozenset({"127.0.0.1"}),
+    "tests/test_task_approval_telegram_e2e.py": frozenset({"127.0.0.1"}),
+    "tests/test_telegram_progress_updates.py": frozenset({"127.0.0.1"}),
     "tests/test_agent_consult.py": frozenset({"127.0.0.1"}),
     "tests/test_api_reasoner.py": frozenset({"localhost"}),
     "tests/test_browser.py": frozenset({"127.0.0.1", "192.168.1.1"}),
     "tests/test_apiclient.py": frozenset({"192.168.1.1", "100.64.0.1", "169.254.169.254"}),
     "tests/test_gitops.py": frozenset({"192.168.1.1", "100.64.0.1", "169.254.169.254"}),
     "tests/test_credentials.py": frozenset({"localhost"}),
+    # Die Fixtures der eigenen Anbieter zeigen auf einen lokalen Proxy — genau der
+    # Fall, fuer den es sie gibt (ein OAuth-Proxy vor einem Abo laeuft auf loopback).
+    "tests/test_custom_providers.py": frozenset({"127.0.0.1"}),
     "tests/test_fallback.py": frozenset({"localhost"}),
     "tests/test_first_run.py": frozenset({"localhost"}),
     "tests/test_model_overrides.py": frozenset({"localhost"}),
@@ -74,10 +86,19 @@ ALLOWED_SECRET_FIXTURE_DIGESTS = {
         "12351f9c9f61c6d488609dee4947b562f015fcb412e20446e7de8f1b7842b80e",
         "1531c88150d0f8eb0f25e27b19802bdaff4797c0919648f0b3357900b4f74cf7",
         "f5e04418bceaf421cf1663b9a70f9f18352ab07a01adfe85b1bcbb546b472e39",
+        # inertes Fixture des Crashreport-Falls (Bearer-Token, das die Schwaerzung entfernt)
+        "baf0b8d1c5388831db01ee80fd115c365f5384235ed002e19c61570568b19281",
     }),
     "tests/test_api_reasoner.py": frozenset({
         "049d9c4444034c244144dd2008374b162afd7ac90c75320dd84e12c1ec4f9458",
         "f3ba3a7e865391cbfef71d86ab75893025f2d351f43dde8ccac62c2dc1723c88",
+    }),
+    "tests/test_crashreport.py": frozenset({
+        # inerte, formatgleiche Fixtures — beweisen, dass die Meldung Geheimnisse schwaerzt
+        "bb13ab1aef911a8e8a5d91af4fff12f5fe192082ec320d030a92a4f0c05c58e7",
+        "d1fc89092fd0dc6ceecec462561c6ba63c4f52dcbfdd4cf71b9f9cfd5a6b00ab",
+        "b93fb17bc5d3e1636f413fe61033f07a0436db006aa5974c650488c8b11dcefe",
+        "813d8242d64c600f584195c421025d45069fea46815be909dbed90ecaf37b221",
     }),
     "tests/test_credentials.py": frozenset({
         "3eb9ff68623bde249c57b58d404b9f3aac3268e3d1fa1a47b0b6999e46d7d139",

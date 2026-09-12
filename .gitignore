@@ -44,8 +44,3 @@ backups/
 # Der Vault ist die private Wissensbasis der Instanz (Betreiber-Namen, Pfade,
 # Erkenntnisse) — er gehoert nie in einen Sync-Pfad, auch nicht den privaten.
 vault/
-
-# Native Mac build products; private app profiles stay outside the source tree.
-macos/.build/
-macos/.swiftpm/
-macos/build/

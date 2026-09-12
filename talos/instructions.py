@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 
 from .identity import FALLBACK_PREAMBLE, SOUL_PATH
@@ -14,7 +15,32 @@ USER_PATH = INSTALL_DIR / "USER.md"
 # ist kleiner als drei Einzeldeckel: so bleibt auch bei drei legitimen, grossen Dateien
 # Platz fuer Werkzeugprotokoll, Skills und die eigentliche Nachricht.
 MAX_SOURCE_CHARS = 8_000
-MAX_INSTRUCTION_CONTEXT_CHARS = 16_000
+
+
+def _env_int(name: str, default: int, *, floor: int) -> int:
+    """Operator-Override fuer einen Kontext-Deckel; unbrauchbare Werte fallen auf Default.
+
+    Untergrenze `floor`, damit ein zu kleiner Wert nicht die Summenregel ausloest,
+    die dann jede Quelle absurd klein truncatiert.
+    """
+    raw = os.environ.get(name)
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(value, floor)
+
+
+# Summendeckel operator-tunebar (Default wie zuvor). Grund: legitime, vollstaendige
+# SOUL+AGENTS+USER koennen die 16k gemeinsam sprengen; dann truncatiert die Summenregel
+# JEDE Datei auf ein Drittel und schneidet die untere Haelfte lautlos aus dem Kontext.
+# Anheben ueber TALOS_MAX_INSTRUCTION_CONTEXT_CHARS kostet entsprechend Prompt-Budget
+# fuer Werkzeugprotokoll, Skills und die eigentliche Nachricht.
+MAX_INSTRUCTION_CONTEXT_CHARS = _env_int(
+    "TALOS_MAX_INSTRUCTION_CONTEXT_CHARS", 16_000, floor=MAX_SOURCE_CHARS
+)
 
 # Antwortformat: der Kanal rendert Telegram-HTML aus Markdown (tgmarkup) — ohne
 # diese Zeilen schreibt das Modell Fliesstext, mit ihnen nutzt es die Form, die

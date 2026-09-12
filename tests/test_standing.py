@@ -238,3 +238,36 @@ def test_standing_ist_unveraenderlich():
     except Exception:
         return
     raise AssertionError("Standing liess sich veraendern")
+
+
+# --- Der private Computer bekommt keine stehende Freigabe --------------------------
+def _computer(**felder) -> ToolRequest:
+    grund = {"op": "exec", "project": "p", "key": "k", "title": "t", "command": "echo hi"}
+    grund.update(felder)
+    return ToolRequest("computer_run", OWNER, grund)
+
+
+def test_the_computer_can_be_pinned_down_like_a_shell_command():
+    """Sein Ziel ist eine Konstante — jede Aktion traegt sonst denselben Abdruck."""
+    assert action_key(_computer()) is None
+    assert action_key(ToolRequest("computer_status", OWNER, {"op": "status"})) is None
+
+
+def test_one_always_on_harmless_work_opens_the_whole_computer():
+    """Gemessen am 12.09.: `echo hi` und `browser navigate` waren derselbe Schluessel."""
+    store = StandingStore()
+    assert store.grant(CHAT, _computer(), principal=OWNER, run_id=new_run_id()) is None
+    for fremd in (
+        _computer(op="browser", action="navigate", url="https://bank.example/transfer"),
+        ToolRequest("computer_run", OWNER, {"op": "stop"}),
+        _computer(),
+    ):
+        assert store.find(CHAT, fremd, principal=OWNER) is None
+
+
+def test_the_shell_still_binds_while_the_computer_does_not():
+    """Gegenbeleg: sonst pruefte der Test oben nur einen kaputten Speicher."""
+    store = StandingStore()
+    assert store.grant(CHAT, _shell("uptime"), principal=OWNER, run_id=new_run_id()) is not None
+    assert store.find(CHAT, _shell("uptime"), principal=OWNER) is not None
+    assert store.find(CHAT, _shell("rm -rf /"), principal=OWNER) is None

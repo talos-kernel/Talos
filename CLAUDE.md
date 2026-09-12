@@ -12,9 +12,9 @@ preferences live in `USER.md`. All three are operator-owned prompt state and rel
 
 | | |
 |---|---|
-| Gate path | `policy.py`, **913 lines** — has to stay readable in one sitting |
+| Gate path | `policy.py`, **915 lines** — has to stay readable in one sitting |
 | Tools | **31**, every one gated |
-| Suites | **2785** tests · **230** adversarial · 44 end-to-end |
+| Suites | **2702** tests · **252** adversarial · 44 end-to-end |
 | Home | <https://talos-agent.ch> · docs at `/docs/` |
 | Repository | `talos-kernel/talos` is the public source tree |
 
@@ -36,30 +36,13 @@ In practice:
   via `TARGET_EXTRACTORS`; a tool without an extractor is `DENY` by construction.
 - **Never give the reasoner its own tools.** `DISALLOWED_TOOLS_ARGV` and
   `CLAUDE_ISOLATION_ARGV` in `reasoner.py` are security boundaries, not tuning.
-- **Optional integrations must stay optional.** Vault lookups and workers depend on
-  configuration, relevance and the operator's scope. A small local task must not
-  require delegation or external notes. API and CLI control proposals belong in
-  final output; protocol repair repeats inference only and never replays effects.
-- **Keep the request with its receipt.** Bounded argument context identifies which
-  action produced an output. Equal file contents alone cannot identify a completed
-  write. Direct API failures must use the typed error path, not a prose answer.
-- **Keep visual observations attached to their capture.** A screenshot question queues
-  a separate `see_image` proposal through the ordinary executor, consuming a normal
-  step and respecting cancellation, correction and file-policy checks. Never read
-  image bytes inside the loop or let dashboard previews evict recent agent captures.
-- **Consultation preserves the original task.** Advice-only requests end with findings;
-  execution requests continue through the appropriate gated tool or verification of
-  an existing result. `HANDOFF_REQUIRED` is not a kernel verdict. Never turn advice
-  into approval, bypass an actual denial, or retry an uncertain external write.
 - **Never let the model write the approval text.** It comes from the kernel, so the human
   sees the facts rather than the model's description of itself.
-- **Never let a model-authored plan carry permission.** An announced sequence (`plan.py`)
-  may set order, an abort condition and a per-step check, never consent. An explicit
-  operator click on **Allow this task** separately grants all later NEEDS_HUMAN actions
-  in that foreground task, with no clock expiry. `task_approval.py` binds it to the
-  conductor-owned task ID, principal and conversation; every action still passes
-  `decide()`, verifier and capability mint. End/cancel/restart clears it. Delegates,
-  schedules, distillation and new tasks never inherit it. DENY remains DENY.
+- **Never let a plan carry permission.** An announced sequence (`plan.py`) may set order,
+  an abort condition and a per-step check — nothing else. Every step still passes
+  `decide()` on its own, and there is deliberately no "approve the plan" path: that would
+  be consent to actions nobody had seen yet. A plan may only make a run end *earlier* or
+  withhold a confirmation; it may never grant one.
 - **Never let a plan check touch the world.** `check_met` reads the receipt of the step
   that just ran and nothing else. A condition that could open files would be a read oracle
   around the kernel. Unknown check vocabulary is dropped, never treated as met — the other
@@ -68,10 +51,9 @@ In practice:
   reading into `DENY`, including anything that would need approval — a question reaching
   the operator out of the context it came from is how reflexive clicking starts. A
   subagent is born from model text; it must be able to do *less* than its caller.
-- **Keep `browse` read-only.** That renderer reads public pages. Interactions belong
-  to the separately provisioned Computer, whose `computer_run` action has a fixed
-  operator-derived target, a kernel decision and a durable job receipt.
-  Read-only rendering stays inside the resolver
+- **Never let the browser operate a page.** `browse` renders and reads. Clicking, typing
+  and form submission have no derivable target, so they cannot be gated — and a tool
+  without a target is `DENY` by construction. Rendering also stays inside the resolver
   cage (`browser.resolver_rules`), so a redirect cannot leave the host `guard_url` checked.
 - **Never add a second source of permission.** The autonomy dial and the channel ceiling
   can only tighten. Anything that grants rights next to the kernel reintroduces the exact
@@ -98,7 +80,7 @@ In practice:
   human, so its origin is an ordinary message and `ReadOnlyCeiling` would be the wrong
   tool. But nobody watches it, so `UnattendedCeiling` applies — the *same instance* the
   schedule ticker uses, because two ceilings would be two truths. Its context is empty
-  (`past_override=()`); its result must not enter foreground memory or close the foreground redirect inbox. ⚠️ Without a
+  (`past_override=()`): two runs sharing a history write into each other. ⚠️ Without a
   wired ceiling the task is **refused**, never run uncapped — `conductor._start_background`
   checks that first, and a red-team case holds it. Capped at `MAX_CONCURRENT`, and the
   refusal is immediate rather than a silent queue.
@@ -124,12 +106,6 @@ In practice:
   the ceiling and `NEEDS_HUMAN` stays `DENY`. The channel name stays `cli`, so there is
   one entry in the allowlist rather than two, and the sandbox refusal from `askcli`
   applies unchanged. Five red-team cases hold this.
-- **Calendar dispatch is service-owned.** CLI ask/chat sessions must never consume shared
-  schedule slots. Check channel availability before claiming; claims compare the due slot
-  atomically across SQLite connections. Keep the unattended ceiling and conductor gate.
-- **A protocol failure is unfinished work.** Preserve the request and bounded execution
-  receipts for follow-up questions; repair inference only. Specific computer schema errors
-  may be logged, never rejected argument values or private model prompts.
 - **Telegram is only built in service mode.** `getUpdates` is exclusive per token, so a
   `talos ask` beside the running service stole its delivery and both got `409 Conflict`.
   A command-line run answers where it was started; it does not need the messenger.
@@ -239,7 +215,7 @@ In practice:
 - **Steering is a turn, not a right.** `delegate_steer` queues text on the background
   desk; the run reads it at the same step boundary as a typed correction (`redirect`),
   framed "no additional rights", and every tool call it provokes passes the kernel under
-  the run's own ceiling. Only foreground and `/background` runs are steerable — the runs with a step
+  the run's own ceiling. Only `/background` runs are steerable — the only runs with a step
   boundary in this process; an unknown id is a refusal with a reason, never a pretend
   "ok". Origin is the person and conversation that started the task, taken from the
   thread context and never from the arguments. Under `ReadOnlyCeiling` the tool is DENY
@@ -259,19 +235,11 @@ In practice:
 
 ## Commands
 
-Media delivery uses standalone `MEDIA:` lines in the model's final answer, never tags
-from tool output. Preserve Telegram's validated upload receipt through the channel
-registry. `TALOS_CLEANUP_SENT_MEDIA` is an operator opt-in: cleanup applies only to
-unchanged disposable files directly inside `workspace/outbox/` after confirmed upload.
-Never retry an uncertain send or treat a cleanup failure as a delivery failure.
-Originals, inputs and files without structured receipts are retained. See
-[`docs/media-delivery.md`](docs/media-delivery.md).
-
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install --require-hashes -r requirements.lock -r requirements-dev.lock
 
-python -m pytest tests/ -q   # 2785 tests, ~30s
-python redteam.py            # 230 adversarial cases — mandatory for any kernel change
+python -m pytest tests/ -q   # 2702 tests, ~30s
+python redteam.py            # 252 adversarial cases — mandatory for any kernel change
 python e2e.py                # 44 cases against a real model (costs tokens and time)
 python -m talos --once       # single cycle, for diagnosis
 python -m talos              # run
@@ -290,30 +258,6 @@ python -m talos why <id>     # why that was allowed or refused, and what came of
 python -m talos verify       # prove the event log was not edited after the fact (exit 1 if it was)
 python -m talos anchor       # pin the chain head — exit 1 if the log shrank (--send mails the digest)
 ```
-
-## Provider failures and control commands
-
-Construct model routes without a remote readiness probe at service startup. A provider
-limit must leave `/model`, `/status`, `/queue` and `/stop` reachable. Explicit model
-switches still validate before persisting; failures preserve the selected route.
-
-CLI errors use `provider_errors.py`: accept known structured diagnostics from either
-stream, retain the exit code and declared error category, and discard arbitrary output.
-Never log a whole CLI response, private prompt or credential as a diagnostic. An
-`empty_response` means no usable answer; it does not prove why the provider produced it.
-
-For the isolated Hermes model transport, set `display.show_reasoning: false` and
-`display.streaming: false` in that profile's configuration. Some Hermes versions
-leave reasoning display callbacks active even with quiet chat. The parser discards
-closed terminal reasoning panels; incomplete panels fail as `invalid_output` and
-cannot become a user answer or tool proposal. Keep native tools disabled.
-
-Only that category may retry the exact model call once, inside its original deadline,
-before any partial output is delivered. Cancellation interrupts the retry wait. Never
-replay tools or the whole job, and never silently switch providers. Exhausted failures
-back off for 30–300 seconds; `/status` reports availability separately from service state.
-Queue notices follow worker lifecycle events, including failure and cancellation.
-Learning failures must end with `distill.failed`, without retracting the user's answer.
 
 ## Dependencies: intent vs. what gets installed
 
@@ -343,14 +287,8 @@ covers the packages only through it. `pip` is never upgraded unpinned first.
 4. **`data/` is gitignored and stays that way.** The event log contains recorded commands.
 5. **Stop the display's heartbeat thread before writing the final state**, or a tick
    overwrites the frozen trail with the live view.
-   Remove temporary Telegram work displays only after a result/failure was delivered;
-   never remove the adopted final answer or the execution log. Approval continuations
-   share the conductor-owned task key; background cleanup cannot touch the main task.
-   Cleanup runs separately so a Telegram timeout cannot hold the task queue. After
-   approval callbacks, use a progress-only stream: the final answer still edits the
-   existing approval message, never both that message and a second streamed reply.
-6. **Short tool-free answers get no status card.** A long-running turn maintains a
-   measured update, edited every 60 seconds, even while waiting on its first model response.
+6. **The status display must not appear for tool-free answers.** A plain reply gets no
+   header — that is a deliberate decision, not a style preference.
 7. **A green suite can miss a broken service.** `run()` once read a name that does not
    exist; 1215 tests stayed green while the process crash-looped. `tests/test_media.py`
    now checks the composition root with `symtable` — but that sees names, **not
@@ -386,7 +324,7 @@ covers the packages only through it. `pip` is never upgraded unpinned first.
 
 - Comments and docstrings explain **why**, especially where a rule looks counterintuitive.
   Those are the ones that get argued away six months later.
-- Small modules. The gate path (`policy.py`, 913 lines) must stay readable in one sitting.
+- Small modules. The gate path (`policy.py`, 915 lines) must stay readable in one sitting.
 - Glyphs come from `talos/ux.py` only, one meaning each, **never inside an answer's prose**.
 - Telegram edit interval stays ≥ 1.2 s; the API tolerates roughly one edit per second
   per chat.
@@ -398,7 +336,7 @@ covers the packages only through it. `pip` is never upgraded unpinned first.
 
 ## Changing the security kernel
 
-Applies to `policy.py`, `capability.py`, `command_floor.py`, `approval.py`, `standing.py`, `task_approval.py`,
+Applies to `policy.py`, `capability.py`, `command_floor.py`, `approval.py`, `standing.py`,
 `autonomy.py`, `trust.py`, `verifier.py`, `executor.py`, and the three ceilings that sit
 above the kernel (`schedule.py`, `plan.py`, `subagent.py`).
 
@@ -422,12 +360,3 @@ labels, the sandbox holds the rest.
 
 `tests/test_sandbox.py` runs those attacks for real rather than against doubles, and
 skips instead of claiming green where a platform has no implementation.
-
-## Run lifecycle
-
-`run_control.py` carries cancellation and the run-local model, never consent.
-Check stop both before inference and before admitting its returned proposal.
-A foreground redirect generation belongs to one run; only its owner closes it.
-Read-only delegates capture the caller identity per invocation, receive a 180-second
-budget and cannot recursively delegate. Background inference gets its own router
-and does not share the foreground cancellation slot.

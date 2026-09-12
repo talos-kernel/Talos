@@ -732,4 +732,21 @@ def _check_model_info(table: dict[str, ModelInfo]) -> None:
 
 
 _BY_SLUG: dict[str, ProviderInfo] = _check_all(PROVIDERS)
+
+
+def register(infos: tuple[ProviderInfo, ...]) -> tuple[str, ...]:
+    """Eigene Anbieter des Betreibers dazunehmen. Gibt die uebernommenen Namen zurueck.
+
+    Ein eingebauter Name wird NIE ueberschrieben — das ist die zweite Sperre hinter
+    `customproviders.parse`. Wer einen Katalognamen traegt, faellt hier still weg:
+    sonst zeigte das Protokoll weiter den vertrauten Anbieter, waehrend der Zug woanders
+    hinginge.
+    """
+    uebernommen: list[str] = []
+    for info in infos:
+        if not info.slug or info.slug in _BY_SLUG:
+            continue
+        _BY_SLUG[info.slug] = info
+        uebernommen.append(info.slug)
+    return tuple(uebernommen)
 _check_model_info(MODEL_INFO)

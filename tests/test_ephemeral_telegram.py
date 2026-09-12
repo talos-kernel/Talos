@@ -1,4 +1,26 @@
-"""Visible work during execution; only a delivered result survives cleanup."""
+"""Visible work during execution; only a delivered result survives cleanup.
+
+⚠️ Diese Datei prueft den AUFRAEUM-Weg — und der ist seit dem 12.09. nicht mehr die
+Vorgabe. Der Betreiber hat ausdruecklich verlangt, dass die Zwischenmeldungen stehen
+bleiben, solange der Agent arbeitet: ein Zwischenstand, den er noch nicht gelesen hatte,
+verschwand vor seinen Augen. Seitdem gilt `_keep_work_trail()` und `TALOS_TIDY_WORK_TRAIL=1`
+schaltet das alte Verhalten wieder ein.
+
+Die Faelle hier bleiben trotzdem vollstaendig erhalten, denn der Aufraeum-Weg existiert
+weiter und muss genauso richtig sein wie vorher — er wird nur bewusst eingeschaltet.
+Dass die Spur OHNE den Schalter stehen bleibt, beweist tests/test_work_trail.py.
+"""
+import os as _os
+
+import pytest as _pytest
+
+
+@_pytest.fixture(autouse=True)
+def _aufraeumen_eingeschaltet(monkeypatch):
+    """Der Schalter, unter dem diese Datei ueberhaupt etwas aussagt."""
+    monkeypatch.setenv("TALOS_TIDY_WORK_TRAIL", "1")
+    assert _os.environ["TALOS_TIDY_WORK_TRAIL"] == "1"
+
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json

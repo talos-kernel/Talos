@@ -405,21 +405,3 @@ def test_only_one_of_many_racing_clicks_wins():
         thread.join(timeout=10)
     assert len(wins) == 1
     assert desk.wait(ticket) == wins[0]
-
-
-@pytest.mark.parametrize(("question", "options"), [
-    ("", ["a", "b"]), (None, ["a", "b"]), ("   ", ["a", "b"]),
-    ("Which?", "ab"), ("Which?", None), ("Which?", {"a": 1, "b": 2}),
-    ("Which?", [None, "b"]), ("Which?", ["only one"]),
-])
-def test_malformed_question_preserves_the_existing_ticket(question, options):
-    desk = _desk()
-    ticket = _ask(desk)
-    with pytest.raises(ValueError):
-        _ask(desk, question=question, options=options)
-    assert desk.pending(CHAT) is not None
-    assert desk.pending(CHAT).question_id == ticket.question_id
-    answer = desk.resolve_callback(
-        _all_buttons(ticket)[0].data, principal=OWNER, conversation=CHAT
-    )
-    assert answer is not None and answer.label == OPTIONS[0]

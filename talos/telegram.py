@@ -8,6 +8,7 @@ eine stille Nachricht mit begrenztem Verlauf und eingefrorenem Endzustand.
 from __future__ import annotations
 
 import json
+import os
 import html
 import re
 import threading
@@ -627,6 +628,21 @@ class _Line:
         return f"{self.sym} {self.text}{stamp}"
 
 
+def _keep_work_trail() -> bool:
+    """Die Zwischenmeldungen bleiben stehen — es sei denn, der Betreiber raeumt auf.
+
+    Der Verlauf IST der Beleg, was der Agent getan hat: welches Werkzeug lief, was es
+    meldete, wie lange es dauerte. Ihn nach dem Ergebnis zu loeschen nimmt genau diesen
+    Beleg weg — und ein Zwischenstand, den der Betreiber noch gar nicht gelesen hat,
+    verschwindet vor seinen Augen. Gemeldet am 12.09.: der Betreiber wolle die
+    Zwischenstaende behalten, solange der Agent arbeitet.
+
+    Wer den aufgeraeumten Chat will, setzt `TALOS_TIDY_WORK_TRAIL=1`. Das Ergebnis selbst
+    war nie betroffen — geloescht wurde immer nur das Geruest.
+    """
+    return os.environ.get("TALOS_TIDY_WORK_TRAIL", "0").strip() != "1"
+
+
 class TelegramActivity:
     """Live work display, removed only after a durable result is delivered.
 
@@ -878,6 +894,8 @@ class TelegramActivity:
                 ids.append(self._message_id)
             self._update_ids.clear()
             self._message_id = None
+        if _keep_work_trail():
+            return  # Der Lauf ist beendet; die Spur bleibt stehen.
         for message_id in dict.fromkeys(ids):
             try:
                 self._client.delete_message(self._chat_id, message_id)
@@ -1167,6 +1185,8 @@ class TelegramReply:
             if not self._adopted and self._message_id is not None:
                 ids.append(self._message_id)
                 self._message_id = None
+        if _keep_work_trail():
+            return  # dito: Zwischenstaende sind Beleg, kein Abfall.
         for message_id in dict.fromkeys(ids):
             try:
                 self._client.delete_message(self._chat_id, message_id)

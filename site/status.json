@@ -1,12 +1,9 @@
 {
-  "version": "0.19.1-alpha",
-  "tests": 2785,
-  "redteam_faelle": 230,
-  "kernel_zeilen": 913,
+  "version": "0.19.5-alpha",
+  "tests": 2702,
+  "redteam_faelle": 252,
+  "kernel_zeilen": 915,
   "werkzeuge": 31,
-  "sha": "8994963ddf",
-  "gebaut_am": "2026-09-09T18:14:08Z",
-  "archive_passed": 2774,
-  "archive_skipped": 36,
-  "archive_scope": "installer root, including 25 Mac profile tests"
+  "sha": "4288052197",
+  "gebaut_am": "2026-09-06T14:44:11Z"
 }

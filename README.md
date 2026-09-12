@@ -15,12 +15,12 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests", nicht „passing": die Zahl kommt aus dem Einsammeln (2785).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2702).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-2785-2e7d32.svg" alt="Tests">
-  <img src="https://img.shields.io/badge/red%20team-230%2F230-2e7d32.svg" alt="Red team">
-  <img src="https://img.shields.io/badge/gate%20path-913%20lines-8a4318.svg" alt="Gate path">
+  <img src="https://img.shields.io/badge/tests-2702-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/red%20team-252%2F242-2e7d32.svg" alt="Red team">
+  <img src="https://img.shields.io/badge/gate%20path-915%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-31%20gated-8a4318.svg" alt="Tools">
   <img src="https://img.shields.io/badge/default%20identities-0-c62828.svg" alt="Default identities">
   <img src="https://img.shields.io/badge/python-3.11%2B-1565c0.svg" alt="Python">
@@ -50,19 +50,11 @@ ruled on the action. **The model proposes. It never decides.**
 
 ```bash
 curl -fsSL https://talos-agent.ch/install.sh | less   # read it first
-curl -fsSL https://talos-agent.ch/install.sh | bash   # then run it
+curl -fsSL https://talos-agent.ch/install.sh | sh     # then run it
 ```
 
 The installer verifies the signature and the checksum, runs the full suite — and then
 **stops**. Nothing starts listening until you say so.
-
-**Current alpha:** [0.19.1-alpha](https://github.com/talos-kernel/talos/releases/tag/v0.19.1-alpha).
-This release improves task approvals, cron dispatch, media delivery, Telegram progress
-and Computer observations. See the [changelog](CHANGELOG.md#0191-alpha--2026-09-09).
-See [verification scope and reproducible checks](docs/verification.md).
-
-**Native Mac preview:** [desktop setup, connections and build instructions](macos/README.md).
-The preview bundles its runtime and opens guided setup in the app; no Terminal.app installation steps are needed by an app user.
 
 ---
 
@@ -101,59 +93,6 @@ The preview bundles its runtime and opens guided setup in the app; no Terminal.a
 
 </details>
 
-
-Requested files arrive as real Telegram photos, audio, voice messages, videos, animations or documents. Confirmed upload receipts protect optional cleanup of disposable copies. [Media delivery and retention](docs/media-delivery.md).
-
-## Your own Computer (experimental)
-
-A persistent Linux computer for Talos: terminal, scripts, projects and an authenticated
-workbench. Headless by default; the semantic Chromium browser can inspect and fill
-forms without a graphical desktop. Add `--desktop` for live mouse and keyboard takeover.
-Expand, fullscreen and zoom make small screens readable. During takeover, an optional
-on-screen keyboard supports mobile typing and shortcuts. `computer_run` always passes
-the kernel; attended auto-approval is an explicit operator setting, off by default.
-`computer_status` reads durable receipts, files, screenshots
-and private routine templates. Interrupted writes are not replayed automatically.
-For visual reading, a screenshot question triggers a separate gated `see_image`
-step before the next model turn. Dashboard previews cannot evict saved agent captures.
-
-The initial backend requires ARM64 Linux with KVM and is installed separately.
-Run `talos computer setup` and follow [the Computer guide](docs/computer.md).
-One operator, one VM; projects share the VM. File checksum checks prove only
-the requested file expectations, not the entire task.
-
-## Recoverable model failures
-
-A provider limit leaves the service control commands reachable: `/model`, `/status`,
-`/queue` and `/stop` work without a model answer. Explicit model changes are tested
-before they replace the saved selection. `/status` distinguishes service operation
-from model availability and shows the bounded retry delay and any reported reset hint.
-
-Known CLI errors retain a safe category and exit code from either output stream.
-A declared empty response may retry the same model request once, inside its original
-time budget. Tools and whole jobs are never replayed by that retry; cancellation stops
-the wait. It does not change providers. Queue notices update when their actual turn
-starts, ends, fails or is cancelled.
-
-## Allow a whole task
-
-The approval card offers **Allow once**, **Allow this task**, **Always allow**, and
-**Deny**. For a foreground agent task, **Allow this task** automatically approves
-all later actions that require human approval, including different shell commands
-and targets. There is no approval time limit during the task. You can also type
-`allow this task` while its approval is pending.
-
-The grant ends when the task completes, is stopped, or terminates with an error;
-it is never restored after a service restart. `/stop`, `/cancel`, `/stopall` and
-`/estop` revoke it before further task actions. Existing execution budgets still
-apply. Ordinary tool recovery inside the task keeps its consent without replaying
-completed effects. Another task or background job needs its own authority.
-
-This is explicit consent to later actions in the task, not a permanent setting.
-Every action still passes the kernel, sandbox, target binding and capability checks;
-a hard denial cannot be approved. **Always allow** continues to mean the exact
-action, not the task. An unanswered approval card still expires normally.
-
 ## Why this exists
 
 Every capable agent eventually asks for shell access. At that moment you are trusting a
@@ -166,7 +105,7 @@ authorised individually, bound to its exact arguments and targets, valid once, f
 seconds. Forgetting to call the gate does not produce an unchecked effect — it produces no
 effect at all, because the raw runners are unreachable without a token.
 
-That design is testable, and it is tested: 230 adversarial scenarios run on every change and
+That design is testable, and it is tested: 252 adversarial scenarios run on every change and
 try to get an effect past the kernel. They are in [`redteam.py`](redteam.py). Read them
 before you trust anything written above.
 
@@ -279,16 +218,6 @@ python -m talos report --out audit.txt   # what was done and what was refused
 With `TALOS_STATUS_STYLE=expressive`, Telegram keeps one live activity card with
 tool icons, elapsed time and an outcome for each step. It updates in place; the
 answer stays separate. Tool and plan JSON is hidden even after a prose introduction.
-Long runs maintain one short progress message, updated every 60 seconds: completed tool actions,
-failures and the current activity, including when a tool has not returned yet. These
-updates use observed events, never private arguments, hidden reasoning or invented ETAs.
-Short answers stay quiet; completion, cancellation and approval waits stop the updates.
-The agent can update one short, receipt-based explanation at meaningful milestones before
-its next tool call. That message can become the final answer. Once a final result or compact failure is delivered, temporary
-activity cards, progress messages and intermediate explanations are removed. The result,
-operator messages and approval decisions stay; execution receipts remain in `/log`.
-Cleanup runs separately from the task and never delays the queue or replays tools.
-If Telegram refuses deletion, the result remains and some temporary messages may remain.
 Completed answers stay formatted after approval buttons, and Markdown tables become
 compact labelled rows. Approval prompts keep the exact command visible.
 `/stop` interrupts the run and `/log` opens its receipts. A finished conversation
@@ -384,11 +313,6 @@ stay; a stop that deleted timers would create the next incident while ending thi
 The reply is an honest balance per category, and a second `/stopall` says so.
 
 ## What it remembers
-
-If a foreground run fails before a final answer, the original request stays in
-active context with a clearly labelled interruption status. A short follow-up can
-refer to that open request. No delivered answer is invented or archived, and no
-completed tool is automatically replayed.
 
 The conversation is kept per channel, in memory only, bounded by turns and by characters.
 When the bound is reached the **middle is summarised** and both ends stay verbatim — the
@@ -499,12 +423,6 @@ expression, because an interval can say "every 90 minutes" but never "weekdays a
 An expression is a better clock, not an extra permission — what runs afterwards passes the
 same kernel.
 
-Calendar dispatch belongs to the running service. `talos ask` and `talos chat` never consume
-stored schedules. Unavailable channels keep their due slots, and competing dispatchers
-claim each slot atomically. Protocol failures preserve the unfinished request and bounded
-execution receipts, so a status follow-up can explain the blocker without restarting the work.
-Computer argument repair reports the specific schema problem without logging argument values.
-
 And it passes one ceiling more. During an unattended run `NEEDS_HUMAN` becomes `DENY`:
 what may run without asking runs, everything else is **reported rather than performed**.
 Not parked until morning either — an approval question whose occasion is six hours old is
@@ -535,9 +453,9 @@ stops and asks. What the announcement does is **bind the run**:
 
 - the step budget shrinks from the house limit to what was announced — a three-step plan
   cannot become forty tool calls;
-- a failed step ends the run with a factual report. Recognized transient read failures
-  have at most two alternative-source opportunities inside the unchanged budget.
-  Refusals and uncertain writes are not retried;
+- the first step that fails ends the run with a report of what ran, what stopped it, and
+  what therefore did not happen — instead of the model improvising around the failure,
+  which is how an agent turns a refusal into a bigger second attempt;
 - the plan is read **once**. A tool result is a stranger's text; if it could install a
   second, larger plan mid-run, prompt injection would be a way to buy budget.
 
@@ -702,12 +620,13 @@ permitted it. `/log` shows the last effects, `/undo` rolls back the last file ch
 
 ## Tools
 
-Twenty-three, and every one of them passes the same gate. There is no privileged tool and no
+Thirty-one, and every one of them passes the same gate. There is no privileged tool and no
 tool that skips the kernel — a tool without a target extractor is `DENY` by construction.
 
 | | |
 |---|---|
 | `run_shell` | a command, sandboxed, or refused where no sandbox exists |
+| `computer_run` / `computer_status` | guarded computer use: bounded desktop actions and their status, each step through the gate |
 | `remote_exec` | a command on another machine over ssh — operator-allowlisted hosts, always a human's yes, standing rules bind to exact host+command |
 | `http_request` | any REST API — read methods through the SSRF-hardened door, state-changing methods always a human's yes, binding to exact method+URL |
 | `git` | clone / fetch / pull / push with credentials — every op a human's yes, binding to exact op+repo+remote; local git work stays in the sandboxed shell |
@@ -727,16 +646,6 @@ tool that skips the kernel — a tool without a target extractor is `DENY` by co
 | `skill_write` | a new skill, written exactly once — and never without a human's yes |
 
 ### Operator-owned entity knowledge
-
-Vaults, workers and agent consultations are optional. Small edits, file operations,
-tests and local CLI workflows can run directly through the sandboxed Talos tools.
-For larger tasks, Talos prefers a configured worker when delegation fits the requested
-scope. Every direct or delegated action still passes the kernel.
-
-Consultation does not finish an execution request. Talos uses the advice to continue
-the original task, check for an existing result and request the next gated action.
-`HANDOFF_REQUIRED` is advice from the other agent, not a kernel denial or a grant of
-permission. Advice-only requests remain read-only; actual denials remain binding.
 
 Talos ships with no real entity names, hosts or service units. To enable entity-aware
 status checks, copy the neutral example and replace every placeholder with infrastructure
@@ -780,32 +689,6 @@ command centre.
 `/allowed` `/revoke` · `/log` `/undo` `/policy` `/autonomy` `/tools` `/whoami` `/version` ·
 `/usage` `/model` `/reasoning` `/debug`
 
-**Work on several things without losing the conversation:**
-
-| Command | Behaviour |
-|---|---|
-| `/btw <task>` · `/bg <task>` | Start an independent background task; its labelled result returns to this chat. Up to three run at once. |
-| `/tasks` | List your running background tasks and their IDs. |
-| `/steer <instruction>` | Send a correction to the main task at its next step, without restarting it. |
-| `/steer <bg_id> <instruction>` | Correct that background task, from the same person and chat. |
-| `/cancel <bg_id>` · `/stop <bg_id>` | Stop one background task at its next step; the main task continues. |
-| `/queue <task>` · `/q <task>` | Telegram: run another task after the current one. Bare `/queue` shows the queue. |
-| `/whoami` | Show your identity, chat and admission without calling a model. |
-| `/help <word>` · `/commands <word>` | Search command descriptions locally. |
-| `/approve task` | Explicit task-wide consent, equivalent to the **Allow this task** button. |
-| `/approve always` | Keep an exact-action rule. `/approvals` shows the pending decision. |
-| `/models` | Alias for the existing model picker. |
-| `/reload-skills` | Re-scan skills; prompt discovery already refreshes on every turn. |
-
-Background results never overwrite the main conversation's context or steering inbox.
-A background provider failure produces a terminal report and frees its slot. Background
-tasks retain the unattended ceiling and never inherit a foreground task's consent.
-The command vocabulary is shared with the terminal; foreground CLI input is synchronous,
-so mid-turn queueing and steering currently use Telegram.
-
-See [the command comparison](docs/command-compatibility.md) for the implemented surface
-and the remaining differences from Hermes. This is not a claim of complete command parity.
-
 **On the command line** — thirteen, each answering a question an operator actually asks:
 
 | | |
@@ -822,7 +705,7 @@ executing anything. It is the fastest way to understand the kernel.
 
 ## Architecture
 
-Small modules on purpose. The gate path (`policy.py`, 913 lines) has to be readable in one
+Small modules on purpose. The gate path (`policy.py`, 915 lines) has to be readable in one
 sitting — a gate you cannot read is not a gate.
 
 | Module | Role |

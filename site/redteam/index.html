@@ -1,40 +1,465 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Adversarial evidence · Talos</title><meta name="description" content="Explore the attack surfaces and regression checks behind Talos. Search the cases, inspect the boundaries and reproduce the source tests."><meta name="theme-color" content="#090a0b">
-<link rel="canonical" href="https://talos-agent.ch/redteam/"><link rel="icon" href="/brand/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
-<meta property="og:type" content="website"><meta property="og:site_name" content="Talos"><meta property="og:title" content="Adversarial evidence · Talos"><meta property="og:description" content="Explore the attack surfaces and regression checks behind Talos. Search the cases, inspect the boundaries and reproduce the source tests."><meta property="og:url" content="https://talos-agent.ch/redteam/"><meta property="og:image" content="https://talos-agent.ch/brand/og-logo.png"><meta name="twitter:card" content="summary_large_image">
-<link rel="preload" href="/fonts/geist-var.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/pages.css"><link rel="stylesheet" href="/navigation.css"><script src="/interface.js" defer></script><script src="/pages.js" defer></script></head>
-<body class="talos-page page-evidence"><nav class="site-nav"><div class="wrap"><a class="brand" href="/" aria-label="Talos home"><img src="/brand/talos-wordmark-dark.svg" alt="Talos" width="115" height="20"></a><a class="lnk" href="/#computer">Computer</a><a class="lnk " href="/docs/">Docs</a><a class="lnk " href="/registry/">Registry</a><a class="lnk " href="/redteam/" aria-current="page">Evidence</a><a class="lnk " href="/vergleich/">Compare</a><a class="lnk " href="/console.html">Console</a><a class="lnk nav-cta" href="/setup/">Get started</a></div></nav><main id="main-content"><header class="page-hero wrap evidence-hero" id="top"><div><p class="eyebrow">RED TEAM / EVIDENCE YOU CAN RUN</p><h1>Try to<br><span>break the rules.</span></h1><p class="lede">A permission system needs adversarial examples, regression checks and clearly stated limits. Here are the attack shapes Talos tests against.</p></div><aside class="hero-aside"><div class="evidence-number">230<small>ADVERSARIAL CASES / PUBLIC SOURCE</small></div></aside></header><section class="page-section wrap" id="why"><div class="split"><div><p class="eyebrow">TESTS, NOT A SECURITY BADGE</p><h2>Every known failure<br>becomes a case.</h2></div><div><p>The suite exercises the policy boundary, identities, approvals, credentials and confined execution. Tests are named after the action they attempt, so a failed check points to a concrete property.</p><p>Run it against the source you actually deploy. The figures below describe this source snapshot; the <a href="/console.html#measured">published release</a> has its own recorded build metrics.</p></div></div><div class="evidence-strip"><div><b>210 / 210</b><p>Adversarial cases passed in the verified source run.</p></div><div><b>913 lines</b><p>The policy kernel is small enough to read.</p></div><div><b>Open source</b><p>Inspect the checks and contribute a reproducible failure.</p></div></div></section><section class="page-section wrap" id="map"><div class="section-head"><div><p class="eyebrow">ATTACK SURFACES</p><h2>Find the boundary<br>you want to test.</h2></div><p>These categories group the public cases. They are a map of current coverage, not a claim that every possible attack is covered.</p></div><label class="search-field case-filter"><span>Filter attack surfaces</span><input id="case-search" type="search" placeholder="Approvals, credentials, worker…" maxlength="120" autocomplete="off"></label><p class="search-count" id="case-count" role="status">23 attack surfaces</p><ul class="case-grid"><li data-case><span class="case-no">01 / ATTACK SURFACE</span><b>Past the executor</b>call the runner without a token; mint a token for a
-      call that was denied; redeem after the dial dropped to zero.</li><li data-case><span class="case-no">02 / ATTACK SURFACE</span><b>The autonomy dial</b>set it from a foreign identity; turn it up with
-      garbage values; mint at level 1 with an approval, then act above it.</li><li data-case><span class="case-no">03 / ATTACK SURFACE</span><b>The channel ceiling</b>a notify-only channel tries to command; an
-      ask-channel tries to approve; a full channel&#x27;s own messages still pass the kernel.</li><li data-case><span class="case-no">04 / ATTACK SURFACE</span><b>Memory &amp; archive</b>plant instructions in conversation memory or the
-      session archive, then wait for the agent to read its own history.</li><li data-case><span class="case-no">05 / ATTACK SURFACE</span><b>Sandbox identity</b>arrive with the right name from the wrong principal.</li><li data-case><span class="case-no">06 / ATTACK SURFACE</span><b>The named network exception</b>turn one allowed address into a range
-      (the case narrated below).</li><li data-case><span class="case-no">07 / ATTACK SURFACE</span><b>The agent&#x27;s own protocol</b>malformed frames, replayed approvals,
-      truncated streams.</li><li data-case><span class="case-no">08 / ATTACK SURFACE</span><b>&quot;Find a way instead of refusing&quot;</b>the polite jailbreak: ask the agent
-      to be helpful about its own rules.</li><li data-case><span class="case-no">09 / ATTACK SURFACE</span><b>The terminal session</b>approvals at a tty, and everything that tries to
-      skip the tty.</li><li data-case><span class="case-no">10 / ATTACK SURFACE</span><b>Background runs &amp; schedules</b>what a timed job may do at 3 a.m. with
-      nobody watching (answer: strictly less).</li><li data-case><span class="case-no">11 / ATTACK SURFACE</span><b>The mail sender proof</b>a forged From: header claiming to
-      be the operator.</li><li data-case><span class="case-no">12 / ATTACK SURFACE</span><b>Credential binding</b>make a key travel to the wrong provider (the second
-      case below).</li><li data-case><span class="case-no">13 / ATTACK SURFACE</span><b>The announced plan</b>steps that mutate mid-run, conditions that were
-      never checked by code.</li><li data-case><span class="case-no">14 / ATTACK SURFACE</span><b>The delegated run</b>a sub-agent inheriting more than its parent was
-      allowed to give.</li><li data-case><span class="case-no">15 / ATTACK SURFACE</span><b>The rendering browser</b>a page that talks back at the agent reading it.</li><li data-case><span class="case-no">16 / ATTACK SURFACE</span><b>Media tools</b>frames, clips and paths that are not what they claim.</li><li data-case><span class="case-no">17 / ATTACK SURFACE</span><b>The internal view</b>diagnostics that must not name identities or drop a
-      token, even to someone who asks nicely.</li><li data-case><span class="case-no">18 / ATTACK SURFACE</span><b>Standing approvals</b>a &quot;yes, always&quot; that outlives the situation it was
-      granted in.</li><li data-case><span class="case-no">19 / ATTACK SURFACE</span><b>Steering a live run</b>injected instructions while a job is mid-flight.</li><li data-case><span class="case-no">20 / ATTACK SURFACE</span><b>The first-run wall</b>a relaxed setting must never survive into the
-      installed service.</li><li data-case><span class="case-no">21 / ATTACK SURFACE</span><b>The log itself</b>edit history after the fact, and the hash chain breaks
-      loudly.</li><li data-case><span class="case-no">22 / ATTACK SURFACE</span><b>The model worker</b>provider keys owned by a different UID; the agent can
-      use them, never read them.</li><li data-case><span class="case-no">23 / ATTACK SURFACE</span><b>The confined worker</b>delegated code that tries to leave its cell.</li></ul><p id="case-empty" class="empty-state" hidden>No matching surface. Try a broader term.</p></section><section class="case-study wrap" id="dns"><div class="split"><div><p class="eyebrow">CASE STUDY / NETWORK BOUNDARY</p><h2>One allowed address<br>must stay one.</h2><p>A host can resolve to both an allowed address and an unlisted one. Checking only for the presence of an allowed address silently widens the permission.</p><p>The named-network exception requires every resolved address to satisfy the rule. These are illustrative addresses, not deployment data.</p></div><div><div class="code-block"><div class="code-label">PROPERTY / NO MIXED-ANSWER BYPASS</div><pre><code>answers = [allowed_address, unlisted_address]
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TALOS — 242 ways to break an agent</title>
+<meta name="description" content="What I throw at Talos before every release: 242 adversarial cases across 25 attack surfaces — token bypass, dial escalation, DNS smuggling, credential exfiltration — and what a green run does and doesn't prove.">
+<link rel="icon" href="../brand/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="../brand/apple-touch-icon.png">
+<meta property="og:title" content="TALOS — 242 ways to break an agent">
+<meta property="og:description" content="242 adversarial cases, 25 attack surfaces, one kernel. What attacking my own agent before every release taught me.">
+<meta property="og:image" content="https://talos-agent.ch/brand/og-logo.png">
+<meta property="og:url" content="https://talos-agent.ch/redteam/">
+<link rel="canonical" href="https://talos-agent.ch/redteam/">
+<meta name="theme-color" content="#17140F">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="TALOS — 242 ways to break an agent">
+<meta name="twitter:description" content="242 adversarial cases, 25 attack surfaces, one kernel. What attacking my own agent before every release taught me.">
+<meta name="twitter:image" content="https://talos-agent.ch/brand/og-logo.png">
+<script>document.documentElement.classList.add('js')</script>
+<style>
+/* ── fonts (lokal, kein Drittanbieter) — redteam/ liegt eine Ebene tiefer ── */
+@font-face { font-family:"VT323"; src:url("../fonts/vt323.woff2") format("woff2");
+             font-weight:400; font-display:swap; }
+@font-face { font-family:"Sometype Mono"; src:url("../fonts/sometype-mono-var.woff2") format("woff2");
+             font-weight:400 700; font-style:normal; font-display:swap; }
+@font-face { font-family:"Sometype Mono"; src:url("../fonts/sometype-mono-italic.woff2") format("woff2");
+             font-weight:400; font-style:italic; font-display:swap; }
 
-# Every answer must satisfy the exception.
-# One unlisted answer refuses the fetch.
-guard_url(...)  # raises UrlRefusedError</code></pre></div></div></div></section><section class="case-study wrap" id="keys"><div class="split"><div><p class="eyebrow">CASE STUDY / CREDENTIAL BINDING</p><h2>The right key.<br>Only the right route.</h2><p>When a provider credential is missing, selection must fail before a request is built. Another provider's key is never a fallback.</p><p>The regression checks use different credentials for different providers and inspect the actual request headers.</p></div><div><div class="code-block"><div class="code-label">PROPERTY / NO CROSS-PROVIDER CREDENTIAL</div><pre><code>requested_provider = &quot;openai-api&quot;
-configured_keys = [&quot;anthropic&quot;]
+/* Dieselben Tokens wie die Hauptseite — ein System, ein Look. */
+:root{
+  --bg:    oklch(0.115 0.012 75);
+  --bg2:   oklch(0.145 0.016 78);
+  --amber: oklch(0.80 0.155 80);
+  --hot:   oklch(0.92 0.13 85);
+  --dim:   oklch(0.56 0.09 80);
+  --faint: oklch(0.38 0.055 80);
+  --line:  oklch(0.28 0.04 80);
+  --deny:  oklch(0.64 0.19 32);
+  --allow: oklch(0.74 0.14 145);
+  --crt:   "VT323", monospace;
+  --mono:  "Sometype Mono", monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth; scroll-padding-top:80px; -webkit-text-size-adjust:100%}
+body{
+  background:var(--bg); color:var(--amber);
+  font-family:var(--mono); font-size:14.5px; line-height:1.8;
+  font-variant-numeric:tabular-nums;
+}
+::selection{background:var(--amber); color:var(--bg)}
+a{color:var(--hot)}
 
-# Expected: refuse before network activity.
-requests_sent = 0
-credential_in_error = False</code></pre></div></div></div></section><section class="page-section wrap" id="proves"><div class="split"><div><p class="eyebrow">THE LIMIT OF THE EVIDENCE</p><h2>A green run is<br>a starting point.</h2></div><div><p>A passing suite means these known cases still produce their expected outcomes in the tested environment. It does not prove that all vulnerabilities have been found.</p><p>New models, integrations, deployments and attack shapes can expose gaps. A useful report includes the exact version, environment, action and observed result.</p></div></div></section><section class="page-section wrap" id="yourself"><div class="section-head"><div><p class="eyebrow">REPRODUCE THE CHECKS</p><h2>Read it. Run it.<br>Find the next case.</h2></div><p>The source includes pinned development dependencies and the adversarial suite. Install dependencies first; the adversarial cases themselves run locally.</p></div><div class="code-block"><div class="code-label">TERMINAL</div><pre><code>git clone https://github.com/talos-kernel/talos.git
-cd talos
-python3 -m venv .venv
-. .venv/bin/activate
-pip install --require-hashes -r requirements.lock -r requirements-dev.lock
-python redteam.py
-python -m pytest tests/ -q</code></pre></div><div class="actions"><a class="btn" href="https://github.com/talos-kernel/talos/blob/main/redteam.py">Read the suite ↗</a><a class="text-link" href="https://github.com/talos-kernel/talos/security/policy">Report a security issue ↗</a></div></section></main><aside class="source-rail wrap" aria-label="Source verification"><p>Source checks<br><a href="/console.html#measured">Release details ↗</a></p><div><b>2785</b><span>collected tests</span></div><div><b>230</b><span>adversarial cases</span></div><div><b>913</b><span>kernel lines</span></div><div><b>31</b><span>gated tools</span></div></aside><footer class="site-footer"><div class="wrap"><div class="footer-top"><a class="brand" href="/"><img src="/brand/talos-wordmark-dark.svg" alt="Talos" width="115" height="20"></a><p>Give intelligence a place to work.<br>Keep the authority to decide.</p><a class="text-link" href="https://github.com/talos-kernel/talos">Open source on GitHub ↗</a></div><div class="footer-links"><a href="/">Home</a><a href="/docs/">Docs</a><a href="/registry/">Registry</a><a href="/redteam/">Evidence</a><a href="/vergleich/">Compare</a><a href="/console.html">Console</a><a href="/setup/">Get started</a></div><div class="footer-meta"><span>MIT licensed · Self-hosted · Built to be inspected</span><a href="/console.html#measured">Release &amp; source checks ↗</a></div></div></footer></body></html>
+.crt-fx{position:fixed; inset:0; pointer-events:none; z-index:90}
+.crt-fx::before{
+  content:""; position:absolute; inset:0;
+  background:repeating-linear-gradient(0deg, oklch(0 0 0/.13) 0 1px, transparent 1px 3px);
+}
+.crt-fx::after{
+  content:""; position:absolute; inset:0;
+  background:radial-gradient(ellipse at 50% 40%, transparent 62%, oklch(0 0 0/.34) 100%);
+}
+
+.wrap{max-width:1000px; margin:0 auto; padding:0 clamp(18px,4vw,52px)}
+
+nav{position:fixed; inset:0 0 auto 0; z-index:50; border-bottom:1px solid var(--line);
+  background:color-mix(in oklch, var(--bg) 88%, transparent); backdrop-filter:blur(8px)}
+nav .wrap{display:flex; gap:26px; align-items:baseline; padding-top:14px; padding-bottom:14px}
+.brand{font-family:var(--crt); font-size:26px; color:var(--hot); text-decoration:none;
+  text-shadow:0 0 10px oklch(0.8 0.155 80/.6); letter-spacing:.1em;
+  display:inline-flex; align-items:center; gap:11px}
+.brand .mark{width:26px; height:26px; display:block}
+nav a.lnk{font-size:11.5px; color:var(--dim); text-decoration:none; letter-spacing:.18em;
+  text-transform:uppercase}
+nav a.lnk:hover{color:var(--hot)}
+nav a.lnk.on{color:var(--hot); text-shadow:0 0 8px oklch(0.8 0.155 80/.55)}
+nav a.lnk.on::before{content:"["; color:var(--faint)}
+nav a.lnk.on::after{content:"]"; color:var(--faint)}
+nav .sp{flex:1}
+.status{font-size:11px; color:var(--faint); letter-spacing:.12em}
+.status i{color:var(--allow); font-style:normal; animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.3}}
+@media(max-width:760px){nav a.lnk, .status{display:none}}
+
+main{padding-top:64px}
+
+.hero{padding:clamp(44px,7vh,80px) 0 30px}
+.doc-line{font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--dim);
+          display:flex; gap:26px; flex-wrap:wrap; margin-bottom:26px}
+.doc-line::before{content:"● "; color:var(--deny)}
+h1{font-family:var(--crt); font-weight:400; font-size:clamp(42px,6vw,76px); line-height:.98;
+   color:var(--hot); text-shadow:0 0 18px oklch(0.8 0.155 80/.5), 0 0 60px oklch(0.8 0.155 80/.22);
+   max-width:18ch; text-wrap:balance}
+.hero .lede{margin-top:24px; max-width:62ch; color:var(--dim)}
+.hero .lede + .lede{margin-top:12px}
+.hero .lede strong{color:var(--hot); font-weight:600}
+.spec-row{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px;
+          background:var(--line); border:1px solid var(--line); margin-top:36px}
+.spec{background:var(--bg); padding:20px 22px; font-size:12px; color:var(--dim); line-height:1.6}
+.spec b{display:block; font-family:var(--crt); font-weight:400; font-size:clamp(28px,3.4vw,40px);
+        color:var(--hot); line-height:1.1; letter-spacing:.03em;
+        text-shadow:0 0 14px oklch(0.8 0.155 80/.45)}
+.spec b.red{color:var(--deny); text-shadow:0 0 14px oklch(0.64 0.19 32/.5)}
+
+.index{border-top:1px dashed var(--line); border-bottom:1px dashed var(--line);
+       padding:16px 0; margin-bottom:8px}
+.index ol{list-style:none; display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
+          gap:2px 26px; counter-reset:sec}
+.index a{display:block; color:var(--dim); text-decoration:none; font-size:12.5px; padding:2px 0;
+         transition:color .2s}
+.index a::before{counter-increment:sec; content:counter(sec,decimal-leading-zero) "  ";
+                 color:var(--faint)}
+.index a:hover{color:var(--hot)}
+.index a.here{color:var(--hot)}
+.index a.here::before{color:var(--amber)}
+
+section{padding:42px 0 10px; scroll-margin-top:80px}
+h2{font-family:var(--crt); font-weight:400; font-size:clamp(30px,3.8vw,44px); line-height:1.05;
+   color:var(--hot); text-shadow:0 0 14px oklch(0.8 0.155 80/.4);
+   margin-bottom:6px; text-wrap:balance}
+h2 .n{display:block; font-size:17px; letter-spacing:.14em; color:var(--dim);
+      text-shadow:none; margin-bottom:8px}
+h2 .n::before{content:"┌─[ "}
+h2 .n::after{content:" ]"}
+h3{font-family:var(--crt); font-weight:400; font-size:21px; color:var(--hot);
+   margin:30px 0 8px; text-shadow:0 0 10px oklch(0.8 0.155 80/.3)}
+p{max-width:66ch; margin:11px 0}
+strong{color:var(--hot); font-weight:600}
+em{font-style:italic}
+a{color:var(--hot); text-decoration-color:var(--line); text-underline-offset:3px}
+a:hover{text-decoration-color:var(--hot)}
+ul{max-width:66ch; margin:11px 0; padding-left:0; list-style:none}
+li{margin:5px 0; padding-left:18px; position:relative}
+li::before{content:"—"; position:absolute; left:0; color:var(--faint)}
+li b{color:var(--hot); font-weight:600}
+
+pre{background:oklch(0.09 0.01 75); border:1px solid var(--line); padding:16px 18px;
+    overflow-x:auto; margin:14px 0; font-size:13px; line-height:1.75; color:var(--amber);
+    box-shadow:0 0 40px oklch(0.8 0.155 80/.05)}
+pre .c{color:var(--faint)}
+pre .f{color:var(--hot)}
+pre .d{color:var(--deny)}
+pre .g{color:var(--allow)}
+code{background:var(--bg2); border:1px solid var(--line); padding:0 5px; font-size:.92em;
+     color:var(--hot)}
+pre code{background:none; border:none; padding:0; font-size:inherit; color:inherit}
+
+.note{border:1px solid var(--line); border-left:3px solid var(--faint);
+      background:var(--bg2); padding:13px 16px; margin:18px 0; max-width:66ch}
+.note.warn{border-left-color:var(--deny)}
+.note.good{border-left-color:var(--allow)}
+.note b{display:block; font-size:10px; letter-spacing:.18em; text-transform:uppercase;
+        color:var(--faint); margin-bottom:6px; font-weight:700}
+.note.warn b{color:var(--deny)}
+.note.good b{color:var(--allow)}
+.note p{margin:0; font-size:13.5px; max-width:none; color:var(--amber)}
+.note p + p{margin-top:8px}
+
+.tw{overflow-x:auto; margin:18px 0; border:1px solid var(--line); background:var(--bg)}
+table{border-collapse:collapse; width:100%; font-size:12.5px; min-width:540px}
+th,td{text-align:left; padding:9px 14px; border-bottom:1px solid var(--line); vertical-align:top}
+th{font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--dim);
+   font-weight:400; border-bottom:1px solid var(--line); background:var(--bg2)}
+tr:last-child td{border-bottom:none}
+td:first-child{color:var(--hot); white-space:nowrap}
+td.d{color:var(--dim)}
+
+footer{border-top:1px solid var(--line); margin-top:56px; padding:36px 0 50px;
+       font-size:12px; color:var(--faint)}
+footer .wrap{display:flex; gap:26px; flex-wrap:wrap}
+footer a{color:var(--dim); text-decoration:none}
+footer a:hover{color:var(--hot)}
+footer .sp{flex:1}
+
+.rule{position:fixed; top:0; left:0; width:100%; height:2px; z-index:60;
+  background:var(--deny); box-shadow:0 0 12px oklch(0.64 0.19 32/.55);
+  transform:scaleX(0); transform-origin:0 50%}
+
+html.js .rv{opacity:0; transform:translateY(20px);
+  transition:opacity .8s cubic-bezier(.19,1,.22,1), transform .8s cubic-bezier(.19,1,.22,1)}
+html.js .rv.in{opacity:1; transform:none}
+.spec b.set{animation:settle .7s cubic-bezier(.19,1,.22,1)}
+@keyframes settle{0%{transform:scale(1.06)}100%{transform:scale(1)}}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important; transition:none!important}
+  html.js .rv{opacity:1; transform:none}
+  .rule{display:none}
+  html{scroll-behavior:auto}
+}
+</style>
+<link rel="stylesheet" href="/interface.css">
+<script src="/interface.js" defer></script>
+</head>
+<body>
+
+<div class="rule" id="rule" aria-hidden="true"></div>
+<div class="crt-fx" aria-hidden="true"></div>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="/"><img class="mark" src="../brand/sigil-78.png" alt="" width="26" height="26">TALOS</a>
+    <a class="lnk" href="/">Home</a>
+    <a class="lnk" href="/#kernel">Kernel</a>
+    <a class="lnk" href="/#ledger">Ledger</a>
+    <a class="lnk" href="/docs/">Docs</a>
+    <a class="lnk" href="/registry/">Registry</a>
+    <a class="lnk on" href="/redteam/" aria-current="page">Redteam</a>
+    <a class="lnk" href="/vergleich/">Compare</a>
+    <a class="lnk" href="/console.html">Console</a>
+    <a class="lnk" href="https://github.com/talos-kernel/talos">GitHub</a>
+    <span class="sp"></span>
+    <span class="status"><i>●</i> ADVERSARIAL · REV 0.15.1-ALPHA</span>
+  </div>
+</nav>
+
+<main>
+<div class="wrap">
+
+  <div class="hero rv">
+    <div class="doc-line">
+      <span>Field notes · Red team</span>
+      <span>Classification · Public</span>
+      <span>Subject · Attacking my own agent first</span>
+    </div>
+    <h1>242 ways to break an agent.</h1>
+    <p class="lede">Every release runs <strong>redteam.py</strong> against the
+    kernel: 242 adversarial cases across <strong>25 attack surfaces</strong> — token forgery,
+    dial escalation, DNS smuggling, credential exfiltration, forged senders, prompt-level
+    manipulation. Not because I enjoy losing. A security claim you cannot attack is
+    <strong>marketing</strong>.</p>
+    <p class="lede">Every case below is real, runs in CI, and is named after what it tries.
+    This page is what attacking my own agent taught me — including the two cases I would
+    not have caught by thinking harder.</p>
+    <div class="spec-row">
+      <div class="spec"><b>242</b>adversarial cases</div>
+      <div class="spec"><b class="red">25</b>attack surfaces</div>
+      <div class="spec"><b>896</b>kernel lines</div>
+      <div class="spec"><b>31</b>gated tools</div>
+      <div class="spec"><b>2412</b>unit tests</div>
+      <div class="spec"><b class="red">0</b>passes sold as safety</div>
+    </div>
+  </div>
+
+  <div class="index rv"><ol>
+    <li><a href="#why">Why I attack my own agent</a></li>
+    <li><a href="#map">The map: 25 surfaces</a></li>
+    <li><a href="#dns">Case: two A-records</a></li>
+    <li><a href="#keys">Case: the traveling key</a></li>
+    <li><a href="#proves">What green proves — and doesn't</a></li>
+    <li><a href="#yourself">Attack it yourself</a></li>
+  </ol></div>
+
+  <section id="why" class="rv">
+    <h2><span class="n">Section 01</span>Why I attack my own agent</h2>
+    <p>An agent with a shell is a strange employee: brilliant, tireless, and unable to
+    tell a real instruction from a well-written trap. Most frameworks answer that with
+    a system prompt — a polite request to the model, written in the same channel the
+    attack arrives in. That is not a boundary. That is a wish.</p>
+    <p>Talos answers with a kernel: ~896 lines of Python that return
+    <code>allow</code>, <code>needs-human</code> or <code>deny</code> for every tool
+    call, below the model, unreachable from its output. But a kernel is a claim like
+    any other, so before every release I try to break it. The red team suite is not
+    a demo. It is the regression net for every attack shape I know, and it grows
+    every time I learn a new one.</p>
+    <div class="note warn">
+      <b>The uncomfortable premise</b>
+      <p>The attacker in my suite is not a stranger on the internet. It is the model
+      itself — manipulated, confused or outright owned by something it read. If your
+      security model only works while the model stays friendly, you don't have one.</p>
+    </div>
+  </section>
+
+  <section id="map" class="rv">
+    <h2><span class="n">Section 02</span>The map: 25 surfaces</h2>
+    <p>Every section of <code>redteam.py</code> is one way the world tries to get past
+    the kernel. Grouped, they look like this — each line is one or more named,
+    executable cases:</p>
+    <ul>
+      <li><b>Past the executor</b> — call the runner without a token; mint a token for a
+      call that was denied; redeem after the dial dropped to zero.</li>
+      <li><b>The autonomy dial</b> — set it from a foreign identity; turn it up with
+      garbage values; mint at level 1 with an approval, then act above it.</li>
+      <li><b>The channel ceiling</b> — a notify-only channel tries to command; an
+      ask-channel tries to approve; a full channel's own messages still pass the kernel.</li>
+      <li><b>Memory &amp; archive</b> — plant instructions in conversation memory or the
+      session archive, then wait for the agent to read its own history.</li>
+      <li><b>Sandbox identity</b> — arrive with the right name from the wrong principal.</li>
+      <li><b>The named network exception</b> — turn one allowed address into a range
+      (the case narrated below).</li>
+      <li><b>The agent's own protocol</b> — malformed frames, replayed approvals,
+      truncated streams.</li>
+      <li><b>"Find a way instead of refusing"</b> — the polite jailbreak: ask the agent
+      to be helpful about its own rules.</li>
+      <li><b>The terminal session</b> — approvals at a tty, and everything that tries to
+      skip the tty.</li>
+      <li><b>Background runs &amp; schedules</b> — what a timed job may do at 3 a.m. with
+      nobody watching (answer: strictly less).</li>
+      <li><b>The mail sender proof</b> — a forged <code>From:</code> header claiming to
+      be the operator.</li>
+      <li><b>Credential binding</b> — make a key travel to the wrong provider (the second
+      case below).</li>
+      <li><b>The announced plan</b> — steps that mutate mid-run, conditions that were
+      never checked by code.</li>
+      <li><b>The delegated run</b> — a sub-agent inheriting more than its parent was
+      allowed to give.</li>
+      <li><b>The rendering browser</b> — a page that talks back at the agent reading it.</li>
+      <li><b>Media tools</b> — frames, clips and paths that are not what they claim.</li>
+      <li><b>The internal view</b> — diagnostics that must not name identities or drop a
+      token, even to someone who asks nicely.</li>
+      <li><b>Standing approvals</b> — a "yes, always" that outlives the situation it was
+      granted in.</li>
+      <li><b>Steering a live run</b> — injected instructions while a job is mid-flight.</li>
+      <li><b>The first-run wall</b> — a relaxed setting must never survive into the
+      installed service.</li>
+      <li><b>The log itself</b> — edit history after the fact, and the hash chain breaks
+      loudly.</li>
+      <li><b>The model worker</b> — provider keys owned by a different UID; the agent can
+      use them, never read them.</li>
+      <li><b>The confined worker</b> — delegated code that tries to leave its cell.</li>
+    </ul>
+  </section>
+
+  <section id="dns" class="rv">
+    <h2><span class="n">Section 03</span>Case: two A-records walk past the list</h2>
+    <p>The operator may allow <strong>single addresses</strong> for web fetches — say,
+    their own server in the tailnet, <code>100.100.100.100</code>. The danger is not
+    the address. It is the moment "one address" quietly becomes "a range": then any
+    document the agent fetches can point it sideways into the whole network.</p>
+    <p>The case I almost shipped: a hostname that resolves to
+    <strong>two</strong> A-records — the allowed one and a foreign one.</p>
+<pre><span class="c"># what the attacker needs: one hostname, two answers</span>
+halb.example  →  [ <span class="g">100.100.100.100</span>, <span class="d">93.184.216.34</span> ]
+
+<span class="c"># a naive check: "is an allowed address in the answer?" → passes. LEAK.</span>
+<span class="c"># talos: every resolved address must be named — one foreign answer refuses the fetch.</span>
+guard_url(...)  <span class="f">→ UrlRefusedError</span>   <span class="g">✓ refused, the neighbour stays dark</span></pre>
+    <p>The same section proves the neighbouring properties: one allowed address does
+    <strong>not</strong> open its range; an unlisted address stays refused even to the
+    operator's own machine; plain <code>http</code> stays limited to named addresses;
+    and hostnames themselves never enter the allowlist — <strong>literals only</strong>,
+    because a name is a promise somebody else keeps.</p>
+  </section>
+
+  <section id="keys" class="rv">
+    <h2><span class="n">Section 04</span>Case: the key that must not travel</h2>
+    <p>A provider key sent to the wrong provider is not a bug that shows up in logs.
+    It is <strong>a secret handed to a foreign company — and it looks like a 401.</strong>
+    You would never notice.</p>
+    <p>So the suite builds the trap both ways. With only an Anthropic key in the store,
+    it asks for an OpenAI route — the route must fail <strong>before any request is
+    built</strong>, with nothing sent and the key not even present in the error text.
+    With both keys present, it verifies that only the provider's own key ever leaves
+    the machine.</p>
+<pre><span class="c"># only an anthropic key in the store, asked for an openai route:</span>
+ApiReasoner(<span class="f">"openai-api"</span>, ...)   <span class="f">→ ValueError</span>
+  <span class="g">✓ nothing sent</span>   <span class="g">✓ key not in the error</span>   <span class="c"># refused before the wire exists</span>
+
+<span class="c"># both keys present, openai route used:</span>
+headers sent  →  <span class="g">only the openai key</span>   <span class="c"># the anthropic key never leaves</span></pre>
+    <p>Credentials in Talos are <strong>bound to their provider</strong>, stored for a
+    UID the agent is not, and redacted by the same pattern in every log line, every
+    diagnostic view and every dashboard payload. The agent may use a key. It may never
+    read one.</p>
+  </section>
+
+  <section id="proves" class="rv">
+    <h2><span class="n">Section 05</span>What a green run proves — and what it doesn't</h2>
+    <p>A green <code>242/242</code> means: every attack shape I know fails the way the
+    doctrine says it should, and no fix since has reopened one. That is a regression
+    net, and it is genuinely useful — most agent CVEs are old shapes in new clothing.</p>
+    <p>It does <strong>not</strong> prove the system is secure. It proves I have not
+    yet imagined the 180th way. That is exactly why the file is public, named in plain
+    language, and structured so that the next attack somebody teaches me becomes case
+    180 the same day — not a blog post.</p>
+    <div class="note good">
+      <b>The honest claim, restated</b>
+      <p>I don't say "Talos is secure." I say: here is the kernel, here are the
+      185 ways I tried to get past it, here is the log that lets you check the work.
+      Security you can poke at beats security you have to believe.</p>
+    </div>
+  </section>
+
+  <section id="yourself" class="rv">
+    <h2><span class="n">Section 06</span>Attack it yourself</h2>
+    <p>The whole suite ships with the repo and runs offline in seconds:</p>
+<pre>git clone https://github.com/talos-kernel/talos
+cd talos && python3 -m venv .venv && .venv/bin/pip install -q requests cryptography
+.venv/bin/python redteam.py   <span class="c"># 242 cases, named after what they try</span></pre>
+    <p>If you find case 180, that is the most valuable contribution this project
+    accepts. The issue tracker is open, and the kernel demo on the
+    <a href="/">front page</a> lets you probe the policy logic in your browser before
+    you install anything. The design behind all of it is in the
+    <a href="/docs/">field manual</a>; what it costs in features is on the
+    <a href="/vergleich/">comparison page</a>, written the same way.</p>
+  </section>
+
+</div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>TALOS — an agent you can hand a shell to</span>
+    <span class="sp"></span>
+    <a href="/">Home</a>
+    <a href="/docs/">Docs</a>
+    <a href="/registry/">Registry</a>
+    <a href="/vergleich/">Compare</a>
+    <a href="https://github.com/talos-kernel/talos">GitHub</a>
+    <span>MIT · REV 0.15.1-ALPHA</span>
+  </div>
+</footer>
+
+<script>
+/* Scroll-Fortschritt oben — rein kosmetisch. */
+(() => {
+  const rule = document.getElementById('rule');
+  let max = 1, queued = false;
+  const measure = () => { max = Math.max(1, document.body.scrollHeight - innerHeight); };
+  measure();
+  addEventListener('resize', measure, {passive: true});
+  addEventListener('scroll', () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      rule.style.transform = 'scaleX(' + Math.min(scrollY / max, 1) + ')';
+      queued = false;
+    });
+  }, {passive: true});
+})();
+
+/* Reveals + number settle — rein kosmetisch, ohne JS steht die ganze Seite da. */
+(() => {
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    e.target.classList.add('in');
+    e.target.querySelectorAll('.spec b:not(.set)').forEach((el, i) => {
+      el.style.animationDelay = (i * 60) + 'ms';
+      el.classList.add('set');
+    });
+    io.unobserve(e.target);
+  }), {threshold: 0.12});
+  document.querySelectorAll('.rv').forEach(el => io.observe(el));
+})();
+
+/* Scroll-Spy im Inhaltsverzeichnis — rein kosmetisch. */
+(function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll(".index a"));
+  var ziele = links.map(function(a){
+    return document.querySelector(a.getAttribute("href"));
+  }).filter(Boolean);
+  if (!("IntersectionObserver" in window) || !ziele.length) return;
+  var io = new IntersectionObserver(function(eintraege){
+    eintraege.forEach(function(e){
+      if (!e.isIntersecting) return;
+      links.forEach(function(a){
+        a.classList.toggle("here", a.getAttribute("href") === "#" + e.target.id);
+      });
+    });
+  }, {rootMargin:"-20% 0px -70% 0px"});
+  ziele.forEach(function(z){ io.observe(z); });
+})();
+</script>
+</body>
+</html>
