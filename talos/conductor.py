@@ -368,9 +368,24 @@ class Conductor:
                 if decision is not None and pending is not None:
                     self._ack_approval_callback(update, run_id, pending, decision=decision)
                     return self._resolve_approval(update, run_id, pending, decision)
+                # ⚠️ NICHT „Nothing ran". Dieser Zweig weiss nur, dass DIESER Knopf
+                # nicht mehr gilt — er weiss nicht, ob die Handlung stattgefunden hat.
+                # Gemessen am 12.09.2026: der Betreiber gab auf der ersten Karte
+                # „immer" und erzeugte damit eine stehende Freigabe; der naechste
+                # Befehl lief unter ihr. Als er danach die zweite Karte antippte,
+                # antwortete Talos „Nothing ran" — waehrend das Log `exec.result:
+                # ran with your approval` trug. Eine Oberflaeche, die das Gegenteil
+                # dessen behauptet, was geschehen ist, ist schlimmer als eine, die
+                # schweigt: sie laesst den Betreiber eine Handlung wiederholen, die
+                # bereits lief.
+                #
+                # Gesagt wird deshalb nur das Belegbare: dieser Knopf ist verbraucht.
+                # Was tatsaechlich geschah, steht im Protokoll — `talos events` und
+                # `talos why <id>` beantworten es, diese Zeile kann es nicht.
                 message = StructuredMessage(
-                    "Approval invalid or expired. Nothing ran.",
-                    callback_notice="Invalid or expired",
+                    "This approval no longer applies — it was already decided or it "
+                    "expired. Check the run in the log before repeating anything.",
+                    callback_notice="Already decided or expired",
                 )
             else:
                 picker = self.commands.model_picker if self.commands is not None else None

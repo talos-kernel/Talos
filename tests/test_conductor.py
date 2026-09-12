@@ -793,3 +793,32 @@ def test_a_reply_stream_that_breaks_mid_run_never_costs_the_answer(tmp_path):
     assert conductor.handle(msg(65, OWNER, "hallo")) is True
     assert stream.deltas == []                       # nie gestreamt
     assert sent == [(CHAT_OWNER, "Antwort")]         # trotzdem zugestellt
+
+
+def test_a_stale_approval_button_claims_nothing_ran() -> None:
+    """Ein verbrauchter Knopf weiss NICHT, ob die Handlung stattgefunden hat.
+
+    Gemessen am 12.09.2026: der Betreiber gab auf der ersten Karte „immer" und
+    erzeugte damit eine stehende Freigabe; der naechste Befehl lief unter ihr. Als er
+    danach die zweite Karte antippte, antwortete Talos „Approval invalid or expired.
+    Nothing ran." — waehrend das Log fuer genau diesen Befehl
+    `exec.result: ran with your approval` trug.
+
+    Eine Oberflaeche, die das Gegenteil dessen behauptet, was geschehen ist, ist
+    schlimmer als eine, die schweigt: sie laesst den Betreiber eine Handlung
+    wiederholen, die bereits lief. Gesagt werden darf nur das Belegbare — dass DIESER
+    Knopf verbraucht ist.
+
+    ⚠️ Geprueft wird die Quelle: der Zweig haengt an einem Callback mit verbrauchtem
+    Picker-Zustand, den ein Test nur mit dem halben Conductor nachstellen koennte — und
+    genau die Stelle, um die es geht, waere dann eine Attrappe.
+    """
+    quelle = (Path(__file__).resolve().parents[1] / "talos/conductor.py").read_text(
+        encoding="utf-8")
+    # Genau die alte Zusicherung — kein Fenster, keine Naeherung.
+    assert "Approval invalid or expired. Nothing ran." not in quelle, (
+        "die Behauptung, es sei nichts gelaufen, ist zurueck")
+    assert "This approval no longer applies" in quelle, (
+        "der Zweig sagt nicht mehr, dass dieser Knopf verbraucht ist")
+    # Und er verweist auf die Stelle, die es wirklich beantworten kann.
+    assert "log before repeating" in quelle, "er sagt nicht, wo die Antwort steht"
