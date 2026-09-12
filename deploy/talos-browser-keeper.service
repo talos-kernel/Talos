@@ -1,0 +1,28 @@
+[Unit]
+Description=Talos browser keeper — haelt den CDP-Browser am Leben, ohne root
+Documentation=https://talos-agent.ch/docs/
+# Ohne diese Zeile haelt systemd den Dienst nach fuenf Starts in zehn Sekunden
+# endgueltig an — genau das, was Restart=always verhindern soll. Und sie gehoert
+# HIERHIN: in [Service] ignoriert systemd sie seit v229 stillschweigend.
+StartLimitIntervalSec=0
+
+[Service]
+Environment=DISPLAY=:0
+# ⚠️ Weicht dem System-Dienst AUS, statt mit ihm um Port 9222 zu streiten.
+# `talos-browser.service` ist `enabled` und startet beim Boot. Antwortet 9222 bereits,
+# bricht der Start hier ab, `Restart=always` prueft in zehn Sekunden erneut — und
+# uebernimmt erst, wenn der Port wirklich frei ist. Zwei Chromium auf demselben Port
+# und demselben Profil waere schlimmer als gar keiner.
+ExecStartPre=/bin/sh -c '! curl -sf --max-time 3 http://127.0.0.1:9222/json/version >/dev/null 2>&1'
+# Dasselbe Profil wie der System-Dienst, NICHT /tmp: ein Wegwerf-Profil verliert bei
+# jedem Neustart Anmeldungen und Einstellungen.
+ExecStart=/usr/bin/chromium --user-data-dir=/home/desk/.config/talos-browser --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --remote-allow-origins=* --proxy-server=http://10.0.2.100:3128 --no-first-run --no-default-browser-check --disable-dev-shm-usage --disable-sync --disable-background-networking --password-store=basic --start-maximized about:blank
+# `always`, nicht `on-failure`: Chromium beendet sich auch SAUBER — geschlossenes
+# Fenster, chrome://quit, ein aufgeraeumter OOM-Abbruch liefern Exit 0. Genau daran
+# starb der Browser am 07.09. und kam bis zum 12.09. nicht zurueck.
+Restart=always
+RestartSec=10
+KillMode=control-group
+
+[Install]
+WantedBy=default.target

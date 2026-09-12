@@ -110,7 +110,13 @@ class Memory:
     """
 
     def __init__(self, *, max_turns: int = MAX_TURNS, max_chars: int = MAX_CHARS,
-                 summarize: object | None = None) -> None:
+                 summarize: object | None = None, on_event: object | None = None) -> None:
+        # Wohin gemeldet wird, WAS das Gedaechtnis verloren hat. `forget` sagt es seit
+        # jeher („stilles Vergessen ist von einem Defekt nicht zu unterscheiden") — der
+        # automatische Weg schwieg. Damit war fuer den Betreiber nicht unterscheidbar,
+        # ob der Agent den Faden verliert, weil die Grenze greift, oder weil der
+        # Verdichter scheitert. Gemeldet werden ZAHLEN und Gruende, nie Inhalt.
+        self._on_event = on_event
         self._turns: dict[str, list[Turn]] = {}
         self._max_turns = max(0, int(max_turns))
         self._max_chars = max(0, int(max_chars))
@@ -142,7 +148,11 @@ class Memory:
             turns = self._turns.setdefault(conversation, [])
             turns.append(Turn(OWNER, asked))
             turns.append(Turn(speaker, answered))
-            self._trim(turns)
+            befund = self._trim(turns)
+        # ⚠️ AUSSERHALB des Locks. Der Empfaenger schreibt ins Event-Log, das sein
+        # eigenes Lock haelt; ineinander genommen waeren das zwei Schloesser in
+        # unbekannter Reihenfolge — die klassische Verklemmung.
+        self._melde(conversation, befund)
 
     def forget(self, conversation: str) -> int:
         """Vergisst und sagt, wie viel. Stilles Vergessen ist von einem Defekt nicht
@@ -186,10 +196,23 @@ class Memory:
         aus einer Latenzfrage einen Ausfall. Deshalb steht das Wegwerfen unten und nicht
         im `else`.
         """
+        stand = None
         if self._summarize is not None and self._over(turns):
-            self._compress(turns)
+            stand = self._compress(turns)
+        geworfen = 0
         while turns and self._over(turns):
             del turns[:2]
+            geworfen += 2
+        return {
+            "dropped_turns": geworfen,
+            "compressed": stand == "compressed",
+            # ⚠️ „zu kurz zum Verdichten" ist KEIN Fehlschlag — da gab es schlicht
+            # nichts zu verdichten. Als Fehlschlag gilt nur, was der Verdichter
+            # wirklich nicht geschafft hat: ein Wurf oder eine leere Zusammenfassung.
+            # Dann faellt die Mitte ersatzlos weg, und genau das sieht von aussen aus
+            # wie ein Agent, der den Faden verliert.
+            "compress_failed": stand in ("failed", "empty"),
+        }
 
     def _compress(self, turns: list[Turn]) -> None:
         """Ersetzt die Mitte durch EINEN Zug: „was vorher besprochen wurde".
@@ -203,18 +226,71 @@ class Memory:
         eingeschleuster Satz koennte sonst ueber die Verdichtung dauerhaft werden. Es
         erteilt nichts: Erlaubnisse entstehen allein in `PolicyKernel.decide`.
         """
-        if len(turns) <= KEEP_HEAD + KEEP_TAIL + 2:
-            return                       # zu kurz — da bliebe nichts zu verdichten
-        kopf, mitte, schwanz = (turns[:KEEP_HEAD], turns[KEEP_HEAD:-KEEP_TAIL],
-                                turns[-KEEP_TAIL:])
+        kopf_n, schwanz_n = _behalten(len(turns))
+        if len(turns) <= kopf_n + schwanz_n + 2:
+            return "too_short"           # zu kurz — da bliebe nichts zu verdichten
+        kopf, mitte, schwanz = (turns[:kopf_n], turns[kopf_n:-schwanz_n],
+                                turns[-schwanz_n:])
         try:
             zusammenfassung = str(self._summarize(render(tuple(mitte))) or "").strip()
         except Exception:
-            return                       # der Aufrufer wirft danach, die Grenze haelt
+            # Die Grenze haelt trotzdem (der Aufrufer wirft), aber der Ausfall wird
+            # jetzt GEMELDET. Ein stumm gescheiterter Verdichter sah von aussen aus wie
+            # ein Agent, der den Faden verliert — und war von einem Defekt nicht zu
+            # unterscheiden. Genau diese Verwechslung hat den Betreiber am 12.09.
+            # zu der Frage gebracht, warum sein Agent nichts mehr weiss.
+            return "failed"
         if not zusammenfassung:
-            return
+            return "empty"
         verdichtet = Turn(SUMMARY_SPEAKER, clip(zusammenfassung, MAX_SUMMARY_CHARS))
         turns[:] = [*kopf, verdichtet, *schwanz]
+        return "compressed"
+
+
+    def _melde(self, conversation: str, befund: dict) -> None:
+        """Sagt dem Log, was verloren ging — und darf den Lauf dabei nie mitnehmen.
+
+        Gemeldet wird nur, wenn wirklich etwas passiert ist: ein Ereignis pro Zug waere
+        Rauschen, in dem der eine interessante Fall untergeht. Und es reisen ZAHLEN,
+        kein Inhalt: das Log ist append-only, und was ein Gespraech inhaltlich enthielt,
+        hat darin nichts verloren.
+        """
+        if self._on_event is None or not befund:
+            return
+        # Gemeldet wird JEDER Verlust — auch eine gelungene Verdichtung. Aus vielen
+        # Zuegen wird ein Satz; das ist billiger als Wegwerfen, aber es ist kein
+        # Nichts. Wer spaeter fragt „warum kennt er Detail X nicht mehr", soll hier
+        # sehen, wann es zusammengefasst wurde.
+        if not any((befund.get("dropped_turns"), befund.get("compressed"),
+                    befund.get("compress_failed"))):
+            return
+        try:
+            self._on_event({"conversation": conversation, **befund})
+        except Exception:
+            pass  # ein kaputter Empfaenger kostet die Spur, nie das Gedaechtnis
+
+
+def _behalten(anzahl: int) -> tuple[int, int]:
+    """Wie viele Zuege woertlich stehen bleiben — Kopf und Schwanz, immer paarweise.
+
+    ⚠️ Frueher waren das FESTE Zahlen: `KEEP_HEAD=4` und `KEEP_TAIL=12`, zusammen also
+    16 Zuege, waehrend `MAX_TURNS=12` ist. Verdichtet wurde erst ueber 18 Zuegen — eine
+    Zahl, die das Gedaechtnis nie erreicht, weil die Grenze vorher greift. Der
+    Verdichter war damit STRUKTURELL TOT: gemessen am 12.09.2026 wurde er nach 200
+    Wechseln null Mal aufgerufen, und jedes Mal fiel die Mitte ersatzlos weg.
+
+    Nach aussen sah das aus wie ein Agent, der nach jeder Aufgabe nicht mehr weiss,
+    woran er war — und genau so hat der Betreiber es gemeldet.
+
+    Die Groessen haengen jetzt an der tatsaechlichen Laenge, gedeckelt durch die alten
+    Werte. Damit bleibt bei jeder Laenge eine Mitte uebrig, und die Kostengrenze
+    (`MAX_TURNS`, `MAX_CHARS`) bleibt unangetastet — verdichtet wird INNERHALB des
+    Rahmens, nicht neben ihm.
+    """
+    gerade = lambda n: max(2, (n // 2) * 2)          # noqa: E731 — Zuege kommen paarweise
+    kopf = min(KEEP_HEAD, gerade(anzahl // 4))
+    schwanz = min(KEEP_TAIL, gerade(anzahl // 3))
+    return kopf, schwanz
 
 
 def render(turns: tuple[Turn, ...]) -> str:

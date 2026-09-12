@@ -8,6 +8,7 @@ Und die wichtigen: das Gedaechtnis **trennt** (zwei Konversationen, zwei Kanaele
 """
 from __future__ import annotations
 
+import json
 import threading
 
 import pytest
@@ -200,3 +201,107 @@ def test_paralleles_schreiben_hinterlaesst_keine_halben_zuege():
     assert len(turns) % 2 == 0
     assert all(t.speaker == OWNER for t in turns[::2])
     assert len(turns) <= 40
+
+
+# --- Was verloren geht, muss man sehen koennen ------------------------------------
+def test_the_memory_drops_turns_without_saying_so():
+    """`forget` sagt seit jeher, wie viel es wirft — „stilles Vergessen ist von einem
+    Defekt nicht zu unterscheiden". Fuer den AUTOMATISCHEN Weg galt das nicht: die
+    Grenze warf, und niemand erfuhr davon.
+
+    Gemeldet am 12.09.2026: der Betreiber hatte das Gefuehl, sein Agent wisse nach
+    jeder Aufgabe nicht mehr, woran er war — und es gab keine Spur, an der sich das
+    bestaetigen oder widerlegen liess.
+    """
+    gemeldet = []
+    memory = Memory(max_turns=4, on_event=gemeldet.append)
+    for i in range(6):
+        memory.remember("chat", asked=f"Frage {i}", answered=f"Antwort {i}")
+    assert gemeldet, "das Gedaechtnis wirft stumm"
+    assert sum(e["dropped_turns"] for e in gemeldet) > 0
+    assert all(e["conversation"] == "chat" for e in gemeldet)
+
+
+def test_a_failing_summariser_is_indistinguishable_from_a_short_memory():
+    """DER Fall, der die Frage ausgeloest hat: der Verdichter ist verdrahtet, kommt
+    aber nicht durch. Dann faellt die Mitte ersatzlos weg — und das sieht von aussen
+    genauso aus wie eine Grenze, die einfach greift. Es muss unterscheidbar sein."""
+    def kaputt(_text):
+        raise RuntimeError("Modell antwortet nicht")
+
+    gemeldet = []
+    memory = Memory(max_turns=12, summarize=kaputt, on_event=gemeldet.append)
+    for i in range(40):
+        memory.remember("chat", asked=f"Frage {i}", answered=f"Antwort {i}")
+    assert any(e.get("compress_failed") for e in gemeldet), (
+        "ein gescheiterter Verdichter bleibt unsichtbar")
+
+
+def test_a_working_summariser_reports_a_failure_anyway():
+    """Gegenbeleg: sonst pruefte der Fall oben nur, dass immer 'gescheitert' gemeldet wird."""
+    gemeldet = []
+    memory = Memory(max_turns=12, summarize=lambda text: "kurz gefasst",
+                    on_event=gemeldet.append)
+    for i in range(40):
+        memory.remember("chat", asked=f"Frage {i}", answered=f"Antwort {i}")
+    assert gemeldet, "gar nichts gemeldet"
+    assert not any(e.get("compress_failed") for e in gemeldet)
+    assert any(e.get("compressed") for e in gemeldet), "der Verdichter lief nie"
+
+
+def test_the_report_carries_the_conversation():
+    """Das Log ist append-only. Was ein Gespraech inhaltlich enthielt, gehoert nicht
+    hinein — gemeldet werden Zahlen und Gruende."""
+    gemeldet = []
+    memory = Memory(max_turns=2, on_event=gemeldet.append)
+    memory.remember("chat", asked="das Codewort ist morgenstern", answered="verstanden")
+    memory.remember("chat", asked="und jetzt etwas anderes", answered="gut")
+    roh = json.dumps(gemeldet, ensure_ascii=False)
+    for verboten in ("morgenstern", "Codewort", "verstanden", "etwas anderes"):
+        assert verboten not in roh, f"{verboten!r} steht im Befund"
+
+
+def test_a_throwing_sink_takes_the_memory_with_it():
+    """Ein kaputter Empfaenger kostet die Spur, nie das Gedaechtnis."""
+    def kaputt(_befund):
+        raise RuntimeError("Log voll")
+
+    memory = Memory(max_turns=2, on_event=kaputt)
+    memory.remember("chat", asked="eins", answered="zwei")
+    memory.remember("chat", asked="drei", answered="vier")
+    assert memory.recall("chat"), "das Gedaechtnis ist am Empfaenger gestorben"
+
+
+def test_the_summariser_can_never_run_with_the_shipped_limits():
+    """DER Fehler, der alles ausgeloest hat.
+
+    `KEEP_HEAD=4` und `KEEP_TAIL=12` waren FESTE Zahlen — zusammen 16 Zuege, waehrend
+    `MAX_TURNS=12` ist. Verdichtet wurde erst ueber 18 Zuegen, einer Zahl, die das
+    Gedaechtnis nie erreicht, weil die Grenze vorher greift. Gemessen am 12.09.2026:
+    nach 200 Wechseln wurde der Verdichter NULL Mal aufgerufen, und jedes Mal fiel die
+    Mitte ersatzlos weg.
+
+    Nach aussen sah das aus wie ein Agent, der nach jeder Aufgabe nicht mehr weiss,
+    woran er war. Genau so hat der Betreiber es gemeldet.
+
+    Dieser Fall laeuft bewusst mit den ECHTEN Grenzen, nicht mit Testwerten — ein
+    Verdichter, der nur unter Laborbedingungen laeuft, ist keiner.
+    """
+    aufrufe = []
+    memory = Memory(summarize=lambda text: aufrufe.append(text) or "kurz gefasst")
+    for i in range(60):
+        memory.remember("chat", asked=f"Frage {i} " + "x" * 100,
+                        answered=f"Antwort {i} " + "y" * 100)
+    assert aufrufe, "der Verdichter ist mit den ausgelieferten Grenzen unerreichbar"
+
+
+def test_the_original_task_falls_out_of_memory():
+    """Der Kopf traegt die eigentliche Aufgabe. Faellt er weg, weiss der Agent nicht
+    mehr, woran er arbeitet — auch wenn er die letzten Saetze noch kennt."""
+    memory = Memory(summarize=lambda text: "was vorher besprochen wurde")
+    memory.remember("chat", asked="Baue mir den Jahresbericht", answered="Verstanden.")
+    for i in range(60):
+        memory.remember("chat", asked=f"Zwischenfrage {i} " + "x" * 100,
+                        answered=f"Antwort {i} " + "y" * 100)
+    zuege = memory.recall("chat")
+    assert "Jahresbericht" in zuege[0].text, "die urspruengliche Aufgabe ist verloren"

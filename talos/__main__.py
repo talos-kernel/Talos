@@ -573,7 +573,17 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     standing = restore_standing(log)
     # Dasselbe Muster beim Gedaechtnis: der Conductor schreibt es, `/new` und `/status`
     # lesen es. Bewusst nur im Speicher — siehe memory.py.
-    memory = Memory(summarize=_compressor(reasoner))
+    # Was das Gedaechtnis verliert, gehoert ins Log. `forget` sagt es seit jeher
+    # („stilles Vergessen ist von einem Defekt nicht zu unterscheiden"); der
+    # automatische Weg schwieg, und damit war fuer den Betreiber nicht zu sehen, ob
+    # sein Agent den Faden verliert, weil die Grenze greift oder weil der Verdichter
+    # scheitert. Nur Zahlen und Gruende, nie Inhalt.
+    memory = Memory(
+        summarize=_compressor(reasoner),
+        on_event=lambda befund: log.append(
+            Event(new_run_id(), "memory", "memory.trimmed", befund)
+        ),
+    )
     # Ueberlebt den Neustart. Faellt es aus, laeuft der Agent ohne — Erinnern ist
     # kein Gate, und ein kaputter Speicher darf den Waechter nicht anhalten.
     long_memory = Recall(RECALL_DB)

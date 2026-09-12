@@ -256,3 +256,28 @@ def test_an_unreachable_browser_reports_only_a_port() -> None:
     assert "talos-browser" in helfer, "die Meldung nennt den Dienst nicht"
     assert "systemctl start" in helfer, "die Meldung nennt das Kommando nicht"
     assert "Nothing was clicked" in helfer, "die Meldung sagt nicht, dass nichts geschah"
+
+
+def test_the_keeper_fights_the_system_unit_for_the_port() -> None:
+    """Das Netz auf Nutzerebene darf dem System-Dienst nicht in die Quere kommen.
+
+    Zwei Chromium auf demselben Port UND demselben Profil waere schlimmer als gar
+    keiner. Der Keeper prueft deshalb vor dem Start, ob 9222 schon antwortet, und
+    bricht ab, wenn ja — `Restart=always` laesst ihn zehn Sekunden spaeter erneut
+    schauen. Er uebernimmt nur eine wirklich freie Stelle.
+    """
+    unit = (Path(__file__).resolve().parents[1]
+            / "deploy/talos-browser-keeper.service").read_text(encoding="utf-8")
+    assert "ExecStartPre" in unit, "der Keeper weicht dem System-Dienst nicht aus"
+    assert "9222/json/version" in unit, "er prueft nicht, ob der Port wirklich bedient wird"
+    assert "Restart=always" in unit
+
+
+def test_the_keeper_uses_a_throwaway_profile() -> None:
+    """Die Notloesung vom 12.09. lief mit `--user-data-dir=/tmp/cdp-profile`: jeder
+    Neustart haette Anmeldungen und Einstellungen verloren. Der Keeper nimmt dasselbe
+    persistente Profil wie der System-Dienst."""
+    unit = (Path(__file__).resolve().parents[1]
+            / "deploy/talos-browser-keeper.service").read_text(encoding="utf-8")
+    assert "/home/desk/.config/talos-browser" in unit
+    assert "/tmp/" not in unit, "ein Wegwerf-Profil ueberlebt keinen Neustart"

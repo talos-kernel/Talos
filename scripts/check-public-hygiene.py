@@ -34,6 +34,7 @@ ALLOWED_ENDPOINT_FIXTURE_HOSTS = {
     # Gast ueberhaupt erst hinausdarf. Das ist die Verdrahtung selbst, kein Geheimnis.
     "deploy/computer-cloud-init.json": frozenset({"10.0.2.100"}),
     "deploy/talos-guest-browser.service": frozenset({"10.0.2.100"}),
+    "deploy/talos-browser-keeper.service": frozenset({"10.0.2.100", "127.0.0.1"}),
     # E2E-Faelle, die einen echten lokalen Server starten, statt gegen eine Attrappe zu
     # pruefen. Die Adresse ist das Fixture.
     "tests/computer_browser_e2e.py": frozenset({"127.0.0.1", "localhost"}),

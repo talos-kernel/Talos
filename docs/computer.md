@@ -253,3 +253,35 @@ It requires Playwright and Chromium, reads the private configuration only for th
 test session, and checks Expand, zoom/scroll, fullscreen, reload persistence and
 mobile layout twice. `--candidate-assets` tests this checkout over the installed
 backend before updating the three static workbench assets.
+
+## Wenn der Browser nicht zurückkommt (ältere Computer)
+
+Ein Computer, der vor 0.19.9 angelegt wurde, trägt `Restart=on-failure` in
+`talos-browser.service`. Chromium beendet sich aber auch **sauber** — ein geschlossenes
+Fenster, `chrome://quit`, ein aufgeräumter OOM-Abbruch liefern Exit 0, und die werden
+damit nicht neu gestartet. Gemessen am 12.09.2026: der Browser starb am 7. September
+und kam bis zum 12. nicht zurück; ein Auftrag lief in `ECONNREFUSED 127.0.0.1:9222`
+und kostete über zwanzig Minuten Suche.
+
+Ab 0.19.9 steht `Restart=always` in der Unit — neue Computer sind damit versorgt.
+
+⚠️ **Ein bestehender Computer lässt sich nicht nachrüsten**, und das ist Absicht:
+`deploy/computer-setup.py` weigert sich, eine vorhandene VM zu ersetzen, der Gast hat
+kein Root-SSH, `desk` kein passwortloses `sudo`, und die Unit gehört root. Genau diese
+Isolation ist der Sinn des Computers.
+
+Was ohne root geht, ist ein **Netz auf Nutzerebene**:
+`deploy/talos-browser-keeper.service` nach `~/.config/systemd/user/` im Gast, dann
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now talos-browser-keeper
+```
+
+Er weicht dem System-Dienst aus, statt mit ihm um Port 9222 zu streiten: antwortet der
+Port bereits, bricht der Start ab und `Restart=always` prüft zehn Sekunden später
+erneut. Er übernimmt also nur, wenn wirklich niemand bedient — und benutzt dasselbe
+persistente Profil, nicht `/tmp`, damit Anmeldungen einen Neustart überleben.
+
+`loginctl show-user desk -p Linger` muss `yes` melden, sonst läuft die Nutzer-Unit
+nicht ohne angemeldete Sitzung.
