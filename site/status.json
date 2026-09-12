@@ -1,6 +1,6 @@
 {
-  "version": "0.19.6-alpha",
-  "tests": 2712,
+  "version": "0.19.7-alpha",
+  "tests": 2714,
   "redteam_faelle": 252,
   "kernel_zeilen": 915,
   "werkzeuge": 31,

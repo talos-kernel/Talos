@@ -583,14 +583,34 @@ PROVIDERS: tuple[ProviderInfo, ...] = (
         slug="claude-cli",
         label="Claude CLI (subscription login)",
         auth="cli",
+        # Gemessen gegen die installierte CLI am 12.09.2026, nicht aus einer
+        # Ankuendigung abgeschrieben: jeder Name wurde einzeln aufgerufen und musste
+        # antworten. Die CLI prueft den Namen LOKAL, bevor sie das Kontingent anfasst —
+        # ein unbekannter Name meldet `unrecognized_model`, ein stillgelegter meldet
+        # „was retired on …". Beides sieht im Katalog gleich aus und ist es nicht.
+        #
+        # ⚠️ Bewusst NICHT aufgenommen:
+        #   * `claude-opus-4`, `claude-sonnet-4`, `claude-3-7-sonnet` — stillgelegt.
+        #     Die CLI kennt die Namen noch, das Modell gibt es nicht mehr. Ein totes
+        #     Modell in der Auswahl kostet den Betreiber einen Fehlversuch mitten in
+        #     einer Aufgabe.
+        #   * `claude-3-5-sonnet` — kein Zugriff ueber dieses Abo.
+        #   * die Kurzformen `opus`, `sonnet`, `haiku`, `fable`. Sie funktionieren, aber
+        #     sie bedeuten „das neueste" und wandern damit unter der Hand. Im
+        #     append-only Log stuende dann „opus", ohne zu sagen WELCHES — und die
+        #     Frage „womit hat er das beantwortet" waere nachtraeglich nicht mehr
+        #     beantwortbar. Namen im Katalog benennen genau ein Modell.
         models=(
             "claude-opus-5",
             "claude-fable-5",
             "claude-sonnet-5",
-            "claude-opus-4-8",
-            "claude-sonnet-4-6",
-            "claude-haiku-4-5",
             "claude-fable-5-1",
+            "claude-opus-4-8",
+            "claude-opus-4-5",
+            "claude-opus-4-1",
+            "claude-sonnet-4-6",
+            "claude-sonnet-4-5",
+            "claude-haiku-4-5",
         ),
         notes="Requires the claude CLI installed and logged in on this machine.",
     ),

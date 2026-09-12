@@ -857,7 +857,28 @@ def safe_talos_registry(registry: ProviderRegistry | None) -> ProviderRegistry:
         "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6",
     )
     # An installed Hermes catalog can lag Anthropic's official catalog. Keep every
-    # native entry in place, but do not let that lag hide Talos's curated additions.
+    # native entry in place, but do not let that lag hide Talos's curated additions —
+    # and do not let it offer models that no longer exist.
+    #
+    # Beides gemessen am 12.09.2026 gegen die installierte CLI, Modell fuer Modell:
+    # auf einer laufenden Installation fehlte `claude-opus-5` — das Spitzenmodell —
+    # waehrend `claude-sonnet-4-20250514` noch in der Auswahl stand und mit
+    # „was retired" antwortete. Ein totes Modell im Picker kostet den Betreiber einen
+    # Fehlversuch mitten in einer Aufgabe; ein fehlendes kostet ihn das beste Modell,
+    # das er bezahlt hat.
+    #
+    # ⚠️ Ergaenzt wird nur, was NACHGEWIESEN antwortet, und entfernt nur, was
+    # NACHGEWIESEN stillgelegt ist. Die CLI prueft den Namen lokal, bevor sie das
+    # Kontingent anfasst: ein unbekannter Name meldet `unrecognized_model`, ein
+    # stillgelegter „was retired on …" — im Katalog sehen beide gleich aus und sind es
+    # nicht. ⚠️ Die gepinnte Fassung kann leben, waehrend der Alias stirbt:
+    # `claude-opus-4` gilt als stillgelegt, `claude-opus-4-20250514` antwortet.
+    # Deshalb steht hier die exakte Kennung, nie eine Familie.
+    for kuratiert in ("claude-opus-5", "claude-opus-4-1"):
+        if kuratiert not in claude_models:
+            claude_models += (kuratiert,)
+    STILLGELEGT = ("claude-sonnet-4-20250514",)
+    claude_models = tuple(m for m in claude_models if m not in STILLGELEGT)
     if "claude-fable-5-1" not in claude_models:
         claude_models += ("claude-fable-5-1",)
     providers: list[Provider] = []

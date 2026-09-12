@@ -385,7 +385,45 @@ def test_safe_registry_routes_claude_only_through_cli_and_blocks_antigravity() -
     assert safe.get("claude-cli") == Provider(
         "claude-cli",
         "Anthropics Max (CLI OAuth)",
-        ("claude-fable-5", "claude-sonnet-5", "claude-fable-5-1"),
+        ("claude-fable-5", "claude-sonnet-5", "claude-opus-5",
+         "claude-opus-4-1", "claude-fable-5-1"),
+    )
+
+
+def test_a_lagging_catalog_hides_the_flagship_model() -> None:
+    """Ein Hermes-Katalog, der hinterherhaengt, darf das beste Modell nicht verstecken.
+
+    Gemessen am 12.09.2026 auf einer laufenden Installation: die Auswahl fuehrte zwoelf
+    Claude-Modelle — aber `claude-opus-5` war nicht darunter. Der Betreiber bezahlt ein
+    Abo und bekam das Spitzenmodell nicht angeboten, ohne dass irgendetwas fehlschlug.
+    """
+    raw = ProviderRegistry((Provider("anthropic", "Anthropic", ("claude-sonnet-5",)),))
+    safe = safe_talos_registry(raw)
+    modelle = safe.get("claude-cli").models
+    for kuratiert in ("claude-opus-5", "claude-opus-4-1", "claude-fable-5-1"):
+        assert kuratiert in modelle, f"{kuratiert} fehlt in der Auswahl"
+
+
+def test_a_retired_model_stays_in_the_picker() -> None:
+    """Die andere Richtung: was stillgelegt ist, gehoert raus.
+
+    `claude-sonnet-4-20250514` stand noch in der Auswahl und antwortete mit
+    „was retired". Ein totes Modell im Picker kostet einen Fehlversuch mitten in einer
+    Aufgabe — und zwar genau dann, wenn jemand bewusst umschaltet, weil es gerade
+    klemmt.
+
+    ⚠️ Gefiltert wird die exakte Kennung, nie eine Familie: `claude-opus-4` gilt als
+    stillgelegt, waehrend die gepinnte `claude-opus-4-20250514` weiter antwortet.
+    """
+    raw = ProviderRegistry((
+        Provider("anthropic", "Anthropic",
+                 ("claude-sonnet-5", "claude-sonnet-4-20250514",
+                  "claude-opus-4-20250514")),
+    ))
+    modelle = safe_talos_registry(raw).get("claude-cli").models
+    assert "claude-sonnet-4-20250514" not in modelle, "stillgelegtes Modell im Picker"
+    assert "claude-opus-4-20250514" in modelle, (
+        "die gepinnte Opus-4-Fassung lebt und wurde mitgefiltert"
     )
 
 
