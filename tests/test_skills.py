@@ -529,3 +529,136 @@ def test_the_skills_view_names_what_talos_refuses_to_obey(tmp_path: Path) -> Non
     assert "ignores that field" in view
     # Der deklarierte Wert selbst gehoert nicht in die Ansicht — nur die Tatsache.
     assert "Bash(git:*)" not in view
+
+
+# ---------------------------------------------------------------- Rangfolge
+
+
+def _ranked(root: Path, query: str) -> list[str]:
+    """Die Namen in der Reihenfolge, in der sie im Katalog stehen — nichts abgeschnitten."""
+    rendered = discover_skills(root).render(query=query, max_chars=1_000_000)
+    return re.findall(r"^- ([^\s—]+) —", rendered, re.MULTILINE)
+
+
+def test_a_filler_word_in_the_name_outranks_a_real_match(tmp_path: Path) -> None:
+    """Der Fund vom 12.09.2026: kebab-case macht Fuellwoerter zu Volltreffern.
+
+    Skill-Namen sind kebab-case, also ist jedes Wort darin ein Token wie jedes andere.
+    Im Bestand des Betreibers steckte `with` in 19 von 218 Namen, `api` in 25, `for` in
+    14 — jedes davon war 10 Punkte wert, ein inhaltlich echter Treffer in der
+    Beschreibung dagegen 1. Die Folge war messbar: „plan a trip with miles" fand den
+    Reise-Skill nicht, weil neunzehn Pentest-Skills sich das Wort „with" teilten.
+
+    Der Test baut genau diese Lage nach: viele Namen mit demselben Fuellwort, ein
+    einziger Skill, der die Frage wirklich beantwortet.
+    """
+    root = tmp_path / "skills"
+    for index in range(12):
+        _simple(root, f"testing-thing{index}-with-sqlmap", "Unrelated security work.")
+    _simple(root, "concierge", "Plans a trip, finds flights and hotels, optimises miles.")
+
+    order = _ranked(root, "plan a trip with miles")
+
+    assert order[0] == "concierge", (
+        "Ein Fuellwort im Namen schlaegt den einzigen Skill, der die Frage beantwortet. "
+        f"Reihenfolge war: {order[:4]}"
+    )
+
+
+def test_a_rare_word_in_the_name_still_wins(tmp_path: Path) -> None:
+    """Gegenbeleg: der Namensbonus darf nicht generell verschwinden.
+
+    Ohne diesen Fall koennte man den Test darueber gruen bekommen, indem man den
+    Namensbonus einfach abschafft — und haette die Rangfolge dabei kaputtgemacht.
+    """
+    root = tmp_path / "skills"
+    for index in range(12):
+        _simple(root, f"testing-thing{index}-with-sqlmap", "Unrelated security work.")
+    _simple(root, "kubernetes-intro", "Orchestration. Mentions docker in passing.")
+    _simple(root, "docker-compose", "Runs several containers together.")
+
+    order = _ranked(root, "docker")
+
+    assert order[0] == "docker-compose", (
+        "`docker` steckt in genau einem Namen, ist also unterscheidend — der Bonus "
+        f"muss greifen. Reihenfolge war: {order[:3]}"
+    )
+
+
+def test_a_common_name_word_falls_behind_a_passing_mention(tmp_path: Path) -> None:
+    """Der Boden ist 1 und nicht 0 — sonst entsteht eine neue Fehlerklasse.
+
+    Entwertet man ein haeufiges Namenswort auf null Punkte, dann schlaegt bei einem
+    kleinen Katalog ein Skill, der das Wort nur nebenbei in der Beschreibung erwaehnt,
+    die drei, die es im Namen tragen. Gemessen an fuenf Skills: `kubernetes-intro` stand
+    vor allen drei `docker-*`. Ein Namenstreffer darf nie WENIGER wert sein als ein
+    Beschreibungstreffer.
+    """
+    root = tmp_path / "skills"
+    for name in ("docker-basics", "docker-compose", "docker-security"):
+        _simple(root, name, "Container work.")
+    _simple(root, "kubernetes-intro", "Orchestration. Mentions docker in passing.")
+    _simple(root, "git-basics", "Version control.")
+
+    order = _ranked(root, "docker")
+
+    assert order[-1] == "git-basics", "der voellig unbeteiligte Skill gehoert ans Ende"
+    assert order.index("kubernetes-intro") > order.index("docker-basics"), (
+        "Ein Skill, der `docker` nur erwaehnt, steht vor denen, die es im Namen tragen. "
+        f"Reihenfolge war: {order}"
+    )
+
+
+def test_the_threshold_scales_with_the_catalog(tmp_path: Path) -> None:
+    """Der Anteil kalibriert sich am Bestand, er ist keine feste Zahl.
+
+    Dasselbe Wort in denselben drei Namen: in einem kleinen Katalog teilen es zu viele,
+    in einem grossen ist es selten. Eine feste Obergrenze koennte das nicht leisten.
+    """
+    klein = tmp_path / "klein"
+    for name in ("api-design", "api-testing", "api-security"):
+        _simple(klein, name, "Work on interfaces.")
+    _simple(klein, "irgendwas", "Mentions api once.")
+    assert _ranked(klein, "api")[0] != "irgendwas", "Boden 1 haelt die Namen vorn"
+
+    gross = tmp_path / "gross"
+    for name in ("api-design", "api-testing", "api-security"):
+        _simple(gross, name, "Work on interfaces.")
+    for index in range(100):
+        _simple(gross, f"unrelated-topic{index}", "Something else entirely.")
+    _simple(gross, "irgendwas", "Mentions api once.")
+
+    order = _ranked(gross, "api")
+    assert set(order[:3]) == {"api-design", "api-security", "api-testing"}, (
+        f"bei 104 Skills ist `api` selten und muss die 10 Punkte geben: {order[:4]}"
+    )
+
+
+def test_a_german_question_finds_a_german_skill(tmp_path: Path) -> None:
+    """Die Zerlegung muss Umlaute als Wortbestandteil behandeln, nicht als Trenner.
+
+    `\\w` ist in Python unicode-bewusst, `casefold` macht aus „Sicherheitslücken" und
+    „SICHERHEITSLÜCKEN" dasselbe Wort. Ein ASCII-Ersatz ist dagegen ein ANDERES Wort:
+    „Saeule" trifft „Säule" nicht — genau daran ist am 12.09. eine Messung gescheitert,
+    nicht am Code.
+    """
+    root = tmp_path / "skills"
+    _simple(root, "steuerfuchs", "Schweizer Steuern, Abzüge, Säule 3a, Quellensteuer.")
+    # Der Kontroll-Skill steht alphabetisch VOR steuerfuchs. Sonst gewaenne steuerfuchs
+    # schon durch die Gleichstandsregel, und der Test bewiese nur die Sortierung.
+    _simple(root, "allerlei", "Something else entirely.")
+
+    assert _ranked(root, "Wie hoch ist meine SÄULE 3a Einzahlung?")[0] == "steuerfuchs"
+    assert _ranked(root, "Was bringt mir die Saeule 3a?")[0] == "allerlei", (
+        "Ein ASCII-Ersatz darf nicht treffen — sonst behauptet der Test eine "
+        "Normalisierung, die es nicht gibt, und verdeckt echte Fehlschlaege"
+    )
+
+
+def test_an_empty_query_keeps_the_catalog_order(tmp_path: Path) -> None:
+    """Ohne Frage wird nicht sortiert — und es wird auch nichts gezaehlt."""
+    root = tmp_path / "skills"
+    for name in ("charlie", "alpha", "bravo"):
+        _simple(root, name)
+
+    assert _ranked(root, "") == ["alpha", "bravo", "charlie"], "discover_skills sortiert stabil"

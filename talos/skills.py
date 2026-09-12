@@ -47,6 +47,7 @@ from __future__ import annotations
 import os
 import re
 import stat
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -67,6 +68,19 @@ MAX_BODY_CHARS = 20_000
 MAX_CATALOG_DESCRIPTION_CHARS = 200
 MAX_CATALOG_CHARS = 4_000
 MAX_SKILLS = 500
+
+# Ab welchem Anteil aller Skill-Namen ein Wort als nichtssagend gilt. Siehe `render`.
+NAME_TERM_COMMON_SHARE = 0.05
+
+def _terms(text: str) -> set[str]:
+    """Die Wortmenge, auf der die Rangfolge rechnet.
+
+    Ein Wort ab drei Zeichen, klein geschrieben. `casefold` statt `lower`, damit „Straße"
+    und „Strasse" dasselbe Wort sind; `\\w` ist in Python unicode-bewusst, „Sicherheitslücke"
+    bleibt also ein Wort und zerfaellt nicht am Umlaut.
+    """
+    return set(re.findall(r"\w{3,}", text.casefold()))
+
 
 BODY_TRUNCATED = "\n…[skill truncated]"
 DESCRIPTION_TRUNCATED = "…"
@@ -159,11 +173,28 @@ class SkillCatalog:
         """
         # Match the current request BEFORE applying the context cap. Alphabetical
         # truncation otherwise makes later skills permanently invisible.
-        terms = set(re.findall(r"\w{3,}", query.casefold()[-6000:]))
+        terms = _terms(query.casefold()[-6000:])
+        # Ein Skill-Name ist kebab-case, also ist JEDES Wort darin ein Treffer — auch ein
+        # Fuellwort. Gemessen am 12.09.2026 an 218 Skills: `with` steckt in 19 Namen,
+        # `api` in 25, `for` in 14. Eine Frage mit „for" verschenkte damit 10 Punkte an
+        # 14 voellig fremde Skills, waehrend ein inhaltlich echter Treffer in der
+        # Beschreibung 1 zaehlt — „plan a trip with miles" fand deshalb den Reise-Skill
+        # nicht. Wer viele Namen teilt, unterscheidet sie nicht: fuer so ein Wort gibt es
+        # keinen Namensbonus mehr.
+        #
+        # Gemessen statt gelistet: eine Stoppwortliste waere in der naechsten Sprache
+        # wieder falsch und muesste gepflegt werden. Der Anteil kalibriert sich am
+        # eigenen Bestand und gilt fuer Deutsch wie Englisch.
+        #
+        # Der Boden ist 1, nicht 0. Ein Namenstreffer darf nie WENIGER wert sein als ein
+        # Beschreibungstreffer: bei einem kleinen Katalog schlaegt sonst ein Skill, der
+        # das Wort nur nebenbei erwaehnt, die drei, die es im Namen tragen.
+        common = Counter(word for skill in self.skills for word in _terms(skill.name)) if terms else Counter()
+        limit = max(2, int(len(self.skills) * NAME_TERM_COMMON_SHARE))
         def score(skill: Skill) -> int:
-            name = set(re.findall(r"\w{3,}", skill.name.casefold()))
-            description = set(re.findall(r"\w{3,}", skill.description.casefold()))
-            return 10 * len(name & terms) + len(description & terms)
+            name = _terms(skill.name) & terms
+            rare = sum(1 for word in name if common[word] <= limit)
+            return 10 * rare + (len(name) - rare) + len(_terms(skill.description) & terms)
         ordered = sorted(self.skills, key=lambda skill: (-score(skill), skill.name)) if terms else self.skills
         lines = tuple(f"{skill.catalog_line()}\n  path: {skill.path}" for skill in ordered)
         for kept in range(len(lines), -1, -1):

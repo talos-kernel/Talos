@@ -8,6 +8,21 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ## [Unreleased]
 
+## [0.19.13-alpha] — 2026-09-13
+
+### Fixed
+
+- Skill ranking no longer hands the name bonus to filler words. Skill names are
+  kebab-case, so every word in one counted as a full match: in a 218-skill library
+  `with` sat in 19 names, `api` in 25, `for` in 14 — each worth ten points, while a
+  genuinely relevant hit in the description scored one. A question containing "with"
+  therefore ranked nineteen unrelated skills above the one that answered it. A word
+  shared by more than five percent of all names no longer earns the bonus; the share
+  calibrates itself against the library at hand rather than against a hand-kept list of
+  stop words, which would be wrong again in the next language. A name hit is never worth
+  less than a description hit, so a skill that merely mentions a word in passing cannot
+  overtake the ones that carry it in their name.
+
 ## [0.18.1-alpha] — 2026-09-06
 
 ### Security
