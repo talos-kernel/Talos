@@ -50,7 +50,11 @@ def test_structured_error_is_safe_and_identical_on_both_streams(stream):
     e = cli_failure(raw if stream == 'stdout' else '', raw if stream == 'stderr' else '',
                     75, provider='kimi-cli', model='test-model')
     assert e.kind == 'empty_response' and e.exit_code == 75
-    assert not e.fallback_allowed
+    # WICHTIG: Hier stand `assert not e.fallback_allowed`. Seit dem 12.09. darf eine
+    # leere Antwort die Kette ausloesen — sie ist eine Fehlfunktion, keine Ablehnung,
+    # und ein anderer Anbieter hilft plausibel (siehe tests/test_fallback.py). Die
+    # Zusicherung gehoerte hier ohnehin nicht hin: dieser Fall prueft REDAKTION.
+    assert e.fallback_allowed is True
     assert 'private prompt' not in str(e) + json.dumps(e.event_data())
     assert 'secret-fixture' not in str(e) + json.dumps(e.event_data())
 
@@ -148,11 +152,41 @@ def test_no_retry_after_visible_partial_output_or_expired_budget(tmp_path):
     assert calls == ['one']
 
 
-def test_cli_classification_does_not_enable_existing_provider_fallback(tmp_path):
+def test_an_unclassifiable_cli_failure_still_never_hops(tmp_path):
+    """Die Grenze, die bleibt: was sich NICHT sauber klassifizieren laesst, loest
+    die Kette weiterhin nicht aus.
+
+    Bis zum 12.09. hielt dieser Fall fest, dass eine CLI-Klassifikation *nie*
+    weiterschaltet — mit `empty_response` als Beispiel. Das war zu breit: eine leere
+    Antwort ist klassifiziert UND eine Fehlfunktion, dort hilft der naechste Anbieter.
+    Geprueft wird jetzt der Fall, um den es wirklich ging: ein unklarer Fehler
+    (`unknown`) bleibt am Platz, denn niemand weiss, ob ein Wechsel etwas heilt.
+    """
     class Fake:
-        def reason(self, prompt, on_text=None): raise empty()
+        def reason(self, prompt, on_text=None):
+            raise cli_failure('irgendein Absturz', '', 1, provider='kimi-cli', model='k3')
     hops = []
     chain = FallbackReasoner(Fake(), (ModelSelection('other', 'model'),),
                            lambda x: hops.append(x), EventLog(tmp_path/'fallback.db'))
     with pytest.raises(ReasonerFailure): chain.reason('one')
     assert hops == []
+
+
+def test_a_classified_empty_response_does_hop(tmp_path):
+    """Der Gegenbeleg — sonst pruefte der Fall oben nur, dass die Kette nie greift."""
+    class Fake:
+        def reason(self, prompt, on_text=None):
+            raise cli_failure('The API returned an empty response.', '', 75,
+                              provider='kimi-cli', model='k3')
+    hops = []
+
+    def bauen(auswahl):
+        hops.append(auswahl)
+        class Sprung:
+            def reason(self, prompt, on_text=None): return 'Ersatz antwortet.'
+        return Sprung()
+
+    chain = FallbackReasoner(Fake(), (ModelSelection('other', 'model'),),
+                             bauen, EventLog(tmp_path/'fallback.db'))
+    assert 'Ersatz antwortet.' in chain.reason('one')
+    assert len(hops) == 1, 'die Kette ist nicht gesprungen'

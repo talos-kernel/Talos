@@ -84,7 +84,20 @@ def cli_failure(stdout: str, stderr: str, exit_code: int, *,
     message = _MESSAGES[kind]
     if reset:
         message = "You've hit your session limit · resets " + reset
+    # Bei anbieterseitiger Stoerung darf die Kette zum naechsten Anbieter wechseln —
+    # genau dann hilft ein anderer. Drosselung (429), Ueberlast (5xx) und eine leere
+    # Antwort gehoeren dazu; letztere ist eine Fehlfunktion, keine Ablehnung.
+    #
+    # Lokale Fehler und Auth-Fehler (`unknown`, `key_rejected`, `http_failed`)
+    # schalten hier bewusst NICHT weiter: dort waere der naechste Anbieter kein
+    # Heilmittel, sondern nur dieselbe Anfrage ein zweites Mal — teurer und bei einem
+    # 4xx mit demselben Ergebnis.
+    #
+    # ⚠️ Zwei Tore, nicht eines: `fallback_allowed` hier UND `kind in
+    # FALLBACKABLE_KINDS` in `api_reasoner.py`. Wer nur eines patcht, aendert nichts —
+    # `FallbackReasoner.reason` verlangt beide. Das kostete am 12.09. den ersten Anlauf.
+    darf_wechseln = kind in ("rate_limited", "overloaded", "empty_response")
     return ReasonerFailure(f"{provider}: {message}", kind=kind,
                            note=f"Exit {exit_code}", provider=provider, model=model,
                            exit_code=exit_code, http_status=status, reset_hint=reset,
-                           fallback_allowed=False)
+                           fallback_allowed=darf_wechseln)

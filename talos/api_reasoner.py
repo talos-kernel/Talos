@@ -130,6 +130,11 @@ KIND_OVERLOADED = "overloaded"
 KIND_NETWORK_FAILED = "network_failed"
 KIND_TIMED_OUT = "timed_out"
 KIND_HTTP_FAILED = "http_failed"
+# Der Anbieter hat NICHTS geliefert — erhoben aus zwei konkreten Meldungen
+# (`provider_errors.py`), nicht aus geratenem Text. Bewusst eine eigene Art neben
+# `http_failed`: dort hat das Modell verstanden und abgelehnt, hier hat es gar nicht
+# geantwortet. Der Unterschied entscheidet, ob ein anderer Anbieter helfen kann.
+KIND_EMPTY_RESPONSE = "empty_response"
 
 # Ein 4xx-Fachfehler (HTTP_FAILED) loest die Kette bewusst NICHT aus: das Modell hat die
 # Anfrage verstanden und fachlich abgelehnt — der naechste Anbieter bekaeme dieselbe
@@ -140,6 +145,23 @@ FALLBACKABLE_KINDS: frozenset[str] = frozenset({
     KIND_OVERLOADED,
     KIND_NETWORK_FAILED,
     KIND_TIMED_OUT,
+    # ⚠️ Eine leere Antwort ist eine FEHLFUNKTION, keine Ablehnung — und genau darin
+    # unterscheidet sie sich von HTTP_FAILED, das hier bewusst fehlt. Wer ablehnt,
+    # antwortet mit Text („das kann ich nicht"); wer nichts liefert, hat nicht
+    # verstanden und abgelehnt, sondern gar nicht geantwortet. Erhoben wird die Art
+    # nur bei zwei konkreten Meldungen des Anbieters („returned an empty response",
+    # „only thinking content"), nicht aus geratenem Text.
+    #
+    # Der naechste Anbieter hilft hier also plausibel — das Kriterium dieser Liste.
+    # Und er wird nicht vorschnell gefragt: `ModelRouter` wiederholt bei dieser Art
+    # zuerst EINMAL beim selben Anbieter (provider.py). Die Kette greift erst, wenn
+    # auch der zweite Versuch leer bleibt.
+    #
+    # Gemessen auf einer laufenden Installation (12.09.2026): kimi-cli lieferte leere
+    # Completions mit Exit 75. Der Router wiederholte zweimal, dann war Schluss —
+    # Distill-Laeufe endeten als `distill.failed`, obwohl zwei funktionierende
+    # Anbieter in der Kette standen.
+    KIND_EMPTY_RESPONSE,
 })
 
 # Die Arten, die der Modell-Worker ueber den Socket melden darf — exakt dieselbe

@@ -58,6 +58,10 @@ _GRUND = {
     "overloaded": "überlastet",
     "network_failed": "Netzfehler",
     "timed_out": "Zeitüberschreitung",
+    # Der Betreiber soll am Prefix sehen, WARUM gewechselt wurde. „leere Antwort"
+    # sagt genau das, was passiert ist — und unterscheidet sich hoerbar von einer
+    # Ablehnung, die als Text zurueckkaeme und gar keinen Hop ausloest.
+    "empty_response": "leere Antwort",
 }
 
 

@@ -289,3 +289,50 @@ def test_dashboard_help_explains_the_boundary(capsys) -> None:
     assert code == 0
     out = capsys.readouterr().out
     assert "127.0.0.1" in out
+
+
+def test_an_expired_approval_is_still_reported_as_open(server, tmp_path: Path) -> None:
+    """Gemessen am 12.09. auf einer echten Installation: 25 angeblich offene Freigaben,
+    9,8 bis 89,8 Stunden alt — und alle 25 Laeufe nachweislich beendet. Es wartete
+    nichts. Eine Freigabe laeuft nach `TTL_SECONDS` ab; danach ist sie tot, und wer sie
+    weiter meldet, schickt den Betreiber auf die Suche nach einem Geist.
+
+    `briefing.py` rechnete von Anfang an so. Diese Pruefung haelt die zweite Stelle
+    daran fest.
+    """
+    from talos.approval import TTL_SECONDS
+
+    _fertig, _offen, _wartend = _seed_runs(tmp_path)
+    alt_run = "run-laengst-abgelaufen"
+    log = EventLog(tmp_path / "eventlog.db")
+    vor_langem = time.time() - TTL_SECONDS - 3600
+    log.append(
+        Event(alt_run, "kernel", "exec.intent",
+              {"tool": "remote_exec", "verdict": "needs_human", "targets": []}),
+        now=vor_langem,
+    )
+    log.append(Event(alt_run, "conductor", "approval.parked",
+                     {"tool": "remote_exec", "targets": []}), now=vor_langem + 1)
+    log.close()
+
+    code, _typ, body = _get(server, "/api/approvals")
+    assert code == 200
+    offen = {e["run_id"] for e in json.loads(body)["open"]["items"]}
+    assert alt_run not in offen, "eine abgelaufene Freigabe wird als offen gemeldet"
+
+
+def test_a_fresh_approval_stops_being_reported(server, tmp_path: Path) -> None:
+    """Gegenbeleg: sonst pruefte der Fall oben nur, dass ueberhaupt nichts gemeldet wird."""
+    _fertig, _offen, _wartend = _seed_runs(tmp_path)
+    frisch = "run-gerade-eben"
+    log = EventLog(tmp_path / "eventlog.db")
+    log.append(
+        Event(frisch, "kernel", "exec.intent",
+              {"tool": "remote_exec", "verdict": "needs_human", "targets": []}),
+        now=time.time() - 5,
+    )
+    log.close()
+
+    code, _typ, body = _get(server, "/api/approvals")
+    offen = {e["run_id"] for e in json.loads(body)["open"]["items"]}
+    assert frisch in offen, "eine eben gestellte Frage muss als offen erscheinen"

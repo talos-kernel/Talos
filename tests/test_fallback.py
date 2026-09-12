@@ -287,3 +287,123 @@ def test_load_config_reads_the_chain(tmp_path: Path, monkeypatch: pytest.MonkeyP
     )
     cfg = config_modul.load_config(require_channel=False)
     assert parse_chain(cfg.model_fallbacks) == (OLLAMA_HOP, NVIDIA_HOP)
+
+
+# --- Leere Antwort: Fehlfunktion, nicht Ablehnung ---------------------------------
+def test_an_empty_response_is_fallbackable_because_it_is_a_malfunction() -> None:
+    """Gemessen auf einer laufenden Installation am 12.09.2026: kimi-cli lieferte leere
+    Completions mit Exit 75. Der Router wiederholte intern, danach war Schluss — und
+    Distill-Laeufe endeten als `distill.failed`, obwohl zwei funktionierende Anbieter
+    in der Kette standen.
+
+    Eine leere Antwort ist eine FEHLFUNKTION: der Anbieter hat nicht verstanden und
+    abgelehnt, er hat gar nicht geantwortet. Eine Ablehnung kaeme als Text zurueck und
+    loeste hier gar nichts aus. Damit erfuellt sie das Kriterium dieser Liste — ein
+    anderer Anbieter hilft plausibel.
+    """
+    from talos.api_reasoner import FALLBACKABLE_KINDS, KIND_EMPTY_RESPONSE
+
+    assert KIND_EMPTY_RESPONSE in FALLBACKABLE_KINDS
+
+
+def test_the_loosening_does_not_take_http_failed_with_it() -> None:
+    """DIE Grenze daneben: die Lockerung darf HTTP_FAILED nicht mitnehmen.
+
+    Bei einem 4xx hat das Modell die Anfrage verstanden und abgelehnt — der naechste
+    Anbieter bekaeme dieselbe Anfrage und antwortete gleich, nur teurer. Genau dieser
+    Fall unterscheidet eine begruendete Lockerung von einer bequemen.
+    """
+    from talos.api_reasoner import (
+        FALLBACKABLE_KINDS, KIND_HTTP_FAILED,
+    )
+
+    assert KIND_HTTP_FAILED not in FALLBACKABLE_KINDS
+    assert "unknown" not in FALLBACKABLE_KINDS
+
+
+def test_both_gates_are_required_to_switch_providers() -> None:
+    """Zwei Tore, nicht eines — und das hat den ersten Anlauf gekostet.
+
+    `FallbackReasoner.reason` verlangt BEIDES: `err.fallback_allowed` UND
+    `err.kind in FALLBACKABLE_KINDS`. Wer nur eines patcht, aendert nichts und sucht
+    den Fehler danach an der falschen Stelle.
+    """
+    from talos.api_reasoner import FALLBACKABLE_KINDS
+    import inspect
+
+    quelle = inspect.getsource(FallbackReasoner.reason)
+    assert "fallback_allowed" in quelle, "das erste Tor ist verschwunden"
+    assert "FALLBACKABLE_KINDS" in quelle, "das zweite Tor ist verschwunden"
+
+    # Und beide Tore muessen fuer diese Art offen sein, sonst wirkt der Fix nicht.
+    from talos.provider_errors import _MESSAGES  # noqa: F401 — nur Existenzbeweis
+    fehler = ReasonerFailure("x", kind="empty_response", fallback_allowed=True)
+    assert fehler.fallback_allowed and fehler.kind in FALLBACKABLE_KINDS
+
+
+def test_every_fallbackable_kind_has_a_reason_text() -> None:
+    """Ein stiller Wechsel des Denkers ist derselbe Vertrauensbruch wie ein stiller
+    Katalog-Rueckfall. Fuer jede fallbackbare Art muss ein Grund-Text existieren."""
+    from talos.api_reasoner import FALLBACKABLE_KINDS
+    from talos.fallback import _GRUND
+
+    ohne_text = sorted(k for k in FALLBACKABLE_KINDS if k not in _GRUND)
+    assert not ohne_text, f"ohne Grund-Text im Prefix: {ohne_text}"
+
+
+def test_an_empty_response_really_hops_to_the_next_provider(tmp_path: Path) -> None:
+    """Der Verhaltensbeweis. Die Faelle darueber pruefen die beiden Tore; dieser hier
+    laesst den Primaer-Anbieter wirklich leer antworten und verlangt, dass die Kette
+    greift und den Wechsel belegt."""
+    http = QueueHttp(FakeResponse([], status_code=200, text=""))
+
+    def primaer(selection: ModelSelection) -> ApiReasoner:
+        reasoner = ApiReasoner(selection.provider, selection.model, OPENAI_ROUTE,
+                               timeout_s=5, http=http)
+
+        def leer(*_a, **_k):
+            raise ReasonerFailure("primär: leer", kind="empty_response",
+                                  provider=selection.provider, model=selection.model,
+                                  fallback_allowed=True)
+
+        reasoner.reason_strict = leer  # type: ignore[method-assign]
+        return reasoner
+
+    log = EventLog(tmp_path / "events.db")
+    router = ModelRouter(registry(), PRIMARY, primaer, log)
+    kette = FallbackReasoner(router, (OLLAMA_HOP,), ollama_build("Ollama antwortet."), log)
+
+    antwort = kette.reason("x")
+
+    assert "Ollama antwortet." in antwort, "die Kette ist nicht gesprungen"
+    assert "leere Antwort" in antwort, "der Betreiber erfährt den Grund nicht"
+    belege = events(log, FALLBACK_EVENT)
+    assert belege, "der Wechsel ist nicht belegt"
+
+
+def test_the_classifier_itself_marks_an_empty_response_as_switchable() -> None:
+    """Das ERSTE Tor, an seiner Quelle geprüft.
+
+    ⚠️ Diese Pruefung fehlte zunaechst, und die Gegenprobe zeigte es sofort: mit
+    `fallback_allowed=False` in `provider_errors.py` blieb die ganze Datei gruen, weil
+    die Faelle darueber das Flag selbst setzen und die klassifizierende Stelle damit
+    uebersprangen. Ein Test, der den gepatchten Ort gar nicht beruehrt, beweist nichts
+    ueber ihn.
+    """
+    from talos.provider_errors import cli_failure
+
+    leer = cli_failure(
+        "The API returned an empty response.", "", 75,
+        provider="kimi-cli", model="k3",
+    )
+    assert leer.kind == "empty_response"
+    assert leer.fallback_allowed is True, "der Klassifizierer sperrt den Wechsel"
+
+
+def test_the_classifier_opens_the_gate_for_everything() -> None:
+    """Die Grenze an derselben Quelle: was lokal oder fachlich scheitert, wechselt nicht."""
+    from talos.provider_errors import cli_failure
+
+    unbekannt = cli_failure("irgendein Absturz", "", 1, provider="kimi-cli", model="k3")
+    assert unbekannt.kind == "unknown"
+    assert unbekannt.fallback_allowed is False, "ein unklarer Fehler oeffnet die Kette"

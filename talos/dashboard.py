@@ -237,7 +237,7 @@ class Collector:
         `_from_payload` bleibt die eine Stelle, die entscheidet, was als Regel
         durchgeht: keine zweite, mildere Lesart daneben.
         """
-        leer = {"basis": "heuristic — needs_human without a recorded answer",
+        leer = {"basis": "heuristic — needs_human, unanswered, still inside the approval TTL",
                 "items": []}
         try:
             conn = _ro(self.eventlog_db)
@@ -245,6 +245,7 @@ class Collector:
             return {"available": False, "reason": str(fehler),
                     "standing": [], "open": leer}
         from .standing import RESTORE_LIMIT, _from_payload
+        from .approval import TTL_SECONDS
 
         try:
             roh = conn.execute(
@@ -312,6 +313,20 @@ class Collector:
             if stand is not None and stand[1] != "needs_human":
                 continue  # beantwortet (ausgefuehrt oder endgueltig abgelehnt)
             if run_id in verweigert and verweigert[run_id] > int(eid):
+                continue
+            # ⚠️ Und die Frage muss noch leben. Eine Freigabe laeuft nach TTL_SECONDS ab
+            # (`approval.py`); danach ist sie fuer den Betreiber faktisch tot — der Lauf
+            # hat laengst geantwortet, dass er sie parkt, und ist beendet. Sie weiter als
+            # „offen" zu melden, schickt jemanden auf die Suche nach einem Geist.
+            #
+            # Gemessen am 12.09.2026 auf einer echten Installation: 25 angeblich offene
+            # Freigaben, 9,8 bis 89,8 Stunden alt — und ALLE 25 Laeufe nachweislich
+            # beendet (`approval.parked`, `reply.sent`, `done`). Es wartete nichts.
+            #
+            # `briefing.py` rechnete von Anfang an so („wer nach Ablauf der TTL nicht
+            # entschieden wurde, ist faktisch tot"). Zwei Stellen, die dieselbe Frage
+            # verschieden beantworten, sind der eigentliche Fehler — nicht die Zahl.
+            if float(ts) + TTL_SECONDS <= jetzt:
                 continue
             offen.append({
                 "run_id": run_id,
