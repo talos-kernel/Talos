@@ -12,6 +12,33 @@ from urllib.parse import urlsplit, urlunsplit
 ENDPOINT = "http://127.0.0.1:9222"
 
 
+def _verbinden(pw):
+    """Verbindet sich mit dem laufenden Browser — oder sagt genau, was fehlt.
+
+    ⚠️ Ohne diese Stelle kommt ein toter Browser als nackter `ECONNREFUSED
+    127.0.0.1:9222` an. Gemessen am 12.09.2026: ein Agent brauchte daraufhin ueber
+    zwanzig Minuten, um von dieser Meldung bis zur Ursache zu kommen — er musste
+    selbst darauf verfallen, dass hinter dem Port ein Dienst steht, wie der heisst
+    und wie man ihn startet. Die Aufgabe selbst dauerte danach unter einer Minute.
+
+    Das ist derselbe Unterschied, den `remedy.py` fuer den Agenten macht: ein
+    fehlender Dienst ist ein MANGEL, kein Verdikt. Ein Mangel gehoert benannt, samt
+    dem einen Kommando, das ihn behebt. Wer stattdessen eine Portnummer zurueckgibt,
+    laesst den Agenten raten — und Raten kostet genau die Zeit, die hier verloren ging.
+    """
+    from playwright.sync_api import Error as PlaywrightError
+
+    try:
+        return pw.chromium.connect_over_cdp(ENDPOINT, timeout=10000)
+    except PlaywrightError as fehler:
+        raise RuntimeError(
+            f"the browser inside the computer is not reachable on {ENDPOINT}. "
+            "It runs as `talos-browser.service` in the guest; start it there with "
+            "`systemctl start talos-browser` and check `systemctl status "
+            "talos-browser` if it refuses. Nothing was clicked or typed."
+        ) from fehler
+
+
 def tab_id(context, page):
     session = context.new_cdp_session(page)
     try:
@@ -77,7 +104,7 @@ def run(args):
     validate(args)
     root = project_path(args["project"])
     with sync_playwright() as pw:
-        browser = pw.chromium.connect_over_cdp(ENDPOINT, timeout=10000)
+        browser = _verbinden(pw)
         context = browser.contexts[0]
         # Chromium target order can change between CDP connections. Prefer the
         # observed target ID; a missing ID never falls back to a different tab.

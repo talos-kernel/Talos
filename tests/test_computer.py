@@ -193,3 +193,66 @@ def test_headless_cloud_has_no_gui_but_keeps_persistent_execution():
     assert "--headless=new" not in json.dumps(desktop)
     assert any(f["path"].endswith("browser-requirements.lock") for f in desktop["write_files"])
     assert "chromium" in original["packages"]
+
+# --- Der Browser muss da sein, und wenn nicht, muss man es lesen koennen ----------
+BROWSER_UNIT = Path(__file__).resolve().parents[1] / "deploy/talos-guest-browser.service"
+
+
+def test_the_browser_stays_gone_after_a_clean_exit() -> None:
+    """Chromium beendet sich auch SAUBER — geschlossenes Fenster, `chrome://quit`,
+    ein aufgeraeumter OOM-Abbruch liefern Exit 0. Mit `Restart=on-failure` kam der
+    Browser dann nie zurueck, und der naechste Auftrag lief in ein ECONNREFUSED.
+
+    Gemessen am 12.09.2026: ein Agent verbrachte ueber zwanzig Minuten damit, von
+    dieser Meldung zur Ursache zu kommen. Die Aufgabe selbst dauerte danach unter
+    einer Minute.
+    """
+    unit = BROWSER_UNIT.read_text(encoding="utf-8")
+    assert "Restart=always" in unit, "ein sauber beendeter Browser kommt nicht zurueck"
+    assert "Restart=on-failure" not in unit
+
+
+def test_the_restart_limit_silently_stops_the_browser() -> None:
+    """`StartLimitIntervalSec` gehoert in [Unit]. In [Service] ignoriert systemd es seit
+    v229 STILLSCHWEIGEND und haelt den Dienst nach fuenf Starts in zehn Sekunden
+    endgueltig an — genau das, was `Restart=always` verhindern soll.
+
+    ⚠️ Getrennt wird am ZEILENANFANG. Beim ersten Anlauf stand im Kommentar der Unit
+    das Wort in eckigen Klammern, und der Test splittete daran statt am Abschnitt —
+    er verschluckte sich an der eigenen Begruendung und meldete einen Fehler, den es
+    nicht gab.
+    """
+    zeilen = BROWSER_UNIT.read_text(encoding="utf-8").splitlines()
+    abschnitt = None
+    gefunden = {}
+    for zeile in zeilen:
+        if zeile.startswith("[") and zeile.endswith("]"):
+            abschnitt = zeile
+        elif zeile.startswith("StartLimitIntervalSec="):
+            gefunden[abschnitt] = zeile
+    assert gefunden, "die Startgrenze fehlt ganz"
+    assert "[Unit]" in gefunden, f"steht in {list(gefunden)} statt in [Unit] und wirkt nicht"
+
+
+def test_an_unreachable_browser_reports_only_a_port() -> None:
+    """Ein fehlender Dienst ist ein MANGEL, kein Verdikt — er gehoert benannt, samt dem
+    einen Kommando, das ihn behebt (dieselbe Linie wie `remedy.py`). Eine nackte
+    Portnummer laesst den Agenten raten, und Raten kostete hier zwanzig Minuten.
+
+    ⚠️ Geprueft wird die QUELLE, nicht der Aufruf: `browser.py` importiert Playwright
+    auf Modulebene, und Playwright ist keine Abhaengigkeit dieses Projekts — es lebt
+    im Computer-Gast. Ein Test, der das Modul importiert, koennte hier nur
+    uebersprungen werden, und ein uebersprungener Test sagt nichts.
+    """
+    quelle = (Path(__file__).resolve().parents[1] / "talos/computer/browser.py").read_text(
+        encoding="utf-8")
+    assert "connect_over_cdp" in quelle
+    # ⚠️ Die AUFRUFSTELLE, nicht der Name. `"_verbinden(pw)"` allein traf auch die
+    # Definitionszeile `def _verbinden(pw):` — die Gegenprobe blieb damit gruen,
+    # obwohl der Aufruf durch den direkten `connect_over_cdp` ersetzt war.
+    assert "browser = _verbinden(pw)" in quelle, "die Verbindung umgeht die klare Meldung"
+    assert "browser = pw.chromium.connect_over_cdp" not in quelle
+    helfer = quelle.split("def _verbinden", 1)[1].split("\ndef ", 1)[0]
+    assert "talos-browser" in helfer, "die Meldung nennt den Dienst nicht"
+    assert "systemctl start" in helfer, "die Meldung nennt das Kommando nicht"
+    assert "Nothing was clicked" in helfer, "die Meldung sagt nicht, dass nichts geschah"

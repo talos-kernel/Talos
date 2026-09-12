@@ -1,12 +1,22 @@
 [Unit]
 Description=Talos persistent browser inside the isolated computer
 After=network.target talos-screen.service
+# ⚠️ Gehoert in [Unit], nicht in [Service]: dort ignoriert systemd es seit v229
+# STILLSCHWEIGEND. Ohne diese Zeile haelt systemd den Dienst nach fuenf Starts in zehn
+# Sekunden endgueltig an — genau das, was `Restart=always` verhindern soll.
+StartLimitIntervalSec=0
 
 [Service]
 User=desk
 Environment=DISPLAY=:0
 ExecStart=/usr/bin/chromium --user-data-dir=/home/desk/.config/talos-browser --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --proxy-server=http://10.0.2.100:3128 --no-first-run --disable-sync --disable-background-networking --password-store=basic --start-maximized about:blank
-Restart=on-failure
+# ⚠️ `always`, nicht `on-failure`. Chromium beendet sich auch SAUBER — ein
+# geschlossenes Fenster, ein `chrome://quit`, ein aufgeraeumter OOM-Abbruch liefern
+# Exit 0. Mit `on-failure` blieb der Browser dann fuer immer weg, und der naechste
+# Auftrag lief in ein `ECONNREFUSED` auf 9222. Gemessen am 12.09.2026: ein Agent
+# verbrachte ueber zwanzig Minuten damit, von dieser Meldung zur Ursache zu kommen.
+# Ein Browser, der von selbst wiederkommt, macht diese Suche ueberfluessig.
+Restart=always
 RestartSec=3
 KillMode=control-group
 
