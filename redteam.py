@@ -2909,6 +2909,30 @@ _medx(
     f"a recording under ~/.secrets is {_gehoert.name} — a READ with a target, no exception",
 )
 
+# Dokumente lesen ist ein NEUER Weg zu Dateien — und damit ein neuer Weg an den
+# Secrets-Floor. Genau das ist der Grund, warum `documents.py` den Pfad nicht selbst
+# prueft: der Kernel tut es, ueber denselben Zielextraktor wie bei `read_file`. Faellt
+# dieser Fall, ist die Trennung nur behauptet.
+_dokument = _med_kernel.decide(
+    ToolRequest("read_document", OWNER, {"path": f"{HOME}/.secrets/lohnabrechnung.pdf"})
+).verdict
+_medx(
+    "Reading a document lifts a PDF out of the secrets folder",
+    _dokument.name == "DENY",
+    f"a PDF under ~/.secrets is {_dokument.name} — a READ with a target, no exception",
+)
+
+# Gegenbeleg: sonst bewiese der Fall oben nur, dass `read_document` ueberhaupt nichts
+# darf — und eine Rechnung im Downloads-Ordner waere genauso unlesbar wie ein Geheimnis.
+_dokument_ok = _med_kernel.decide(
+    ToolRequest("read_document", OWNER, {"path": f"{HOME}/Downloads/rechnung.pdf"})
+).verdict
+_medx(
+    "An ordinary document is refused like a secret",
+    _dokument_ok.name != "DENY",
+    f"an ordinary PDF is {_dokument_ok.name} — reading it must stay possible",
+)
+
 _stimme = _med_kernel.decide(
     ToolRequest("speak", OWNER, {"text": "x", "path": f"{HOME}/.bashrc"})
 ).verdict

@@ -8,6 +8,29 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ## [Unreleased]
 
+## [0.19.14-alpha] — 2026-09-13
+
+### Added
+
+- `read_document` turns a PDF, Word, Excel or PowerPoint file on disk into text. It is a
+  READ with a real target, like `see_image` and `hear`: the kernel judges the path, so a
+  payslip under `~/.secrets` is refused without the reader knowing anything about it.
+  Reading happens locally — a medical report has no business at a third-party service
+  just to become text. Only PDF needs a library; docx, xlsx and pptx are ZIP archives
+  holding XML and are read with the standard library.
+- Telegram now fetches documents, which is what makes the above reachable at all. The
+  file suffix comes from a fixed allowlist, never from the sender's filename.
+
+### Security
+
+- An office document is a ZIP holding XML, and both halves are attack surface. A zip
+  bomb is refused from the archive index before a byte is unpacked. A document that
+  declares a DOCTYPE or XML entity is refused unread: an entity would turn the parser
+  into a file reader operating around the kernel, since the file the kernel approved is
+  the document, not what the parser pulls in afterwards.
+- Document text reaches the model inside its own untrusted frame — data, never an
+  instruction, even when it is phrased as one.
+
 ## [0.19.13-alpha] — 2026-09-13
 
 ### Fixed

@@ -15,12 +15,12 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2733).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2753).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-2733-2e7d32.svg" alt="Tests">
-  <img src="https://img.shields.io/badge/red%20team-252%2F242-2e7d32.svg" alt="Red team">
-  <img src="https://img.shields.io/badge/gate%20path-915%20lines-8a4318.svg" alt="Gate path">
+  <img src="https://img.shields.io/badge/tests-2753-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/red%20team-254%2F242-2e7d32.svg" alt="Red team">
+  <img src="https://img.shields.io/badge/gate%20path-919%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-31%20gated-8a4318.svg" alt="Tools">
   <img src="https://img.shields.io/badge/default%20identities-0-c62828.svg" alt="Default identities">
   <img src="https://img.shields.io/badge/python-3.11%2B-1565c0.svg" alt="Python">
@@ -105,7 +105,7 @@ authorised individually, bound to its exact arguments and targets, valid once, f
 seconds. Forgetting to call the gate does not produce an unchecked effect — it produces no
 effect at all, because the raw runners are unreachable without a token.
 
-That design is testable, and it is tested: 252 adversarial scenarios run on every change and
+That design is testable, and it is tested: 254 adversarial scenarios run on every change and
 try to get an effect past the kernel. They are in [`redteam.py`](redteam.py). Read them
 before you trust anything written above.
 
@@ -634,6 +634,7 @@ tool that skips the kernel — a tool without a target extractor is `DENY` by co
 | `read_file` / `write_file` / `undo_last` | ordinary work, with a snapshot behind the write |
 | `browse` / `web_fetch` / `web_search` | render-only, guarded URL, keyless search by default |
 | `see_image` / `grab_frame` / `hear` / `speak` | a picture, one still out of a video, a recording, a voice |
+| `read_document` | a PDF, Word, Excel or PowerPoint file turned into text — locally, framed as untrusted |
 | `vault_search` / `vault_get` / `vault_write_note` | a markdown knowledge base, if you point it at one |
 | `session_search` | what was said in earlier turns |
 | `delegate` | a sub-run that can only read |
@@ -705,7 +706,7 @@ executing anything. It is the fastest way to understand the kernel.
 
 ## Architecture
 
-Small modules on purpose. The gate path (`policy.py`, 915 lines) has to be readable in one
+Small modules on purpose. The gate path (`policy.py`, 919 lines) has to be readable in one
 sitting — a gate you cannot read is not a gate.
 
 | Module | Role |

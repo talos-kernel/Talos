@@ -66,7 +66,7 @@ from .reasoner import ClaudeCliReasoner, HermesCliReasoner
 from .skills import SkillSource
 from .snapshot import Snapshotter
 from .telegram import TelegramChannel, TelegramClient
-from . import browser, frames, hearing, models, speech, vision, web
+from . import browser, documents, frames, hearing, models, speech, vision, web
 from .usage import UsageMeter, event_payload as usage_event_payload
 from .mail import MailChannel
 from .whatsapp import WhatsAppChannel
@@ -520,6 +520,7 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
         # Sehen laeuft ueber DASSELBE Abo wie das Denken und mit derselben Isolation —
         # kein zweites, schwaecher gesichertes Tor zum Modell.
         "hear": hearing.make_hear_runner(),
+        "read_document": documents.make_read_document_runner(),
         # Standbild aus einem Video. Der Ausgabepfad kommt NICHT von hier und nicht
         # vom Modell, sondern aus `policy.frame_output_path` — derselben Funktion,
         # ueber deren Ergebnis der Kernel eben geurteilt hat.

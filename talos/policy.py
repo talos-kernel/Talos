@@ -396,6 +396,10 @@ TARGET_EXTRACTORS = {
     "speak": lambda args: (str(args.get("path", "")),) if "path" in args else (),
     # Hoeren liest eine Datei. Dasselbe Ziel-Muster wie `see_image` — es entsteht nichts.
     "hear": lambda args: (str(args.get("path", "")),) if "path" in args else (),
+    # Ein Dokument lesen ist Lesen. Derselbe Pfad als Ziel wie bei `read_file` — und
+    # damit derselbe Secrets-Floor: eine PDF in `~/.secrets/` faellt durch, ohne dass
+    # `documents.py` davon wissen muesste. Das ist der ganze Sinn der Trennung.
+    "read_document": lambda args: (str(args.get("path", "")),) if "path" in args else (),
     # Standbild aus einem Video: ZWEI Ziele, und beide muessen es sein.
     #   * Die QUELLE, weil ein Video eine Datei ist wie jede andere. Ohne sie waere
     #     Frame Capture der bequemste Weg am Secret-Floor vorbei: ein Video unter

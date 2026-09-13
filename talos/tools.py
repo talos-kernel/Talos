@@ -7,7 +7,8 @@ enthalten keine Sicherheitslogik — Trennung von Gate und Vollzug.
 """
 from __future__ import annotations
 
-from . import apiclient, browser, claudejobs, dag, frames, gitops, hearing, remoteexec, sandbox, speech, transcript, vision, web
+from . import (apiclient, browser, claudejobs, dag, documents, frames, gitops, hearing,
+               remoteexec, sandbox, speech, transcript, vision, web)
 
 import subprocess
 import threading
@@ -405,6 +406,7 @@ def default_manifest(*, agy_backend: bool = True, codex_backend: bool = True) ->
         # Snapshotter sichert das Vorherige, `/undo` nimmt es zurueck.
         .with_tool(speech.speak_spec())
         .with_tool(hearing.hear_spec())
+        .with_tool(documents.read_document_spec())
         # Standbild aus einem Video. Zwei Ziele: das Video (sonst waere das hier
         # der Weg am Secret-Floor vorbei) und das Bild, dessen Pfad der Kernel
         # selbst ableitet statt ihn dem Modell zu ueberlassen. READ, obwohl eine

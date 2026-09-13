@@ -358,9 +358,9 @@ html.js .rv.in{opacity:1;transform:none}
         <span class="t-why" id="tickWhy">clean — runs sandboxed, logged before it runs</span>
       </div>
       <div class="meter-row">
-        <span><b>2733</b>unit tests</span>
-        <span><b>252/252</b>adversarial</span>
-        <span><b>915</b>lines · gate</span>
+        <span><b>2753</b>unit tests</span>
+        <span><b>254/254</b>adversarial</span>
+        <span><b>919</b>lines · gate</span>
         <span><b>30s</b>token life</span>
       </div>
     </div>
@@ -441,7 +441,7 @@ html.js .rv.in{opacity:1;transform:none}
         patterns name, and it is the authoritative one. Two things a page cannot show: before
         any of these stages, the real kernel checks <em>who</em> is asking, and there is no
         default allowlist. And file tools walk their own pipeline — system floor, identity,
-        secrets, persistence, effect. 252 adversarial cases run against the Python kernel on
+        secrets, persistence, effect. 254 adversarial cases run against the Python kernel on
         every install and every update.</p>
       </div>
     </div>
@@ -487,7 +487,7 @@ html.js .rv.in{opacity:1;transform:none}
         <div><h3>read</h3><div class="fx">free at autonomy 5</div></div>
         <div class="set">
           <code>agent_consult</code><code>ask_operator</code><code>browse</code><code>computer_status</code><code>delegate</code><code>delegate_status</code><code>delegate_steer</code><code>entity_status</code>
-          <code>grab_frame</code><code>hear</code><code>read_file</code><code>see_image</code>
+          <code>grab_frame</code><code>hear</code><code>read_document</code><code>read_file</code><code>see_image</code>
           <code>session_search</code><code>vault_get</code><code>vault_search</code>
           <code>web_fetch</code><code>web_search</code>
         </div>
@@ -597,10 +597,10 @@ html.js .rv.in{opacity:1;transform:none}
     <p class="sub rv">None of this asks for belief. The installer runs both suites in front
     of you. Every number on this page is a number the suite reproduces.</p>
     <div class="stats">
-      <div class="stat rv"><div class="n cnt" data-n="2733">0</div><div class="l">unit tests, run by the installer in front of you</div></div>
-      <div class="stat rv"><div class="n cnt" data-n="252">0</div><div class="l">adversarial cases trying to pass the kernel</div></div>
+      <div class="stat rv"><div class="n cnt" data-n="2753">0</div><div class="l">unit tests, run by the installer in front of you</div></div>
+      <div class="stat rv"><div class="n cnt" data-n="254">0</div><div class="l">adversarial cases trying to pass the kernel</div></div>
       <div class="stat rv"><div class="n cnt" data-n="44">0</div><div class="l">end-to-end cases against a real model</div></div>
-      <div class="stat rv"><div class="n cnt" data-n="915">0</div><div class="l">lines in the file that decides every verdict</div></div>
+      <div class="stat rv"><div class="n cnt" data-n="919">0</div><div class="l">lines in the file that decides every verdict</div></div>
       <div class="stat rv"><div class="n cnt" data-n="31">0</div><div class="l">gated tools, each with a declared effect</div></div>
       <div class="stat rv"><div class="n cnt" data-n="30" data-suf="s">0</div><div class="l">token lifetime, single use</div></div>
       <div class="stat rv"><div class="n cnt" data-n="0">0</div><div class="l">identities allowed by default</div></div>
@@ -622,7 +622,7 @@ html.js .rv.in{opacity:1;transform:none}
   <span class="p">▸</span> Checking prerequisites      <span class="ok">✓ Python 3.11+</span>
   <span class="p">▸</span> Running the test suite      <span class="ok">test suite passed</span>
   <span class="p">▸</span> Running the adversarial suite
-    <span class="ok">252/252 cases behaved as expected.</span> <span class="c">— any failure aborts the install</span>
+    <span class="ok">254/254 cases behaved as expected.</span> <span class="c">— any failure aborts the install</span>
 
   <span class="ok">Done.</span> Talos is in <b>~/talos</b> — <span class="warn">and it is not running.</span>
   <span class="c">That is not a forgotten step. The switch is yours.</span></pre>

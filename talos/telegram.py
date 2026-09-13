@@ -20,6 +20,7 @@ from typing import Callable, Protocol
 
 import requests
 
+from . import documents
 from .agent_loop import AgentProgress, ProgressStage
 from .channel import Button, CallbackQuery, Inbound, Principal, StructuredMessage, Trust
 from .identity import agent_name
@@ -214,11 +215,12 @@ def attachment_note(message: dict, saved: str = "") -> str:
         # Ist die Aufnahme geholt worden, bekommt das Modell ein Ziel statt des
         # Blind-Satzes — genau wie beim Foto. `hear` ist READ; der Kernel urteilt ueber den
         # Pfad. Nur Sprache/Audio: Video herausschneiden waere ein weicherer Zweitweg.
-        hinweis = (
-            f"Saved to {saved} — transcribe it with hear."
-            if saved and schluessel in ("voice", "audio")
-            else BLIND_NOTE
-        )
+        if saved and schluessel in ("voice", "audio"):
+            hinweis = f"Saved to {saved} — transcribe it with hear."
+        elif saved and schluessel == "document":
+            hinweis = f"Saved to {saved} — read it with read_document."
+        else:
+            hinweis = BLIND_NOTE
         return f"[{name} attached — {fakten}. {hinweis}]" if fakten else f"[{name} attached. {hinweis}]"
     return ""
 
@@ -400,6 +402,50 @@ class TelegramClient:
             return ""
         return str(ziel)
 
+    def fetch_document(self, message: dict, user_id: int) -> str:
+        """Holt ein Dokument (PDF, Word, Excel, …) in den inbox. Pfad — oder "".
+
+        Dieselbe fail-closed-Absicherung wie `fetch_photo` und `fetch_voice`.
+
+        ⚠️ **Die Endung kommt aus einer festen Liste, nie vom Absender.** Der Dateiname
+        in einer Telegram-Nachricht ist eine Behauptung eines Fremden; wer ihn zur
+        Endung auf der Platte macht, laesst sich `rechnung.pdf.sh` unterschieben. Nur
+        was in `documents.SUFFIXES` steht, wird ueberhaupt geholt — alles andere bleibt
+        beim Blind-Satz, und der Betreiber sieht immerhin Name und Groesse.
+        """
+        if self._inbox is None or not self._may_fetch(int(user_id)):
+            return ""
+        teil = message.get("document")
+        if not isinstance(teil, dict):
+            return ""
+        name = str(teil.get("file_name") or "")
+        endung = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+        if endung not in documents.SUFFIXES:
+            return ""
+        datei_id = str(teil.get("file_id") or "")
+        eindeutig = _SAFE_NAME.sub("", str(teil.get("file_unique_id") or ""))[:48]
+        if not datei_id or not eindeutig:
+            return ""
+        if int(teil.get("file_size") or 0) > MAX_ATTACHMENT_BYTES:
+            return ""
+        try:
+            antwort = self._call(requests.get, "getFile", params={"file_id": datei_id}, timeout=30)
+            pfad = _plausible_file_path((antwort.json().get("result") or {}).get("file_path"))
+            if not pfad:
+                return ""
+            roh = self._download(pfad)
+        except (requests.RequestException, ValueError, OSError):
+            return ""
+        if not roh:
+            return ""
+        try:
+            self._inbox.mkdir(parents=True, exist_ok=True)
+            ziel = self._inbox / f"{eindeutig}{endung}"
+            ziel.write_bytes(roh)
+        except OSError:
+            return ""
+        return str(ziel)
+
     def _download(self, file_path: str) -> bytes:
         """Laedt hoechstens `MAX_ATTACHMENT_BYTES` — der Zaehler waehrend des Lesens ist
         der echte Deckel, nicht `Content-Length`."""
@@ -466,7 +512,9 @@ class TelegramClient:
                 # kommen darunter, klar als Beobachtung erkennbar.
                 notiz = attachment_note(
                     message,
-                    self.fetch_photo(message, frm["id"]) or self.fetch_voice(message, frm["id"]),
+                    self.fetch_photo(message, frm["id"])
+                    or self.fetch_voice(message, frm["id"])
+                    or self.fetch_document(message, frm["id"]),
                 )
                 if not notiz:
                     continue  # weder Text noch etwas, worueber sich reden liesse
