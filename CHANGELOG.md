@@ -8,6 +8,19 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ## [Unreleased]
 
+## [0.19.15-alpha] — 2026-09-14
+
+### Fixed
+
+- An attachment that could not be fetched now says why. A file too large names its size,
+  the limit and a way out; a format that cannot be read names the ones that can. Before,
+  the agent saw only "Its content is not available to you" and had no way to tell a file
+  that was too large from one in the wrong format — it went looking through the
+  filesystem instead.
+- Documents may use Telegram's real 20 MB download limit. A photo stays capped at 12 MB
+  because a photo is not a data carrier, but a document is, and half the ceiling excluded
+  exactly the files the feature exists for.
+
 ## [0.19.14-alpha] — 2026-09-13
 
 ### Added

@@ -153,6 +153,52 @@ class Update:
 BLIND_NOTE = "Its content is not available to you — say so plainly instead of guessing."
 
 
+def _dokument_endung(teil: object) -> str:
+    """Die Endung eines Dokuments — aus dem behaupteten Namen, klein geschrieben.
+
+    ⚠️ Eine Behauptung des Absenders, kein Befund. Sie entscheidet nur, OB sich ein
+    Versuch lohnt; ob die Datei wirklich das ist, zeigt sich erst beim Lesen. Genau
+    deshalb steht sie an einer Stelle: Holen und Begruenden muessen dieselbe Antwort
+    geben, sonst erklaert der Hinweis etwas anderes, als das Holen tut.
+    """
+    if not isinstance(teil, dict):
+        return ""
+    name = str(teil.get("file_name") or "")
+    return ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+
+
+def _warum_nicht(schluessel: str, teil: object) -> str:
+    """Warum der Inhalt fehlt — mit Zahlen statt eines Achselzuckens.
+
+    Am 14.09.2026 schickte der Betreiber eine 24,5-MB-PDF. Sie kam nicht durch, und
+    alles, was der Agent sah, war „Its content is not available to you". Er suchte
+    daraufhin viermal das Dateisystem ab und schrieb eine Notiz ueber das Problem —
+    waehrend die Antwort (zu gross, Telegram laesst 20 MB) direkt danebengestanden
+    haette. Ein Hinweis, der den Grund verschweigt, kostet mehr Zeit als keiner.
+    """
+    if not isinstance(teil, dict):
+        return BLIND_NOTE
+    groesse = int(teil.get("file_size") or 0)
+    grenze = MAX_DOCUMENT_BYTES if schluessel == "document" else MAX_ATTACHMENT_BYTES
+    if groesse > grenze:
+        mb, deckel = groesse / (1024 * 1024), grenze // (1024 * 1024)
+        # Bei Dokumenten IST die Grenze Telegrams Obergrenze — dann waeren zwei Zahlen
+        # dieselbe Zahl, und der Satz klaenge nach einer Ausrede. Bei Fotos halten wir
+        # bewusst weniger, und dann gehoert genau das gesagt.
+        warum = ("Telegram lets a bot download at most "
+                 f"{TELEGRAM_FILE_CEILING_MB} MB" if deckel >= TELEGRAM_FILE_CEILING_MB
+                 else f"{deckel} MB is the most kept for this kind of attachment")
+        return (f"It is {mb:.1f} MB — too large to fetch: {warum}. "
+                "Ask for a smaller copy, or put the file where it can be read directly.")
+    if schluessel == "document":
+        endung = _dokument_endung(teil)
+        if endung not in documents.SUFFIXES:
+            lesbar = ", ".join(e.lstrip(".") for e in documents.SUFFIXES[:8])
+            return (f"{endung or 'A file without a suffix'} is not a format this can read. "
+                    f"Readable: {lesbar}.")
+    return BLIND_NOTE
+
+
 def _kb(size: object) -> str:
     try:
         zahl = int(size)
@@ -199,7 +245,7 @@ def attachment_note(message: dict, saved: str = "") -> str:
         fakten = _join_facts(masse, _kb(groesstes.get("file_size")))
         if saved:
             return f"[photo attached — {fakten}. Saved to {saved} — read it with see_image.]"
-        return f"[photo attached — {fakten}. {BLIND_NOTE}]"
+        return f"[photo attached — {fakten}. {_warum_nicht('photo', groesstes)}]"
 
     for schluessel, name in (
         ("voice", "voice message"), ("audio", "audio file"), ("video", "video"),
@@ -220,7 +266,7 @@ def attachment_note(message: dict, saved: str = "") -> str:
         elif saved and schluessel == "document":
             hinweis = f"Saved to {saved} — read it with read_document."
         else:
-            hinweis = BLIND_NOTE
+            hinweis = _warum_nicht(schluessel, teil)
         return f"[{name} attached — {fakten}. {hinweis}]" if fakten else f"[{name} attached. {hinweis}]"
     return ""
 
@@ -235,6 +281,12 @@ _FILE_BASE = "https://api.telegram.org/file/bot{token}/{path}"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9_-]")
 # Ein Foto, kein Datentraeger. Telegrams Bot-API laedt ohnehin nur bis 20 MB herunter.
 MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024
+# Ein Dokument IST ein Datentraeger — dafuer ist es da. Hier gilt darum Telegrams echte
+# Obergrenze statt der halben. Gelernt am 14.09.2026: eine 24,5-MB-PDF kam nicht durch,
+# und der Betreiber sah nur „content is not available" — ohne Zahl, ohne Grund. 12 MB
+# waeren fuer ein Grundstuecksdossier oder einen Jahresabschluss oft zu wenig.
+MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
+TELEGRAM_FILE_CEILING_MB = 20
 _DOWNLOAD_TIMEOUT_S = 60
 _SUFFIX = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif"}
 # Sprache kommt als ogg/opus (`voice`) oder mit eigener Endung (`audio`). Die Endung wird
@@ -418,22 +470,21 @@ class TelegramClient:
         teil = message.get("document")
         if not isinstance(teil, dict):
             return ""
-        name = str(teil.get("file_name") or "")
-        endung = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+        endung = _dokument_endung(teil)
         if endung not in documents.SUFFIXES:
             return ""
         datei_id = str(teil.get("file_id") or "")
         eindeutig = _SAFE_NAME.sub("", str(teil.get("file_unique_id") or ""))[:48]
         if not datei_id or not eindeutig:
             return ""
-        if int(teil.get("file_size") or 0) > MAX_ATTACHMENT_BYTES:
+        if int(teil.get("file_size") or 0) > MAX_DOCUMENT_BYTES:
             return ""
         try:
             antwort = self._call(requests.get, "getFile", params={"file_id": datei_id}, timeout=30)
             pfad = _plausible_file_path((antwort.json().get("result") or {}).get("file_path"))
             if not pfad:
                 return ""
-            roh = self._download(pfad)
+            roh = self._download(pfad, limit=MAX_DOCUMENT_BYTES)
         except (requests.RequestException, ValueError, OSError):
             return ""
         if not roh:
@@ -446,9 +497,9 @@ class TelegramClient:
             return ""
         return str(ziel)
 
-    def _download(self, file_path: str) -> bytes:
-        """Laedt hoechstens `MAX_ATTACHMENT_BYTES` — der Zaehler waehrend des Lesens ist
-        der echte Deckel, nicht `Content-Length`."""
+    def _download(self, file_path: str, *, limit: int = MAX_ATTACHMENT_BYTES) -> bytes:
+        """Laedt hoechstens `limit` Bytes — der Zaehler WAEHREND des Lesens ist der echte
+        Deckel, nicht `Content-Length`: die Kopfzeile ist eine Behauptung der Gegenseite."""
         url = _FILE_BASE.format(token=self._token, path=file_path)
         try:
             with requests.get(url, stream=True, timeout=_DOWNLOAD_TIMEOUT_S) as antwort:
@@ -457,7 +508,7 @@ class TelegramClient:
                 gesamt = 0
                 for stueck in antwort.iter_content(64 * 1024):
                     gesamt += len(stueck or b"")
-                    if gesamt > MAX_ATTACHMENT_BYTES:
+                    if gesamt > limit:
                         return b""
                     teile.append(bytes(stueck or b""))
                 return b"".join(teile)

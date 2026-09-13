@@ -505,3 +505,76 @@ def test_expressive_status_style_uses_emoji_and_verbs() -> None:
 
     assert style_for("expressive") is EXPRESSIVE
     assert style_for("nonsense") is GEOMETRIC   # unbekannt kippt die Vorgabe nie
+
+
+# ---------------------------------------------------------------- Warum ein Anhang fehlt
+
+
+def test_a_file_that_is_too_large_says_only_that_it_is_unavailable() -> None:
+    """Der Fall vom 14.09.2026, an dem ein Abend hing.
+
+    Der Betreiber schickte eine 24,5-MB-PDF. Der Agent bekam nur „Its content is not
+    available to you" — ohne Zahl, ohne Grund. Er suchte daraufhin viermal das
+    Dateisystem ab und schrieb eine Notiz ueber das Problem, waehrend die Antwort
+    danebengestanden haette: zu gross, Telegram laesst einen Bot 20 MB holen.
+
+    Ein Hinweis, der den Grund verschweigt, kostet mehr Zeit als gar keiner.
+    """
+    from talos.telegram import attachment_note
+
+    notiz = attachment_note(
+        {"document": {"file_name": "8424_Embrach_Dorfstrasse_124.pdf",
+                      "file_size": 25065 * 1024, "file_id": "x", "file_unique_id": "y"}},
+        "",
+    )
+    assert "24.5 MB" in notiz, f"die Groesse muss dastehen: {notiz}"
+    assert "20 MB" in notiz, "die Grenze muss dastehen, sonst raet der Leser"
+    assert "smaller copy" in notiz, "ein Ausweg gehoert dazu"
+
+
+def test_an_unreadable_format_leaves_the_reader_guessing() -> None:
+    from talos.telegram import attachment_note
+
+    notiz = attachment_note(
+        {"document": {"file_name": "archiv.zip", "file_size": 1024,
+                      "file_id": "x", "file_unique_id": "y"}}, "")
+    assert ".zip is not a format" in notiz
+    assert "pdf" in notiz and "xlsx" in notiz, "die lesbaren Formate gehoeren genannt"
+
+
+def test_a_readable_document_is_refused_like_an_unreadable_one() -> None:
+    """Gegenbeleg: sonst koennte man alles ablehnen und die Tests oben blieben gruen."""
+    from talos.telegram import attachment_note
+
+    notiz = attachment_note(
+        {"document": {"file_name": "rechnung.pdf", "file_size": 2 * 1024 * 1024,
+                      "file_id": "x", "file_unique_id": "y"}},
+        "/tmp/inbox/abc.pdf",
+    )
+    assert "read it with read_document" in notiz
+    assert "too large" not in notiz and "not a format" not in notiz
+
+
+def test_a_photo_is_measured_against_the_document_limit() -> None:
+    """Ein Foto ist kein Datentraeger — dort gilt bewusst die kleinere Grenze, und
+    genau das gehoert gesagt statt Telegrams Zahl zu nennen."""
+    from talos.telegram import attachment_note
+
+    notiz = attachment_note(
+        {"photo": [{"width": 4000, "height": 3000, "file_size": 15 * 1024 * 1024,
+                    "file_id": "x", "file_unique_id": "y"}]}, "")
+    assert "15.0 MB" in notiz
+    assert "12 MB" in notiz, "die Foto-Grenze, nicht Telegrams"
+    assert "Telegram lets a bot" not in notiz
+
+
+def test_documents_are_capped_below_what_telegram_allows() -> None:
+    """Ein Dokument IST ein Datentraeger. Es unnoetig unter Telegrams Decke zu halten
+    kostet genau die Dateien, um die es geht — Dossiers, Abschluesse, Vertraege."""
+    from talos.telegram import (MAX_ATTACHMENT_BYTES, MAX_DOCUMENT_BYTES,
+                                TELEGRAM_FILE_CEILING_MB)
+
+    assert MAX_DOCUMENT_BYTES == TELEGRAM_FILE_CEILING_MB * 1024 * 1024
+    assert MAX_DOCUMENT_BYTES > MAX_ATTACHMENT_BYTES, (
+        "Fotos duerfen kleiner gedeckelt bleiben, Dokumente nicht"
+    )
