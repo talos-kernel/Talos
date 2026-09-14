@@ -174,7 +174,7 @@ class CredentialStore:
         return tuple(sorted({r.api_key for r in self.routes.values() if r.api_key}))
 
 
-def from_lookup(lookup) -> CredentialStore:
+def from_lookup(lookup, *, custom_providers: tuple[catalog.ProviderInfo, ...] = ()) -> CredentialStore:
     """Baut den Bestand aus einer Namensauflösung (Umgebung + Geheimnisdatei).
 
     Gelesen wird bei schluesselpflichtigen Anbietern nur, was der Katalog als solchen
@@ -187,7 +187,9 @@ def from_lookup(lookup) -> CredentialStore:
     nicht auf — eine Route ohne Ziel waere eine Einladung zum Raten.
     """
     routen: dict[str, Route] = {}
-    for info in catalog.PROVIDERS:
+    builtin_names = {info.slug for info in catalog.PROVIDERS}
+    extras = tuple(info for info in custom_providers if info.slug not in builtin_names)
+    for info in (*catalog.PROVIDERS, *extras):
         if info.needs_key and info.env_key:
             schluessel = str(lookup(info.env_key) or "").strip()
             if not schluessel:

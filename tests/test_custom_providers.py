@@ -35,7 +35,7 @@ def test_a_key_variable_is_taken_only_when_it_is_a_variable_name():
     (info,) = customproviders.parse(_eintrag(env_key="kimi_oauth_api_key"))
     assert info.env_key == "KIMI_OAUTH_API_KEY" and info.auth == "api-key"
     (ohne,) = customproviders.parse(_eintrag(env_key="nicht; gueltig"))
-    assert ohne.env_key == "" and ohne.auth == "none"
+    assert ohne.env_key == "" and ohne.auth == "local"
 
 
 # --- Die Sicherheitsgrenzen --------------------------------------------------------

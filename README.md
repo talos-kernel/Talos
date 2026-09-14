@@ -15,10 +15,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2758).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2770).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-2758-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-2770-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-254%2F242-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-919%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-31%20gated-8a4318.svg" alt="Tools">
@@ -222,6 +222,14 @@ Completed answers stay formatted after approval buttons, and Markdown tables bec
 compact labelled rows. Approval prompts keep the exact command visible.
 `/stop` interrupts the run and `/log` opens its receipts. A finished conversation
 does not imply that a delegated background job has finished.
+
+Operator-defined OpenAI-compatible endpoints can be listed in the JSON file named by
+`TALOS_CUSTOM_PROVIDERS` (default: `data/custom-providers.json`). Each entry needs
+`name`, `base_url` and `models`; optional `env_key` names that endpoint's own key.
+These providers use the native API adapter, including runtime fallback. Without
+`env_key` no Authorization header is sent; a named but missing key fails closed.
+Built-in provider names cannot be replaced. The isolated model worker does **not**
+accept agent-defined custom providers; it retains its own provider allowlist.
 
 A full walkthrough — install, identity, the session, every command, and the ones that are
 missing on purpose — is at **[talos-agent.ch/docs](https://talos-agent.ch/docs/)**.

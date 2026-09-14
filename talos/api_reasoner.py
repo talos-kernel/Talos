@@ -94,6 +94,21 @@ SUPPORTED_PROVIDERS: tuple[str, ...] = (
     "kimi",
 )
 
+def supports_api_provider(provider: str) -> bool:
+    """Existing API routes plus registered operator-owned OpenAI endpoints.
+
+    Do not turn catalogued OAuth/CLI providers into native transports.
+    The separate model worker retains its own fixed provider allowlist.
+    """
+    if provider in SUPPORTED_PROVIDERS:
+        return True
+    if any(info.slug == provider for info in catalog.PROVIDERS):
+        return False
+    info = catalog.get(provider)
+    return bool(info and info.wire == "openai"
+                and info.auth in {"api-key", "local"} and info.base_url)
+
+
 ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 ANTHROPIC_VERSION = "2023-06-01"
 OPENAI_BASE_URL = "https://api.openai.com/v1"
@@ -371,7 +386,7 @@ class ApiReasoner:
         http: HttpTransport | None = None,
         worker: str | None = None,
     ) -> None:
-        if provider not in SUPPORTED_PROVIDERS:
+        if not supports_api_provider(provider):
             raise ValueError(f"Unbekannter API-Anbieter: {provider!r}")
         if not model.strip():
             raise ValueError("Modellname fehlt")

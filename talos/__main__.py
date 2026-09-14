@@ -26,9 +26,9 @@ from typing import Callable
 import requests
 
 from . import background, claudejobs, consult, continuity, dag, notify, tools
-from . import catalog as provider_catalog, customproviders
+from . import catalog as provider_catalog
 from . import apiclient, gitops
-from .api_reasoner import SUPPORTED_PROVIDERS, ApiReasoner
+from .api_reasoner import ApiReasoner, supports_api_provider
 from .approval import ApprovalPicker, ApprovalStore
 from .autonomy import AutonomyGovernor, GovernedKernel, restore_level
 from .blueprints import BlueprintBook
@@ -233,7 +233,7 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     # ohne das blieb nur, den Namen eines fremden Anbieters zu borgen, und das Protokoll
     # log dann. `customproviders` verwirft alles Unbrauchbare still; ein Katalogname
     # wird nie ueberschrieben.
-    eigene_anbieter = customproviders.load(config.custom_providers_file)
+    eigene_anbieter = config.custom_provider_infos
     if eigene_anbieter:
         uebernommen = provider_catalog.register(eigene_anbieter)
         log.append(Event("boot", "provider", "catalog.custom_providers", {
@@ -262,7 +262,7 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     def build_reasoner(selection: ModelSelection):
         # Der API-Weg zuerst: er ist der einzige, der ohne lokal angemeldete CLI laeuft,
         # und damit der einzige, den eine frische oeffentliche Installation gehen kann.
-        if selection.provider in SUPPORTED_PROVIDERS:
+        if supports_api_provider(selection.provider):
             return ApiReasoner(
                 selection.provider,
                 selection.model,

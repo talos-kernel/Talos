@@ -16,7 +16,7 @@ from .credentials import (
     from_lookup,
     parse_worker_socket,
 )
-from . import modelinfo
+from . import catalog, customproviders, modelinfo
 from .mcpservers import SERVER_NAME
 from .wabroker import DEFAULT_CLI_DIR as DEFAULT_WA_BROKER_CLI_DIR
 from .wabroker import DEFAULT_QUEUE_PATH as DEFAULT_WA_BROKER_QUEUE
@@ -181,6 +181,7 @@ class TalosConfig:
     # Sie gilt pro Lauf und ruehrt die persistierte Modellwahl nie an.
     model_fallbacks: str = ""
     custom_providers_file: str = ""
+    custom_provider_infos: tuple[catalog.ProviderInfo, ...] = ()
     # Betreiber-Korrekturen an den Eckdaten einzelner Modelle (TALOS_MODEL_OVERRIDES,
     # `modelinfo.py`): Kontextfenster, Preise, Faehigkeiten. Dieselbe Ebene wie
     # TALOS_MODEL — eine Entscheidung ueber das Modell, nie ueber den Weg dorthin.
@@ -373,6 +374,8 @@ def load_config(*, require_channel: bool = True) -> TalosConfig:
     if _value(LEGACY_BASE_URL):
         raise ValueError(LEGACY_MESSAGE)
 
+    custom_file = _value("TALOS_CUSTOM_PROVIDERS") or str(DATA_DIR / "custom-providers.json")
+    custom_infos = customproviders.load(custom_file)
     konfig = TalosConfig(
         skills_dirs=skills_dirs,
         whatsapp_token=_value("WHATSAPP_TOKEN"),
@@ -386,7 +389,7 @@ def load_config(*, require_channel: bool = True) -> TalosConfig:
         mail_password=_value("TALOS_MAIL_PASSWORD"),
         mail_smtp_host=_value("TALOS_MAIL_SMTP_HOST"),
         mail_authserv_id=_value("TALOS_MAIL_AUTHSERV_ID"),
-        api_credentials=from_lookup(_value),
+        api_credentials=from_lookup(_value, custom_providers=custom_infos),
         brave_api_key=_value("TALOS_BRAVE_API_KEY"),
         web_allow_http=_value("TALOS_WEB_ALLOW_HTTP") == "1",
         bot_token=token,
@@ -432,10 +435,8 @@ def load_config(*, require_channel: bool = True) -> TalosConfig:
             or secrets.get("TALOS_MODEL", DEFAULT_MODEL)
         ),
         model_fallbacks=_value("TALOS_MODEL_FALLBACKS"),
-        custom_providers_file=(
-            _value("TALOS_CUSTOM_PROVIDERS")
-            or str(DATA_DIR / "custom-providers.json")
-        ),
+        custom_providers_file=custom_file,
+        custom_provider_infos=custom_infos,
         # Wirft mit dem Variablennamen, nie mit dem Wert — ein Startabbruch, weil still
         # ignorierte Betreiber-Konfiguration die schlimmere Variante ist.
         model_overrides=modelinfo.parse(_value(modelinfo.ENV_VAR)),

@@ -36,7 +36,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .catalog import ProviderInfo, get as catalog_get
+from .catalog import PROVIDERS, ProviderInfo, get as catalog_get
 
 __all__ = ["load", "parse", "MAX_MODELS", "MAX_PROVIDERS"]
 
@@ -100,7 +100,7 @@ def parse(rohtext: str) -> tuple[ProviderInfo, ...]:
         # ⚠️ Die wichtigste Zeile der Datei: ein eigener Anbieter darf einen eingebauten
         # Namen NIE uebernehmen. Sonst zeigt das Protokoll weiter „claude-cli", waehrend
         # der Zug zu einem fremden Host geht.
-        if catalog_get(name) is not None:
+        if any(info.slug == name for info in PROVIDERS):
             continue
         base_url = _clean_base_url(eintrag.get("base_url"))
         modelle = _clean_models(eintrag.get("models"))
@@ -113,7 +113,7 @@ def parse(rohtext: str) -> tuple[ProviderInfo, ...]:
             ProviderInfo(
                 slug=name,
                 label=label,
-                auth="api-key" if env_key else "none",
+                auth="api-key" if env_key else "local",
                 wire="openai",
                 base_url=base_url,
                 env_key=env_key,
@@ -121,7 +121,9 @@ def parse(rohtext: str) -> tuple[ProviderInfo, ...]:
                 notes="operator-defined custom provider",
             )
         )
-    return tuple(fertig)
+    # Repeated initialization may reuse an identical registered entry, never replace it.
+    return tuple(info for info in fertig
+                 if catalog_get(info.slug) in (None, info))
 
 
 def _clean_env_key(value: object) -> str:
