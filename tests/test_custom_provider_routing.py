@@ -20,7 +20,7 @@ def isolated_catalog(monkeypatch):
 
 
 def definition(*, keyed=False):
-    row = {'name': 'test-proxy', 'base_url': 'http://127.0.0.1:12345/v1',
+    row = {'name': 'test-proxy', 'base_url': 'https://proxy.example:12345/v1',
            'models': ['test-model']}
     if keyed:
         row['env_key'] = 'TEST_PROXY_KEY'
@@ -39,7 +39,7 @@ def boot_config(tmp_path, monkeypatch, *, keyed=False):
 
 def test_cold_boot_has_keyless_custom_route(tmp_path, monkeypatch):
     cfg = boot_config(tmp_path, monkeypatch)
-    assert cfg.api_credentials.routes['test-proxy'].base_url == 'http://127.0.0.1:12345/v1'
+    assert cfg.api_credentials.routes['test-proxy'].base_url == 'https://proxy.example:12345/v1'
     assert cfg.api_credentials.routes['test-proxy'].api_key == ''
 
 
@@ -60,7 +60,7 @@ def test_registered_custom_provider_builds_native_reasoner():
     store = credentials.from_lookup(lambda _: '', custom_providers=infos)
     reasoner = ApiReasoner('test-proxy', 'test-model', store, timeout_s=5, worker='')
     url, headers, body = reasoner._request('test system', 'test user')
-    assert url == 'http://127.0.0.1:12345/v1/chat/completions'
+    assert url == 'https://proxy.example:12345/v1/chat/completions'
     assert 'Authorization' not in headers
     assert not {'tools', 'tool_choice'} & body.keys()
 
@@ -114,7 +114,7 @@ def test_config_factory_http_path(tmp_path, monkeypatch):
     reasoner = scope['build_reasoner'](ModelSelection('test-proxy', 'test-model'))
     assert isinstance(reasoner, ApiReasoner)
     assert reasoner.reason_composed('system', 'user') == 'CUSTOM_OK'
-    assert http.calls[0]['url'] == 'http://127.0.0.1:12345/v1/chat/completions'
+    assert http.calls[0]['url'] == 'https://proxy.example:12345/v1/chat/completions'
     assert 'Authorization' not in http.calls[0]['headers']
     assert not {'tools', 'tool_choice'} & http.body.keys()
 
