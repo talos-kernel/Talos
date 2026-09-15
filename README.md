@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <img src="assets/talos-demo.gif" alt="talos chat: the kernel asks before a write effect runs, approval produces a verifiable receipt" width="900">
+</p>
+
+<p align="center">
   <a href="https://talos-agent.ch"><b>talos-agent.ch</b></a> ·
   <a href="https://talos-agent.ch/docs/">Field manual</a> ·
   <a href="CHANGELOG.md">Changelog</a>
@@ -24,6 +28,7 @@
   <img src="https://img.shields.io/badge/tools-32%20gated-8a4318.svg" alt="Tools">
   <img src="https://img.shields.io/badge/default%20identities-0-c62828.svg" alt="Default identities">
   <img src="https://img.shields.io/badge/python-3.11%2B-1565c0.svg" alt="Python">
+  <a href="https://github.com/talos-kernel/talos/releases"><img src="https://img.shields.io/github/v/release/talos-kernel/talos?color=1565c0" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/licence-MIT-616161.svg" alt="MIT">
 </p>
 
@@ -268,14 +273,21 @@ come from `stdin` instead of `getUpdates`.
 
 ```
 $ talos chat
-Talos 0.9.2-alpha  ·  anthropic/claude-opus-4  ·  autonomy 3
-speaking as cli:1000  ·  approvals possible — you are at a terminal
-/help for commands, `exit` to leave
 
-› what changed in the log today?
+  ◉  Talos / 0.19.17-alpha
+     Your terminal. Your rules.
+  ──────────────────────────────────────────────────────────────────────────
+  model      claude-cli/claude-opus-4-1
+  policy     autonomy 5
+  identity   cli:1000
+  session    approvals possible — you are at a terminal
+
+  /help for commands, `exit` to leave
+
+  you › what changed in the log today?
 ```
 
-The second line is the one to read: it says, before you ask for anything, whether an
+The `session` line is the one to read: it says, before you ask for anything, whether an
 approval is even possible here — so a refusal later is explained in advance rather than
 guessed at.
 
