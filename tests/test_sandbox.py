@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import resource
+import shlex
 import socket
 import sys
 import threading
@@ -250,7 +251,7 @@ def _connect_probe(workspace: Path, port: int) -> str:
         "    print('NET_BLOCKED', type(error).__name__)\n",
         encoding="utf-8",
     )
-    return f"{sys.executable} {script}"
+    return shlex.join([sys.executable, str(script)])
 
 
 @requires_sandbox
@@ -319,7 +320,7 @@ def test_the_cpu_limit_reaches_the_child(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    result = shell(tmp_path, limits=SandboxLimits(timeout_s=7)).run(f"{sys.executable} {script}")
+    result = shell(tmp_path, limits=SandboxLimits(timeout_s=7)).run(shlex.join([sys.executable, str(script)]))
 
     assert result.stdout.split() == ["cpu", str(7 + sandbox.CPU_GRACE_S)], result.stderr
 
@@ -334,7 +335,7 @@ def test_the_process_limit_reaches_the_child(tmp_path: Path) -> None:
     )
 
     limits = SandboxLimits(timeout_s=20, max_processes=ceiling)
-    result = shell(tmp_path, limits=limits).run(f"{sys.executable} {script}")
+    result = shell(tmp_path, limits=limits).run(shlex.join([sys.executable, str(script)]))
 
     assert result.stdout.split() == ["nproc", str(ceiling)], result.stderr
 
@@ -364,7 +365,7 @@ def test_the_memory_limit_reaches_the_child(tmp_path: Path) -> None:
     limit = 256 * 1024 * 1024
 
     limits = SandboxLimits(timeout_s=20, max_memory_bytes=limit)
-    result = shell(tmp_path, limits=limits).run(f"{sys.executable} {script}")
+    result = shell(tmp_path, limits=limits).run(shlex.join([sys.executable, str(script)]))
 
     feld, _, gemeldet = result.stdout.partition(" ")
     assert feld == "as", result.stderr

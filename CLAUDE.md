@@ -14,7 +14,7 @@ preferences live in `USER.md`. All three are operator-owned prompt state and rel
 |---|---|
 | Gate path | `policy.py`, **919 lines** — has to stay readable in one sitting |
 | Tools | **32**, every one gated |
-| Suites | **2790** tests · **254** adversarial · 44 end-to-end |
+| Suites | **2808** tests · **254** adversarial · 44 end-to-end |
 | Home | <https://talos-agent.ch> · docs at `/docs/` |
 | Repository | `talos-kernel/talos` is the public source tree |
 
@@ -233,12 +233,20 @@ In practice:
   mark overridden values as the operator's word, not the catalogue's. There is no
   token-based context cap: the window shows in the display, it is not a bound.
 
+## Runtime recovery
+
+`FallbackReasoner` owns cancellation and busy state for the active hop. Its background
+fork retains the configured routes with independent control state. Never replace that
+fork with the bare primary router. Work-announcement corrections are bounded between
+successful tool receipts; they never replay an effect or grant permission. Keep those
+properties covered by `test_fallback_control.py` and `test_runtime_failure_repair.py`.
+
 ## Commands
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install --require-hashes -r requirements.lock -r requirements-dev.lock
 
-python -m pytest tests/ -q   # 2790 tests, ~30s
+python -m pytest tests/ -q   # 2808 tests, ~30s
 python redteam.py            # 254 adversarial cases — mandatory for any kernel change
 python e2e.py                # 44 cases against a real model (costs tokens and time)
 python -m talos --once       # single cycle, for diagnosis

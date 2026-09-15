@@ -8,6 +8,17 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ## [Unreleased]
 
+## [0.19.17-alpha] — 2026-09-15
+
+- Keep cancellation and busy state attached to the active fallback provider. Background
+  tasks retain the configured fallback chain with independent cancellation state.
+- Continue brief work announcements through a bounded correction. A successful tool
+  receipt permits a correction at the next step; repeated announcements without
+  progress stop explicitly, without replaying completed actions. This also covers
+  short subject-free announcements such as "Zuerst beide Dateien lesen.".
+- Make sandbox and updater checks work from paths containing spaces and ampersands.
+- Add 18 regression cases; the source suite now collects 2808 tests.
+
 ## [0.19.16-alpha] — 2026-09-15
 
 ### Fixed

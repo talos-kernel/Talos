@@ -21,7 +21,8 @@ from test_chat_command_compatibility import background_rig, wait_for
 
 
 @pytest.mark.parametrize('alias', ['btw', 'bg', 'background'])
-def test_background_finishes_while_main_runs_then_steer_and_queue_work(tmp_path, monkeypatch, alias):
+@pytest.mark.parametrize('fallback_mode', [False, True])
+def test_background_finishes_while_main_runs_then_steer_and_queue_work(tmp_path, monkeypatch, alias, fallback_mode):
     inbound, outbound, errors = [], [], []
     lock = threading.Lock()
     class Handler(BaseHTTPRequestHandler):
@@ -86,6 +87,15 @@ def test_background_finishes_while_main_runs_then_steer_and_queue_work(tmp_path,
     rig = background_rig(tmp_path, Reasoner())
     registry = ProviderRegistry([Provider('fixture', 'Fixture', ('model',))])
     router = ModelRouter(registry, ModelSelection('fixture', 'model'), lambda _: Reasoner(), rig.log)
+    if fallback_mode:
+        from talos.fallback import FallbackReasoner
+        from talos.provider_errors import ReasonerFailure
+        class Limited:
+            def reason(self, prompt):
+                raise ReasonerFailure('Fixture limit', kind='rate_limited')
+        primary = ModelRouter(registry, ModelSelection('fixture', 'model'), lambda _: Limited(), rig.log)
+        router = FallbackReasoner(primary, (ModelSelection('fixture', 'backup'),),
+                                  lambda _: Reasoner(), rig.log)
     object.__setattr__(rig.conductor, 'reasoner', router)
     object.__setattr__(rig.commands, 'reasoner', router)
     rig.conductor.memory.remember(CHAT, asked='main-only context', answered='keep this')

@@ -287,9 +287,22 @@ def announces_next_step(text: str) -> bool:
         return False
     if re.search(r"\b(wenn|falls|könnte|würde|möchtest|if|could|would|tomorrow|morgen)\b", body, re.I):
         return False
+    # Some adapters omit the subject: "Zuerst beide Dateien lesen." is still
+    # only an intended step. Match one bare sentence, not a quoted instruction,
+    # a multi-step plan or a report about an action already completed.
+    if re.fullmatch(
+        r"(?:zuerst|jetzt|nun|anschließend|anschliessend|danach) "
+        r"[^\n.!?,;:\"„“]{1,180}\b"
+        r"(?:lesen|zurücklesen|prüfen|suchen|öffnen|laden|testen|kontrollieren|schreiben)\.?",
+        body, re.I,
+    ):
+        return True
+    verbs = r"hole|lese|prüfe|suche|öffne|lade|teste|kontrolliere|schreibe|schaue mir|sehe mir"
     return bool(re.search(
         r"(?:^|[.!\n—–]\s*|\s[–—]\s*)"
-        r"(?:ich (?:hole|lese|prüfe|suche|öffne|lade|teste|kontrolliere)\b"
+        rf"(?:ich (?:{verbs})\b"
+        rf"|(?:jetzt|nun|anschließend|anschliessend|danach) (?:{verbs}) ich\b"
+        r"|kurzer Blick zurück in\b"
         r"|I(?:'ll| will| am going to) (?:fetch|read|check|search|open|download|test)\b)",
         body, re.I,
     ))
@@ -472,8 +485,10 @@ def run_agent(
                     )
                 announcement_repairs += 1
                 history.append(
-                    "[Your last reply only announced the next step. Carry out the necessary "
-                    "step with a complete TOOL_CALL, or give the actual result or precise blocker. "
+                    "[Your last reply only announced work; it did not request an action. "
+                    "Do not send another progress sentence. Request the next necessary tool "
+                    "using exactly one line: TOOL_CALL: {\"tool\": \"<name>\", \"args\": {...}}. "
+                    "Alternatively give the verified final result or a precise blocker. "
                     "Keep the original task and permission boundaries. Do not replay completed, "
                     "declined or uncertain effects.]"
                 )
@@ -609,6 +624,9 @@ def run_agent(
 
         history.append(tool_history_entry(tool, outcome.status.value, outcome.detail, outcome.result, args=args))
         if outcome.status is Status.DONE:
+            # A new receipt is real progress. Permit one correction at the next
+            # step, while two announcements without intervening progress still stop.
+            announcement_repairs = 0
             observation_note = observations.record(tool, args, outcome.result)
             if observation_note:
                 history.append(observation_note)

@@ -8,6 +8,7 @@ nur — sonst wuerde ein Fehlurteil hier echten Schaden anrichten.
 from __future__ import annotations
 
 import os
+import shlex
 import sys
 import tempfile
 from dataclasses import replace
@@ -98,7 +99,7 @@ CASES: list[tuple[str, ToolRequest, Status]] = [
     ),
     (
         "Read the config file through the shell",
-        ToolRequest("run_shell", OWNER, {"command": f"cat {CONFIG_FILE}"}),
+        ToolRequest("run_shell", OWNER, {"command": shlex.join(["cat", CONFIG_FILE])}),
         Status.DENIED,
     ),
     (
@@ -3024,7 +3025,7 @@ _medx(
     f"all {len(_creds)} are DENY — they are secrets, and the sandbox mounts the root readable",
 )
 _cred_shell = all(
-    _med_kernel.decide(ToolRequest("run_shell", OWNER, {"command": f"cat {pfad}"})).verdict.name == "DENY"
+    _med_kernel.decide(ToolRequest("run_shell", OWNER, {"command": shlex.join(["cat", pfad])})).verdict.name == "DENY"
     for pfad, _ in _creds
 )
 _medx(

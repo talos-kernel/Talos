@@ -15,10 +15,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2790).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2808).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-2790-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-2808-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-254%2F242-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-919%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-32%20gated-8a4318.svg" alt="Tools">
@@ -236,6 +236,12 @@ chain. If every permitted route fails, the task ends with an explicit error and 
 its context. A short promise to act gets one bounded follow-up; completed tool actions
 are never replayed. Failed channel polling backs off from 1 to 30 seconds and resets
 when the channel recovers, while messages received from healthy channels continue.
+
+Cancellation follows the provider actually doing the work, including an active fallback.
+Model switching stays busy until that call finishes. Background tasks retain the same
+configured fallback routes with independent cancellation. After each successful tool
+receipt, a fresh short work announcement can receive one correction; repeating it
+without progress ends explicitly as unfinished.
 
 A full walkthrough — install, identity, the session, every command, and the ones that are
 missing on purpose — is at **[talos-agent.ch/docs](https://talos-agent.ch/docs/)**.

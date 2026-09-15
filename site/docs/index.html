@@ -227,7 +227,7 @@ html.js .rv.in{opacity:1; transform:none}
     <a class="lnk" href="/console.html">Console</a>
     <a class="lnk" href="https://github.com/talos-kernel/talos">GitHub</a>
     <span class="sp"></span>
-    <span class="status"><i>●</i> FIELD MANUAL · REV 0.19.16-ALPHA</span>
+    <span class="status"><i>●</i> FIELD MANUAL · REV 0.19.17-ALPHA</span>
   </div>
 </nav>
 
@@ -248,7 +248,7 @@ html.js .rv.in{opacity:1; transform:none}
     <p class="lede">That one decision shapes the rest of this manual. It is why the
     command list is short, and why a few obvious conveniences are missing on purpose.</p>
     <div class="spec-row">
-      <div class="spec"><b>2790</b>unit tests</div>
+      <div class="spec"><b>2808</b>unit tests</div>
       <div class="spec"><b>254/254</b>adversarial</div>
       <div class="spec"><b>919</b>gate lines</div>
       <div class="spec"><b>32</b>gated tools</div>
@@ -378,6 +378,11 @@ python -m talos help setup</pre>
     and keeps its context. Short promises to act get one bounded follow-up; completed
     tool actions are never replayed. Failed channel polling backs off from 1 to 30
     seconds and resets on recovery; healthy channels keep delivering messages.</p>
+    <p><code>/stop</code> reaches the provider currently doing the work, including an
+    active fallback. Model switching remains busy until that call ends. Background
+    tasks keep their configured fallback routes with independent cancellation.
+    A successful tool receipt permits one correction at the next step; repeated
+    announcements without progress end explicitly as unfinished.</p>
     <div class="tw"><table>
       <thead><tr><th>Command</th><th>What it is</th></tr></thead>
       <tbody>
@@ -397,7 +402,7 @@ python -m talos help setup</pre>
   <section id="session" class="rv">
     <h2><span class="n">Section 05</span>The terminal session</h2>
 <pre>$ talos chat
-Talos 0.19.16-alpha  ·  anthropic-api/claude-opus-4-8  ·  autonomy 3
+Talos 0.19.17-alpha  ·  anthropic-api/claude-opus-4-8  ·  autonomy 3
 speaking as cli:1000  ·  approvals possible — you are at a terminal
 /help for commands, `exit` to leave
 

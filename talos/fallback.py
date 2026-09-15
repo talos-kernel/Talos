@@ -37,11 +37,12 @@ werden kann, kostet die Kette einen Eintrag, nicht den Zug.
 """
 from __future__ import annotations
 
+import threading
 from typing import Callable
 
 from .api_reasoner import FALLBACKABLE_KINDS, ReasonerFailure
 from .eventlog import Event, EventLog, new_run_id
-from .provider import ModelSelection, _takes_sink
+from .provider import ModelSelection, SwitchResult, _takes_sink
 from .stream import OnText
 
 __all__ = ["FALLBACK_EVENT", "FallbackReasoner", "parse_chain"]
@@ -86,9 +87,9 @@ class FallbackReasoner:
     """Ein Reasoner um den aktiven Router herum: scheitert der Lauf klassifiziert,
     denkt der naechste Anbieter der Kette.
 
-    Alles ausser `reason` gehoert weiterhin dem primaeren Objekt (`__getattr__` reicht
-    durch): `current`, `select`, `cancel` und `can_select` sind Router-Geschaeft, die
-    Kette entscheidet nur ueber diesen einen Lauf.
+    Die gespeicherte Auswahl bleibt beim primaeren Router. Abbruch und Beschaeftigung
+    gelten fuer den tatsaechlich laufenden Hop; ein Hintergrundlauf bekommt eine eigene
+    Kette und eigene Abbruchfelder. Ein Fallback aendert keine gespeicherte Auswahl.
     """
 
     def __init__(
@@ -102,9 +103,55 @@ class FallbackReasoner:
         self._chain = tuple(chain)
         self._build = build
         self._log = log
+        self._control_lock = threading.RLock()
+        self._running = False
+        self._selecting = False
+        self._active_hop = None
+        self._cancelled = threading.Event()
 
     def __getattr__(self, name: str):
         return getattr(self._primary, name)
+
+    def fork(self) -> "FallbackReasoner":
+        """Background work keeps the configured routes, with its own cancellation."""
+        return FallbackReasoner(self._primary.fork(), self._chain, self._build, self._log)
+
+    def can_select(self) -> bool:
+        with self._control_lock:
+            return not (self._running or self._selecting) and self._primary.can_select()
+
+    def select(self, provider: str, model: str, *, principal):
+        with self._control_lock:
+            if self._running or self._selecting:
+                return SwitchResult(False, self.current, "reasoner busy")
+            self._selecting = True
+        try:
+            return self._primary.select(provider, model, principal=principal)
+        finally:
+            with self._control_lock:
+                self._selecting = False
+
+    def cancel(self) -> bool:
+        with self._control_lock:
+            running = self._running
+            if running:
+                self._cancelled.set()
+            active = self._active_hop or self._primary
+        cancel = getattr(active, "cancel", None)
+        stopped = bool(cancel()) if callable(cancel) else False
+        return stopped or running
+
+    def _invoke(self, reasoner, prompt, on_text):
+        from .reasoner import CANCELLED_TEXT
+        with self._control_lock:
+            if self._cancelled.is_set():
+                return CANCELLED_TEXT
+            self._active_hop = reasoner
+        try:
+            return _call(reasoner, prompt, on_text)
+        finally:
+            with self._control_lock:
+                self._active_hop = None
 
     def reason(self, prompt: str, on_text: OnText | None = None) -> str:
         """Legacy text interface; the conductor uses the strict interface below."""
@@ -117,8 +164,27 @@ class FallbackReasoner:
 
     def reason_strict(self, prompt: str, on_text: OnText | None = None) -> str:
         """Do not turn an exhausted provider chain into a completed chat turn."""
+        from .reasoner import CANCELLED_TEXT
+        with self._control_lock:
+            if self._running or self._selecting:
+                raise RuntimeError("Reasoner laeuft bereits")
+            self._running = True
+            self._cancelled.clear()
         try:
-            return _call(self._primary, prompt, on_text)
+            result = self._reason_chain(prompt, on_text)
+            return CANCELLED_TEXT if self._cancelled.is_set() else result
+        except Exception:
+            if self._cancelled.is_set():
+                return CANCELLED_TEXT
+            raise
+        finally:
+            with self._control_lock:
+                self._running = False
+
+    def _reason_chain(self, prompt: str, on_text: OnText | None) -> str:
+        from .reasoner import CANCELLED_TEXT
+        try:
+            return self._invoke(self._primary, prompt, on_text)
         except ReasonerFailure as err:
             if not err.fallback_allowed:
                 raise  # Classifying CLI failures must not enable provider switching.
@@ -134,6 +200,8 @@ class FallbackReasoner:
         quelle = "Primär-Provider"
         fehler: BaseException = failure
         for hop in self._chain:
+            if self._cancelled.is_set():
+                return CANCELLED_TEXT
             ziel = f"{hop.provider}/{hop.model}"
             try:
                 hop_reasoner = self._build(hop)
@@ -144,7 +212,7 @@ class FallbackReasoner:
                              str(error)[:200])
                 continue
             try:
-                antwort = _call(hop_reasoner, prompt, on_text)
+                antwort = self._invoke(hop_reasoner, prompt, on_text)
             except ReasonerFailure as hop_fehler:
                 self._record(run_id, ausloeser, ziel, hop_fehler.kind, "failed",
                              hop_fehler.note)
@@ -162,6 +230,9 @@ class FallbackReasoner:
                              str(error)[:200])
                 ausloeser, quelle, fehler = ziel, ziel, error
                 continue
+            if self._cancelled.is_set() or antwort == CANCELLED_TEXT:
+                self._record(run_id, ausloeser, ziel, _kind_of(fehler), "cancelled", "")
+                return CANCELLED_TEXT
             self._record(run_id, ausloeser, ziel, _kind_of(fehler), "ok", "")
             grund = _GRUND.get(_kind_of(fehler), _kind_of(fehler))
             return f"(Fallback: {ziel} — Grund: {quelle} {grund})\n{antwort}"

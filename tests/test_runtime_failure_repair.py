@@ -115,12 +115,58 @@ def test_repeated_announcement_stops_with_explicit_unfinished_result(tmp_path):
     assert result.status is AgentStatus.STEP_LIMIT and result.steps == 2
     assert "Task unfinished" in result.text
 
+@pytest.mark.parametrize("announcement", [
+    "Ich schaue mir zuerst beide Fixture-Dateien an.",
+    "Kurzer Blick zurück in die Fixture, damit ich die Nummer nicht aus dem Gedächtnis rate.",
+    "Bestand gelesen: erwartet A–D, empfangen A, C, D. Jetzt prüfe ich die Eingabedatei dagegen.",
+    "Zuerst beide Dateien lesen.",
+    "Nun die Ergebnisdatei zurücklesen.",
+])
+def test_recorded_inspection_announcements_continue_to_a_gated_result(tmp_path, announcement):
+    executor = _executor(tmp_path)
+    source = tmp_path / "dispatch.txt"
+    source.write_text("Parcel fixture-173; Wednesday 14:30")
+    replies = iter([
+        "(Fallback: ollama/test — Grund: limit)\n" + announcement,
+        'TOOL_CALL: ' + json.dumps({"tool": "read_file", "args": {"path": str(source)}}),
+        "Parcel fixture-173; Wednesday 14:30",
+    ])
+    result = run_agent(lambda _: next(replies), executor, OWNER, "inspection")
+    assert result.status is AgentStatus.ANSWERED
+    assert result.text == source.read_text()
+    assert len([r for r in executor.log.by_run("inspection") if r["type"] == "exec.result"]) == 1
+
 @pytest.mark.parametrize("answer", [
     "Soll ich die README holen?", "Wenn du willst, prüfe ich das.", "I could read it tomorrow.",
     "Die README ist gelesen; Ergebnis: bestanden.", "Er sagte: ich prüfe das.",
+    "Anleitung: Zuerst beide Dateien lesen.",
+    "Zuerst beide Dateien lesen. Danach die Unterschiede vergleichen.",
+    "Zuerst wurden beide Dateien gelesen.",
+    'Er sagte: „Zuerst beide Dateien lesen.“',
 ])
 def test_questions_offers_and_results_are_not_auto_continued(answer):
     assert not announces_next_step(answer)
+
+def test_announcement_budget_resets_only_after_real_progress(tmp_path):
+    executor = _executor(tmp_path)
+    source, target = tmp_path / "source.txt", tmp_path / "result.txt"
+    source.write_text("missing B")
+    def tool(name, **args):
+        return 'TOOL_CALL: ' + json.dumps({"tool": name, "args": args})
+    replies = iter([
+        "Ich schaue mir zuerst die Datei an.",
+        tool("read_file", path=str(source)),
+        "Die fehlende ID ist B. Ich schreibe das Ergebnis und prüfe es danach.",
+        tool("write_file", path=str(target), content="B"),
+        "Ich lese das Ergebnis jetzt zurück.",
+        tool("read_file", path=str(target)),
+        "B written and verified.",
+    ])
+    result = run_agent(lambda _: next(replies), executor, OWNER, "progress")
+    assert result.status is AgentStatus.ANSWERED and target.read_text() == "B"
+    receipts = [r['payload'] for r in executor.log.by_run("progress") if r['type'] == 'exec.result']
+    assert [r['tool'] for r in receipts] == ['read_file', 'write_file', 'read_file']
+    assert all(r['status'] == 'done' for r in receipts)
 
 def test_stop_during_announcement_repair_runs_nothing(tmp_path):
     stopped = [False]
