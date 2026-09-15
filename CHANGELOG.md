@@ -8,6 +8,14 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ## [Unreleased]
 
+### Fixed
+
+- Decode SSE answers as UTF-8 regardless of the response headers. A charset-less
+  `text/event-stream` (Ollama's shape) made requests fall back to ISO-8859-1 per
+  RFC 2616, and non-ASCII answer text arrived double-encoded ("Grüße" became
+  "GrÃ¼ÃŸe"). The stream is JSON and therefore always UTF-8; the reasoner now
+  decodes the bytes itself instead of trusting a header the server may omit.
+
 ## [0.19.17-alpha] — 2026-09-15
 
 - Keep cancellation and busy state attached to the active fallback provider. Background

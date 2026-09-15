@@ -491,6 +491,50 @@ def test_ollama_falls_back_to_the_catalog_address_when_the_route_has_none() -> N
     assert http.calls[-1]["url"] == "http://localhost:11434/v1/chat/completions"
 
 
+class CharsetlessSseResponse:
+    """requests an einem `text/event-stream` OHNE charset — die Ollama-Realitaet.
+
+    `get_encoding_from_headers` folgt RFC 2616 woertlich und liefert fuer text/*
+    ohne charset ISO-8859-1; `iter_lines(decode_unicode=True)` dekodiert den
+    UTF-8-Strom damit. Gemessen am 15.09.2026 gegen ein lokales Ollama: aus
+    „Grüße 🛠" wurde „GrÃ¼ÃŸe ðŸ› " — im Chat doppelt kodiertes Mojibake.
+    `decode_unicode=False` liefert die Bytes unveraendert.
+    """
+
+    def __init__(self, lines: list[str]) -> None:
+        self.status_code = 200
+        self.text = ""
+        self.encoding = "ISO-8859-1"
+        self._lines = [line.encode("utf-8") for line in lines]
+        self.closed = 0
+
+    def iter_lines(self, decode_unicode: bool = False):
+        for line in self._lines:
+            if decode_unicode:
+                yield line.decode(self.encoding, "replace")
+            else:
+                yield line
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+def test_sse_text_is_utf8_even_when_the_server_omits_the_charset() -> None:
+    """Ollama schickt rohes UTF-8 ohne charset — die Antwort darf trotzdem ankommen."""
+    lines = [
+        "data: " + json.dumps(
+            {"model": "qwen3.8:latest",
+             "choices": [{"index": 0, "delta": {"content": "Grüße 🛠"}}]},
+            ensure_ascii=False),
+        sse({"choices": [], "usage": {}}),
+        "data: [DONE]",
+    ]
+    bestand = CredentialStore({"ollama": Route("ollama", "", "http://localhost:11434/v1")})
+    http = FakeHttp(response=CharsetlessSseResponse(lines))
+    reasoner = ApiReasoner("ollama", "qwen3.8:latest", bestand, timeout_s=30, http=http)
+    assert reasoner.reason("Begrüß mich") == "Grüße 🛠"
+
+
 def test_kimi_and_nvidia_build_with_their_own_keys() -> None:
     for slug, key, base in (
         ("kimi", "kimi-eigener-key-123", "https://api.kimi.com/coding/v1"),

@@ -639,7 +639,15 @@ class ApiReasoner:
             _AnthropicStream(sink) if self.provider == PROVIDER_ANTHROPIC else _OpenAiStream(sink)
         )
         try:
-            for raw in response.iter_lines(decode_unicode=True):
+            # ⚠️ BEWUSST kein `decode_unicode=True`: requests folgt RFC 2616 woertlich
+            # und dekodiert ein charsetloses text/event-stream als ISO-8859-1 — der
+            # UTF-8-Strom kaeme als doppelt kodiertes Mojibake an (gemessen am
+            # 15.09.2026 an Ollama: „Grüße 🛠" → „GrÃ¼ÃŸe ðŸ› "). JSON ist auf diesen
+            # APIs per RFC 8259 immer UTF-8, also dekodiert `_sse_payload` die Bytes
+            # selbst; ein Header, den der Server weglassen darf, entscheidet hier
+            # nicht mit. Byte-Split ist sicher: iter_lines trennt nur an \n/\r, und
+            # kein UTF-8-Fortsetzungsbyte ist 0x0A oder 0x0D.
+            for raw in response.iter_lines():
                 with self._lock:
                     cancelled = self._cancelled
                 if cancelled:
