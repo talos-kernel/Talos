@@ -276,6 +276,25 @@ def parse_tool_call(text: str) -> tuple[str, dict, tuple[str, ...]] | None:
     return tool, args, tuple(raw_targets)
 
 
+def announces_next_step(text: str) -> bool:
+    """A short, immediate work announcement is not the result of that work.
+
+    Conservative and bounded: questions, conditional offers, plans and substantive
+    answers are left alone. This quality check never supplies a tool or permission.
+    """
+    body = re.sub(r"^\(Fallback:[^\n]*\)\s*", "", text.strip())
+    if len(body) > 400 or "?" in body:
+        return False
+    if re.search(r"\b(wenn|falls|könnte|würde|möchtest|if|could|would|tomorrow|morgen)\b", body, re.I):
+        return False
+    return bool(re.search(
+        r"(?:^|[.!\n—–]\s*|\s[–—]\s*)"
+        r"(?:ich (?:hole|lese|prüfe|suche|öffne|lade|teste|kontrolliere)\b"
+        r"|I(?:'ll| will| am going to) (?:fetch|read|check|search|open|download|test)\b)",
+        body, re.I,
+    ))
+
+
 def run_agent(
     propose: Propose,
     executor: Executor,
@@ -307,6 +326,7 @@ def run_agent(
     question_retries = 0
     proposal_repairs = 0
     empty_repairs = 0
+    announcement_repairs = 0
     recovery_attempts = 0
     from .computer.observation import ObservationProgress, image_followup
     observations = ObservationProgress()
@@ -436,6 +456,27 @@ def run_agent(
             # Eine Ankuendigung ohne ersten Schritt ist keine Antwort — sonst bekaeme der
             # Betreiber den Plan als Ergebnis vorgelegt, waehrend nichts davon geschah.
             if declared_now:
+                continue
+            if announces_next_step(text):
+                executor.log.append(Event(run_id, "agent", "protocol.repair", {
+                    "reason": "work announcement without action",
+                    "attempt": announcement_repairs + 1,
+                    "exhausted": announcement_repairs >= 1,
+                }))
+                if announcement_repairs >= 1:
+                    return AgentResult(
+                        AgentStatus.STEP_LIMIT,
+                        "Task unfinished: the model announced another step but did not request it. "
+                        "Earlier tool results remain valid; no completed action was replayed.",
+                        steps=step, history=tuple(history), plan=active,
+                    )
+                announcement_repairs += 1
+                history.append(
+                    "[Your last reply only announced the next step. Carry out the necessary "
+                    "step with a complete TOOL_CALL, or give the actual result or precise blocker. "
+                    "Keep the original task and permission boundaries. Do not replay completed, "
+                    "declined or uncertain effects.]"
+                )
                 continue
             # Eine native TOOL_CALL-Zeile mit kaputter JSON ist derselbe Fehlermodus wie
             # Fremdsyntax: ein misslungener Werkzeugzug, kein Ergebnis. Ausliefern hiesse,

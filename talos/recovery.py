@@ -16,9 +16,13 @@ def advice(tool, outcome, attempts):
     if attempts >= MAX_RECOVERIES or tool not in READ_ROUTES or outcome.status is not Status.ERROR:
         return ""
     evidence = (str(outcome.detail) + " " + str(outcome.result or "")).lower()
-    if not any(marker in evidence for marker in TRANSIENT):
+    oversized = tool == "web_fetch" and "response exceeds" in evidence
+    if not oversized and not any(marker in evidence for marker in TRANSIENT):
         return ""
-    return ("[A read-only dependency failed. " + READ_ROUTES[tool] +
+    route = ("Fetch a smaller source such as the raw README or an official text page, "
+             "or use web_search. Do not fetch the same oversized page again. "
+             if oversized else READ_ROUTES[tool])
+    return ("[A read-only dependency failed. " + route +
             " Stay within the original goal and remaining plan budget. Every alternative still passes the kernel. "
             "Do not repeat an unchanged failed call, expand permissions or replay a write. "
             "Return a verified result or name the exact unresolved fact.]")

@@ -962,7 +962,14 @@ class Conductor:
                     activity.succeed(self._usage_footer())
                 else:
                     activity.fail(str(error))
-            if sent or getattr(activity, 'failure_delivered', False):
+            failure_delivered = getattr(activity, 'failure_delivered', activity is not None)
+            if not sent and not failure_delivered:
+                # A provider may fail before the first tool creates an activity.
+                # Deliver a terminal failure without turning the worker into success.
+                failure_text = (error.message if isinstance(error, ReasonerFailure)
+                                else "Task failed before a usable answer. /log shows the recorded cause.")
+                failure_delivered = self._reply(update, run_id, failure_text)
+            if sent or failure_delivered:
                 self.working_displays.cleanup(display_key)
             return sent
         finally:

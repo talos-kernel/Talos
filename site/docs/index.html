@@ -248,10 +248,10 @@ html.js .rv.in{opacity:1; transform:none}
     <p class="lede">That one decision shapes the rest of this manual. It is why the
     command list is short, and why a few obvious conveniences are missing on purpose.</p>
     <div class="spec-row">
-      <div class="spec"><b>2770</b>unit tests</div>
+      <div class="spec"><b>2790</b>unit tests</div>
       <div class="spec"><b>254/254</b>adversarial</div>
       <div class="spec"><b>919</b>gate lines</div>
-      <div class="spec"><b>31</b>gated tools</div>
+      <div class="spec"><b>32</b>gated tools</div>
       <div class="spec"><b>30s</b>token life</div>
       <div class="spec"><b>0</b>default identities</div>
     </div>
@@ -373,6 +373,11 @@ python -m talos help setup</pre>
 
   <section id="run" class="rv">
     <h2><span class="n">Section 04</span>Run it</h2>
+    <p>Empty API replies and stream errors remain failures through the configured
+    fallback chain. If all permitted routes fail, the task ends with an explicit error
+    and keeps its context. Short promises to act get one bounded follow-up; completed
+    tool actions are never replayed. Failed channel polling backs off from 1 to 30
+    seconds and resets on recovery; healthy channels keep delivering messages.</p>
     <div class="tw"><table>
       <thead><tr><th>Command</th><th>What it is</th></tr></thead>
       <tbody>

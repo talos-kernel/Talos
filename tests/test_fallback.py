@@ -331,7 +331,7 @@ def test_both_gates_are_required_to_switch_providers() -> None:
     from talos.api_reasoner import FALLBACKABLE_KINDS
     import inspect
 
-    quelle = inspect.getsource(FallbackReasoner.reason)
+    quelle = inspect.getsource(FallbackReasoner.reason_strict)
     assert "fallback_allowed" in quelle, "das erste Tor ist verschwunden"
     assert "FALLBACKABLE_KINDS" in quelle, "das zweite Tor ist verschwunden"
 

@@ -107,15 +107,25 @@ class FallbackReasoner:
         return getattr(self._primary, name)
 
     def reason(self, prompt: str, on_text: OnText | None = None) -> str:
+        """Legacy text interface; the conductor uses the strict interface below."""
         try:
-            return str(self._primary.reason(prompt, on_text=on_text))  # type: ignore[attr-defined]
+            return self.reason_strict(prompt, on_text)
+        except ReasonerFailure as error:
+            if not error.fallback_allowed:
+                raise
+            return error.message
+
+    def reason_strict(self, prompt: str, on_text: OnText | None = None) -> str:
+        """Do not turn an exhausted provider chain into a completed chat turn."""
+        try:
+            return _call(self._primary, prompt, on_text)
         except ReasonerFailure as err:
             if not err.fallback_allowed:
                 raise  # Classifying CLI failures must not enable provider switching.
             if not self._chain or err.kind not in FALLBACKABLE_KINDS:
                 # Genau der bisherige Text — dieselbe Zeile, die der Reasoner ohne Kette
                 # selbst ausgeliefert haette. e2e/redteam haengen an diesem Wortlaut.
-                return err.message
+                raise
             # `err` wird am Ende des except-Blocks geloescht (Python-Semantik) — die
             # Referenz braucht einen eigenen Namen, sonst ist die Kette unten leer.
             failure = err
@@ -138,10 +148,10 @@ class FallbackReasoner:
             except ReasonerFailure as hop_fehler:
                 self._record(run_id, ausloeser, ziel, hop_fehler.kind, "failed",
                              hop_fehler.note)
-                if hop_fehler.kind not in FALLBACKABLE_KINDS:
+                if not hop_fehler.fallback_allowed or hop_fehler.kind not in FALLBACKABLE_KINDS:
                     # Ein Fachfehler mitten in der Kette beendet sie: weiterschalten
                     # hiesse, dieselbe abgelehnte Anfrage an den naechsten zu stellen.
-                    return hop_fehler.message
+                    raise
                 ausloeser, quelle, fehler = ziel, ziel, hop_fehler
                 continue
             except Exception as error:
@@ -156,8 +166,6 @@ class FallbackReasoner:
             grund = _GRUND.get(_kind_of(fehler), _kind_of(fehler))
             return f"(Fallback: {ziel} — Grund: {quelle} {grund})\n{antwort}"
         # Totales Kettenversagen: das bisherige Textverhalten des LETZTEN Fehlers.
-        if isinstance(fehler, ReasonerFailure):
-            return fehler.message
         raise fehler
 
     @staticmethod
@@ -194,8 +202,13 @@ def _call(reasoner: object, prompt: str, on_text: OnText | None) -> str:
     """Ein Hop-Lauf. `reason_strict` wo vorhanden — nur so traegt der Fehler seine Art."""
     method = getattr(reasoner, "reason_strict", None) or getattr(reasoner, "reason")  # type: ignore[attr-defined]
     if on_text is not None and _takes_sink(method):
-        return str(method(prompt, on_text=on_text))
-    return str(method(prompt))
+        answer = str(method(prompt, on_text=on_text))
+    else:
+        answer = str(method(prompt))
+    # Compatibility with a legacy text-only adapter. Validate before decorating.
+    if answer.strip() in {"", "(Empty answer.)", "(leere Antwort)"}:
+        raise ReasonerFailure("The provider returned no usable answer.", kind="empty_response")
+    return answer
 
 
 def _kind_of(fehler: BaseException) -> str:

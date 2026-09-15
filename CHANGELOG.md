@@ -8,6 +8,20 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ## [Unreleased]
 
+## [0.19.16-alpha] — 2026-09-15
+
+### Fixed
+
+- Empty API streams and declared stream errors remain typed failures through the
+  fallback chain. Exhaustion ends the task as failed, preserves its context, and
+  cannot be reported as a successful answer.
+- Short immediate work announcements receive one bounded follow-up for a tool
+  request or actual result. Completed tool effects are not replayed. Oversized
+  fetches suggest a smaller text source.
+- Failed channel polling backs off per channel (1–30 seconds), resets on recovery,
+  and does not hold messages already received from healthy channels.
+- Dependency minimums now match the secure versions already pinned in the locks.
+
 ## [0.19.15-alpha] — 2026-09-14
 
 ### Fixed

@@ -24,6 +24,7 @@ Stufe wirkt darum wie der Autonomie-Regler: sie kann nur zumachen, nie aufmachen
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Any, Callable, Protocol, runtime_checkable
@@ -199,12 +200,16 @@ class ChannelRegistry:
         channels: tuple[Channel, ...] = (),
         *,
         on_error: "ErrorSink | None" = None,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         names = [c.name for c in channels]
         if len(names) != len(set(names)):
             raise ValueError(f"Kanalnamen nicht eindeutig: {names}")
         self._channels = {c.name: c for c in channels}
         self._on_error = on_error
+        self._clock, self._sleep = clock, sleep
+        self._poll_failures: dict[str, tuple[int, float]] = {}
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -235,13 +240,26 @@ class ChannelRegistry:
         """
         collected: list[Inbound] = []
         for name, channel in self._channels.items():
+            count, retry_at = self._poll_failures.get(name, (0, 0.0))
+            if self._clock() < retry_at:
+                continue
             if self._on_error is None:
                 collected.extend(channel.poll())
                 continue
             try:
                 collected.extend(channel.poll())
+                self._poll_failures.pop(name, None)
             except Exception as error:
+                count = min(count + 1, 6)
+                self._poll_failures[name] = (count, self._clock() + min(30, 2 ** (count - 1)))
                 self._on_error(name, error)
+        if not collected and self._poll_failures:
+            # poll_all catches failures, so the outer exception sleep never ran.
+            # Tick at most once a second while idle; healthy channels remain polled
+            # and a received command is returned immediately, never held for backoff.
+            wait = min(at for _, at in self._poll_failures.values()) - self._clock()
+            if wait > 0:
+                self._sleep(min(1.0, wait))
         return collected
 
     def send(self, conversation: str, text: str) -> None:

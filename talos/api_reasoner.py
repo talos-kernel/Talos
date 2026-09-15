@@ -185,6 +185,7 @@ FALLBACKABLE_KINDS: frozenset[str] = frozenset({
 # als HTTP_FAILED behandelt: nicht fallbackbar, weil jeder Hop denselben Frame
 # ablehnen wuerde.
 _WORKER_KINDS: frozenset[str] = frozenset({
+    KIND_EMPTY_RESPONSE,
     KIND_KEY_REJECTED,
     KIND_RATE_LIMITED,
     KIND_OVERLOADED,
@@ -296,6 +297,7 @@ class _AnthropicStream:
         self.input_tokens = 0
         self.output_tokens = 0
         self.error = ""
+        self.error_kind = KIND_HTTP_FAILED
 
     def feed(self, event: dict) -> None:
         kind = event.get("type")
@@ -330,6 +332,7 @@ class _AnthropicStream:
             return
         if kind == "error":
             self.error = _error_detail(event.get("error"))
+            self.error_kind = _stream_error_kind(event.get("error"))
 
 
 class _OpenAiStream:
@@ -345,10 +348,12 @@ class _OpenAiStream:
         self.input_tokens = 0
         self.output_tokens = 0
         self.error = ""
+        self.error_kind = KIND_HTTP_FAILED
 
     def feed(self, chunk: dict) -> None:
         if chunk.get("error"):
             self.error = _error_detail(chunk.get("error"))
+            self.error_kind = _stream_error_kind(chunk.get("error"))
             return
         model = chunk.get("model")
         if isinstance(model, str) and model:
@@ -578,6 +583,15 @@ class ApiReasoner:
             return CANCELLED_TEXT
         text, note = _finish(parser)
         self._record(started, ok=not note, parser=parser, note=note)
+        if note:
+            # A successful HTTP exchange is not a successful model answer. Keep
+            # the failure typed through the router and fallback; a text sentinel
+            # with a fallback prefix otherwise becomes an ANSWERED agent turn.
+            raise ReasonerFailure(
+                "(Reasoner error: provider stream failed.)" if parser.error else EMPTY_ANSWER,
+                kind=parser.error_kind if parser.error else KIND_EMPTY_RESPONSE,
+                note=note, provider=self.provider, model=self.model,
+            ) from None
         return text
 
     def _exchange(
@@ -928,6 +942,29 @@ def _sse_payload(raw: object) -> str | None:
     if not line.startswith("data:"):
         return None
     return line[len("data:"):].strip() or None
+
+
+def _stream_error_kind(error: object) -> str:
+    """Classify only declared codes, never guess from private response prose."""
+    if not isinstance(error, dict):
+        return KIND_HTTP_FAILED
+    code = error.get("status", error.get("status_code"))
+    if type(code) is int and 400 <= code <= 599:
+        return _classify(code, "")[2]
+    types = {
+        "rate_limit_error": KIND_RATE_LIMITED,
+        "rate_limit_exceeded": KIND_RATE_LIMITED,
+        "insufficient_quota": KIND_RATE_LIMITED,
+        "overloaded_error": KIND_OVERLOADED,
+        "server_error": KIND_OVERLOADED,
+        "authentication_error": KIND_KEY_REJECTED,
+        "invalid_api_key": KIND_KEY_REJECTED,
+    }
+    for field in ("type", "code"):
+        value = error.get(field)
+        if isinstance(value, str) and value in types:
+            return types[value]
+    return KIND_HTTP_FAILED
 
 
 def _finish(parser: _AnthropicStream | _OpenAiStream) -> tuple[str, str]:

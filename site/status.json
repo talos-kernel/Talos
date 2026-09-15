@@ -1,9 +1,9 @@
 {
-  "version": "0.19.15-alpha",
-  "tests": 2758,
+  "version": "0.19.16-alpha",
+  "tests": 2790,
   "redteam_faelle": 254,
   "kernel_zeilen": 919,
   "werkzeuge": 32,
-  "sha": "4288052197",
-  "gebaut_am": "2026-09-06T14:44:11Z"
+  "gebaut_am": "2026-09-15T06:48:28Z",
+  "release_ref": "v0.19.16-alpha"
 }

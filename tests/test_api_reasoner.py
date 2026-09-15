@@ -201,7 +201,7 @@ def test_a_provider_error_inside_the_stream_beats_the_text() -> None:
         sse({"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}),
     ]
     reasoner, _http, _response = build(lines)
-    assert reasoner.reason("Status?") == "(Reasoner error: Overloaded)"
+    assert reasoner.reason("Status?") == "(Reasoner error: provider stream failed.)"
 
 
 # --- Anfragekoerper: kein Werkzeug, kein Gate-Bypass -------------------------------

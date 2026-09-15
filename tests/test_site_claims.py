@@ -150,12 +150,29 @@ def _page_claims(seite: Path) -> list[int]:
 
 
 def test_every_page_of_the_site_states_the_real_numbers() -> None:
+    import json
+    from talos import __version__
+
     erwartet = {
         "Tests": _collected_tests(),
         "Adversarial-Faelle": _redteam_cases(),
         "Kernel-Zeilen": len(KERNEL.read_text(encoding="utf-8").splitlines()),
         "Werkzeuge": _tool_count(),
     }
+    status = json.loads((ROOT / "site" / "status.json").read_text(encoding="utf-8"))
+    assert status["version"] == __version__
+    assert status["release_ref"] == f"v{__version__}"
+    assert status["tests"] == erwartet["Tests"]
+    assert status["werkzeuge"] == erwartet["Werkzeuge"]
+    assert status["kernel_zeilen"] == erwartet["Kernel-Zeilen"]
+    assert status["redteam_faelle"] == erwartet["Adversarial-Faelle"]
+    for page in (ROOT / "site").rglob("*.html"):
+        text = page.read_text(encoding="utf-8")
+        for match in re.finditer(r"<b>(\d+)</b>gated tools", text):
+            assert int(match.group(1)) == erwartet["Werkzeuge"], page
+    console = (ROOT / "site" / "console.html").read_text(encoding="utf-8")
+    assert f'data-f="version">{__version__}<' in console
+    assert f'data-f="werkzeuge">{erwartet["Werkzeuge"]}<' in console
     for seite in (SITE, *EXTRA_PAGES):
         if not seite.exists():
             continue
@@ -189,6 +206,7 @@ def _readme_numbers() -> list[int]:
 
 def test_the_readme_badges_state_the_real_numbers() -> None:
     zahlen = _readme_numbers()
+    assert f"tools-{_tool_count()}%20gated" in README.read_text(encoding="utf-8")
     assert _collected_tests() in zahlen, (
         f"Das Test-Abzeichen nennt {zahlen}, tatsaechlich sind es {_collected_tests()}."
     )

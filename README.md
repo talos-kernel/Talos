@@ -15,13 +15,13 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2770).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2790).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-2770-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-2790-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-254%2F242-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-919%20lines-8a4318.svg" alt="Gate path">
-  <img src="https://img.shields.io/badge/tools-31%20gated-8a4318.svg" alt="Tools">
+  <img src="https://img.shields.io/badge/tools-32%20gated-8a4318.svg" alt="Tools">
   <img src="https://img.shields.io/badge/default%20identities-0-c62828.svg" alt="Default identities">
   <img src="https://img.shields.io/badge/python-3.11%2B-1565c0.svg" alt="Python">
   <img src="https://img.shields.io/badge/licence-MIT-616161.svg" alt="MIT">
@@ -230,6 +230,12 @@ These providers use the native API adapter, including runtime fallback. Without
 `env_key` no Authorization header is sent; a named but missing key fails closed.
 Built-in provider names cannot be replaced. The isolated model worker does **not**
 accept agent-defined custom providers; it retains its own provider allowlist.
+
+Empty API replies and stream errors stay failures throughout the configured fallback
+chain. If every permitted route fails, the task ends with an explicit error and keeps
+its context. A short promise to act gets one bounded follow-up; completed tool actions
+are never replayed. Failed channel polling backs off from 1 to 30 seconds and resets
+when the channel recovers, while messages received from healthy channels continue.
 
 A full walkthrough — install, identity, the session, every command, and the ones that are
 missing on purpose — is at **[talos-agent.ch/docs](https://talos-agent.ch/docs/)**.

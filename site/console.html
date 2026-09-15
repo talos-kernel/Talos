@@ -379,10 +379,10 @@ html.js .rv.in{opacity:1;transform:none}
       <a class="btn ghost" href="#measured">This release, measured ▾</a>
     </div>
     <div class="meter-row">
-      <span><b>2770</b>unit tests</span>
+      <span><b>2790</b>unit tests</span>
       <span><b>254/254</b>adversarial</span>
       <span><b>919</b>lines · gate</span>
-      <span><b>31</b>gated tools</span>
+      <span><b>32</b>gated tools</span>
     </div>
   </div>
 </header>
@@ -554,12 +554,12 @@ html.js .rv.in{opacity:1;transform:none}
     embedded below. Either way the digits come from a count, not from memory.</p>
 
     <div class="stats" id="releaseStats">
-      <div class="stat rv"><div class="n" data-f="version">0.17.2-alpha</div><div class="l">release</div></div>
-      <div class="stat rv"><div class="n" data-f="tests">2770</div><div class="l">unit tests, collected by pytest</div></div>
+      <div class="stat rv"><div class="n" data-f="version">0.19.16-alpha</div><div class="l">release</div></div>
+      <div class="stat rv"><div class="n" data-f="tests">2790</div><div class="l">unit tests, collected by pytest</div></div>
       <div class="stat rv"><div class="n" data-f="redteam_faelle">254</div><div class="l">adversarial cases, all behaving</div></div>
       <div class="stat rv"><div class="n" data-f="kernel_zeilen">919</div><div class="l">lines in policy.py, readable in one sitting</div></div>
-      <div class="stat rv"><div class="n" data-f="werkzeuge">31</div><div class="l">tools, every one through the gate</div></div>
-      <div class="stat rv"><div class="n" data-f="sha">6decfc8cb7</div><div class="l">release commit</div><div class="sub-l" data-f="gebaut_am">built 2026-08-31</div></div>
+      <div class="stat rv"><div class="n" data-f="werkzeuge">32</div><div class="l">tools, every one through the gate</div></div>
+      <div class="stat rv"><div class="n" data-f="release_ref">v0.19.16-alpha</div><div class="l">release tag</div><div class="sub-l" data-f="gebaut_am">built 2026-09-15T06:48:28Z</div></div>
     </div>
 
     <div class="measure-note rv">
@@ -728,7 +728,7 @@ if (!reduced) setInterval(() => { if (Math.random() < 0.12) flickOnce(); }, 4000
 /* ─── this release, measured: ./status.json with an embedded fallback ─── */
 (() => {
   const src = document.getElementById('statusSrc');
-  const FIELDS = ['version', 'tests', 'redteam_faelle', 'kernel_zeilen', 'werkzeuge', 'sha', 'gebaut_am'];
+  const FIELDS = ['version', 'tests', 'redteam_faelle', 'kernel_zeilen', 'werkzeuge', 'release_ref', 'gebaut_am'];
 
   function apply(data) {
     FIELDS.forEach(key => {
@@ -736,7 +736,6 @@ if (!reduced) setInterval(() => { if (Math.random() < 0.12) flickOnce(); }, 4000
       const value = data[key];
       if (!el || (typeof value !== 'string' && typeof value !== 'number')) return;
       if (key === 'gebaut_am') { el.textContent = 'built ' + value; return; }
-      if (key === 'sha') { el.textContent = String(value).slice(0, 10); return; }
       el.textContent = String(value);
     });
   }
