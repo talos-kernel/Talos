@@ -8,6 +8,8 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ## [Unreleased]
 
+## [0.19.18-alpha] — 2026-09-16
+
 ### Fixed
 
 - Decode SSE answers as UTF-8 regardless of the response headers. A charset-less

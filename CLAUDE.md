@@ -233,6 +233,12 @@ In practice:
   mark overridden values as the operator's word, not the catalogue's. There is no
   token-based context cap: the window shows in the display, it is not a bound.
 
+## API stream encoding
+
+SSE payloads are UTF-8 bytes. Keep `ApiReasoner._consume` on raw `iter_lines()`;
+`requests` can otherwise apply Latin-1 to `text/event-stream` without a charset.
+`_sse_payload` owns decoding. Preserve the charset-less stream regression test.
+
 ## Runtime recovery
 
 `FallbackReasoner` owns cancellation and busy state for the active hop. Its background
