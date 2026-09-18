@@ -6,7 +6,7 @@ they make possible that was not possible before — or, more often, what they ta
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions are alpha: the kernel's rules are stable, the surface around them is not.
 
-## [Unreleased]
+## [0.19.19-alpha] — 2026-09-18
 
 ### Fixed
 
@@ -17,6 +17,11 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
   (duration, tool actions, result status), sent after the answer's confirmed
   delivery and never edited. A run parked at an approval is not finished, so it
   gets no receipt.
+- Show the run's summary exactly once. With the receipt delivered, the frozen
+  display kept repeating the same "Turn finished" header and read like two end
+  messages; it now freezes as the plain work trail and the receipt alone carries
+  the summary. If the receipt cannot be sent, the display carries the full final
+  state as before.
 - Acknowledge callback taps when they arrive instead of after queueing: an
   approval button that aged in the worker queue made Telegram reject the late
   `answerCallbackQuery` with a 400, and the error cascade marked the queued turn

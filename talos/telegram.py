@@ -979,6 +979,10 @@ class TelegramActivity:
         ueberschrieben wird, ist fuer den Betreiber faktisch geloescht (gemessen am
         15.09.2026). Der Beleg wird nach bestaetigter Zustellung der Antwort gesendet
         (der Conductor ruft `succeed` erst dann) und danach nie mehr editiert.
+        Gelingt der Beleg, friert die Anzeige als reine Arbeitsspur ein — die
+        Zusammenfassung steht genau einmal im Chat, im Beleg (gemessen am 18.09.2026:
+        der doppelte „Turn finished"-Kopf las sich wie zwei Ende-Meldungen). Schlaegt
+        der Belegversand fehl, traegt die Anzeige wieder den vollen Endstand.
         `receipt=False` parkt die Anzeige an einer Freigabe: der Lauf wartet, und ein
         „Turn finished" fuer einen wartenden Lauf waere eine falsche Quittung.
         """
@@ -989,16 +993,17 @@ class TelegramActivity:
         if self._message_id is None:
             return
         self._settle()
-        self._edit(text=self._render(final=True, footer=footer), force=True)
-        if not receipt:
-            return
-        try:
-            self._receipt_id = self._client.send_message(
-                self._chat_id, self._receipt(footer), disable_notification=True,
-            )
-        except Exception:
-            # Dann traegt die eingefrorene Anzeige den Endstand allein — wie bisher.
-            self._receipt_id = None
+        beleg_id = None
+        if receipt:
+            try:
+                beleg_id = self._client.send_message(
+                    self._chat_id, self._receipt(footer), disable_notification=True,
+                )
+            except Exception:
+                # Dann traegt die eingefrorene Anzeige den Endstand allein — wie bisher.
+                beleg_id = None
+        self._receipt_id = beleg_id
+        self._edit(text=self._render(final=True, footer=footer, beleg=beleg_id is not None), force=True)
 
     def _receipt(self, footer: str) -> str:
         """Der kompakte Abschluss-Beleg: Dauer, Werkzeug-Aktionen, Ergebnis-Status."""
@@ -1117,11 +1122,11 @@ class TelegramActivity:
             if line.done_at is None:
                 line.done_at = now
 
-    def _render(self, *, final: bool = False, footer: str = "") -> str:
+    def _render(self, *, final: bool = False, footer: str = "", beleg: bool = False) -> str:
         now = self._clock()
         elapsed = now - self._start
         if self._style is EXPRESSIVE:
-            return self._mission(now, elapsed, final=final, footer=footer)
+            return self._mission(now, elapsed, final=final, footer=footer, beleg=beleg)
         head = f"{self._style.talos} {self._name} · {elapsed:.0f}s"
         if not final and self._max_steps:
             head += f" · step {self._step}/{self._max_steps}"
@@ -1133,12 +1138,18 @@ class TelegramActivity:
             parts.append(footer)
         return "\n".join(parts)
 
-    def _mission(self, now: float, elapsed: float, *, final: bool, footer: str) -> str:
-        """A measured timeline: a finished turn never claims a worker job is done."""
+    def _mission(self, now: float, elapsed: float, *, final: bool, footer: str, beleg: bool = False) -> str:
+        """A measured timeline: a finished turn never claims a worker job is done.
+
+        `beleg` heisst: der Abschluss-Beleg ging raus und traegt die Zusammenfassung —
+        die eingefrorene Anzeige bleibt dann reine Arbeitsspur, ohne doppelten Kopf.
+        """
         if self._fatal:
             glyph, state = self._style.fail, "Stopped"
         elif self._waiting:
             glyph, state = self._style.gate, "Needs your approval"
+        elif final and beleg:
+            glyph, state = self._style.talos, "Work trail — 🏁 receipt below"
         elif final:
             glyph, state = ("⚠️", "Finished with issues") if self._issues else ("🏁", "Turn finished")
         else:
@@ -1146,7 +1157,10 @@ class TelegramActivity:
         seconds = max(0, int(elapsed))
         duration = f"{seconds // 60}m {seconds % 60:02d}s" if seconds >= 60 else f"{seconds}s"
         calls = f"{self._tool_calls} tool call{'s' if self._tool_calls != 1 else ''}"
-        parts = [f"{glyph} {_redact(self._name)[:60]} · {state}", f"⏱ {duration}  ·  {calls}"]
+        parts = [f"{glyph} {_redact(self._name)[:60]} · {state}"]
+        if not (final and beleg):
+            # Dauer und Aufrufe stehen im Beleg — die Spur wiederholt sie nicht.
+            parts.append(f"⏱ {duration}  ·  {calls}")
         if not final and self._step:
             # The safety budget is neither task size nor a useful completion estimate.
             parts[-1] += f"  ·  Step {self._step}"
@@ -1156,7 +1170,7 @@ class TelegramActivity:
         parts.extend(line.render(now) for line in self._lines)
         if self._issues:
             parts.append(f"\n⚠️ {self._issues} tool call{'s' if self._issues != 1 else ''} refused or failed")
-        if final and footer:
+        if final and footer and not beleg:
             parts.append(f"\n{_redact(footer)}")
         if not final:
             parts.append("\n/stop · interrupt  /log · details")

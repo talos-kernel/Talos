@@ -101,7 +101,24 @@ def test_failed_notification_is_bounded_and_does_not_stop_activity():
     assert client.attempts == 1
     activity.progress(_result('read_file', 'done'))
     activity.succeed()
-    assert activity._finished and 'Turn finished' in client.edited[-1][2]
+    assert activity._finished
+    assert 'Turn finished' in client.sent[-1][1]   # die Zusammenfassung traegt der Beleg
+    assert 'Work trail' in client.edited[-1][2]    # die Anzeige friert als Spur ein
+
+
+def test_the_frozen_display_does_not_repeat_the_receipt_summary():
+    """Gemessen am 18.09.2026: der Endstand stand doppelt im Chat — als Kopf der
+    eingefrorenen Anzeige und noch einmal als Beleg. Die Zusammenfassung gehoert
+    genau einmal in den Chat: in den Beleg; die Anzeige bleibt reine Arbeitsspur."""
+    client, activity = setup_activity()
+    activity.progress(_tool('read_file', summary='read'))
+    activity.progress(_result('read_file', 'done'))
+    activity.succeed('✓ 5s · 1k tok · testmodell')
+    alle = [text for _, text, _ in client.sent] + [text for _, _, text, _ in client.edited]
+    assert sum('Turn finished' in text for text in alle) == 1
+    spur = client.edited[-1][2]
+    assert 'Work trail' in spur and 'Turn finished' not in spur
+    assert 'testmodell' not in spur               # die Quittung steht nur im Beleg
 
 
 def test_failed_update_edit_does_not_send_more_notifications_or_retry_tools():

@@ -14,7 +14,7 @@ preferences live in `USER.md`. All three are operator-owned prompt state and rel
 |---|---|
 | Gate path | `policy.py`, **919 lines** — has to stay readable in one sitting |
 | Tools | **32**, every one gated |
-| Suites | **2816** tests · **254** adversarial · 44 end-to-end |
+| Suites | **2817** tests · **254** adversarial · 44 end-to-end |
 | Home | <https://talos-agent.ch> · docs at `/docs/` |
 | Repository | `talos-kernel/talos` is the public source tree |
 
@@ -252,7 +252,7 @@ properties covered by `test_fallback_control.py` and `test_runtime_failure_repai
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install --require-hashes -r requirements.lock -r requirements-dev.lock
 
-python -m pytest tests/ -q   # 2816 tests, ~30s
+python -m pytest tests/ -q   # 2817 tests, ~30s
 python redteam.py            # 254 adversarial cases — mandatory for any kernel change
 python e2e.py                # 44 cases against a real model (costs tokens and time)
 python -m talos --once       # single cycle, for diagnosis
@@ -351,6 +351,10 @@ covers the packages only through it. `pip` is never upgraded unpinned first.
 - Glyphs come from `talos/ux.py` only, one meaning each, **never inside an answer's prose**.
 - Telegram edit interval stays ≥ 1.2 s; the API tolerates roughly one edit per second
   per chat.
+- A Telegram run's completion is its own append-only message (`_receipt`): the display
+  may morph while running, but the summary lives exactly once in the chat. With the
+  receipt delivered, the frozen display is the plain work trail; `receipt=False` parks
+  a waiting run without a false "finished".
 - User-facing conversation follows the user's language (`SOUL.md` mandates this). The
   machine console — status display, `/help`, `/policy`, `/debug`, kernel reasons — stays
   English.
