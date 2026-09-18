@@ -130,7 +130,9 @@ class CliActivity:
                 # sie steht als Wort da (ein Zeichen, eine Bedeutung — ux.py).
                 self._zeile("· direction changed by the operator")
 
-    def succeed(self, footer: str = "") -> None:
+    def succeed(self, footer: str = "", *, receipt: bool = True) -> None:
+        # Das Terminal ist von Natur append-only: die Abschlusszeile ist hier bereits
+        # eine neue Zeile, nie ein Edit — den Beleg-Parameter braucht nur Telegram.
         if not self._sichtbar or self._fertig:
             return
         self._fertig = True

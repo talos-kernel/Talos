@@ -131,6 +131,23 @@ LABEL_PROTECTED = "protected file"
 LABEL_SHELL_GENERIC = "shell command"
 
 
+def _api_description(response: object) -> str:
+    """Telegrams Fehlergrund aus dem Antwort-Body — oder "".
+
+    Ein Body, der kein JSON ist oder kein `description`-Feld traegt, ist kein Fehler
+    an dieser Stelle: die requests-Meldung allein traegt den Fund dann eben.
+    """
+    if response is None:
+        return ""
+    try:
+        payload = response.json()
+    except Exception:
+        return ""
+    if isinstance(payload, dict):
+        return str(payload.get("description") or "")
+    return ""
+
+
 @dataclass(frozen=True)
 class Update:
     update_id: int
@@ -368,7 +385,14 @@ class TelegramClient:
             # Ohne `from None` haenge die urspruengliche Ausnahme mit ihrem
             # ungeschwaerzten Text als `__cause__` daran — und ein Logger, der die
             # Kette ausgibt, schriebe das Token doch wieder hin.
-            raise type(error)(self._redact(str(error))) from None
+            meldung = self._redact(str(error))
+            # Telegrams eigener Grund steht im Body (`description`), nicht in der
+            # requests-Meldung: „400 Bad Request" allein ist nicht diagnostizierbar.
+            # Gemessen am 15.09.2026: „query is too old" kam nur ueber diesen Weg raus.
+            beschreibung = _api_description(getattr(error, "response", None))
+            if beschreibung:
+                meldung = f"{meldung} — {self._redact(beschreibung)}"
+            raise type(error)(meldung) from None
 
     def fetch_photo(self, message: dict, user_id: int) -> str:
         """Holt das groesste Foto und legt es ab. Gibt den Pfad zurueck — oder "".
@@ -755,6 +779,9 @@ class TelegramActivity:
     3. Der Conductor entfernt Arbeitsmeldungen erst nach bestaetigter Zustellung.
        Ausfuehrungsbelege bleiben im Eventlog; Freigaben sind keine Arbeitsmeldungen.
     4. Jede Zeile traegt ihre Dauer, der Kopf traegt Gesamtzeit und Schritt.
+    5. Der Abschluss ist append-only: `succeed` sendet den Endstand zusaetzlich als
+       eigene, nie editierte Nachricht (`_receipt`). Ein Edit ueberschreibt, was der
+       Betreiber gelesen hat — der Beleg ist die eine Nachricht, die das nie tut.
     """
 
     def __init__(
@@ -799,6 +826,9 @@ class TelegramActivity:
         # Noch KEINE Nachricht: erst ein Werkzeug rechtfertigt eine (siehe `_ensure_message`).
         self._message_id: int | None = None
         self._update_ids: list[int] = []
+        # Der append-only Abschluss-Beleg aus `_succeed` — eine eigene Nachricht,
+        # die nie editiert wird; `cleanup` nimmt sie nur im Aufraeum-Modus mit.
+        self._receipt_id: int | None = None
         self.failure_delivered = False
         self._last_edit = clock()
         self._typing()
@@ -933,15 +963,24 @@ class TelegramActivity:
             pass  # Delivery failure cannot retry tools or derail the task.
 
     # ------------------------------------------------------------------ Abschluss
-    def succeed(self, footer: str = "") -> None:
+    def succeed(self, footer: str = "", *, receipt: bool = True) -> None:
         with self._lock:
-            self._succeed(footer)
+            self._succeed(footer, receipt=receipt)
 
-    def _succeed(self, footer: str = "") -> None:
+    def _succeed(self, footer: str = "", *, receipt: bool = True) -> None:
         """Freeze the display; cleanup follows confirmed result delivery.
 
         Lief kein Werkzeug, existiert keine Anzeige — dann bleibt der Chat auch sauber:
         the operator sieht nur seine Frage und die Antwort.
+
+        Zusaetzlich geht der Endstand als EIGENE Nachricht raus (`_receipt`): die
+        Anzeige darf morphen — das ist ihr Design —, aber Telegram zeigt von einer
+        Nachricht nur den Endzustand, und ein gelesener Zwischenstand, der per Edit
+        ueberschrieben wird, ist fuer den Betreiber faktisch geloescht (gemessen am
+        15.09.2026). Der Beleg wird nach bestaetigter Zustellung der Antwort gesendet
+        (der Conductor ruft `succeed` erst dann) und danach nie mehr editiert.
+        `receipt=False` parkt die Anzeige an einer Freigabe: der Lauf wartet, und ein
+        „Turn finished" fuer einen wartenden Lauf waere eine falsche Quittung.
         """
         if self._finished:
             return
@@ -951,6 +990,28 @@ class TelegramActivity:
             return
         self._settle()
         self._edit(text=self._render(final=True, footer=footer), force=True)
+        if not receipt:
+            return
+        try:
+            self._receipt_id = self._client.send_message(
+                self._chat_id, self._receipt(footer), disable_notification=True,
+            )
+        except Exception:
+            # Dann traegt die eingefrorene Anzeige den Endstand allein — wie bisher.
+            self._receipt_id = None
+
+    def _receipt(self, footer: str) -> str:
+        """Der kompakte Abschluss-Beleg: Dauer, Werkzeug-Aktionen, Ergebnis-Status."""
+        seconds = max(0, int(self._clock() - self._start))
+        duration = f"{seconds // 60}m {seconds % 60:02d}s" if seconds >= 60 else f"{seconds}s"
+        glyph, state = ("⚠️", "Finished with issues") if self._issues else ("🏁", "Turn finished")
+        teile = [f"{glyph} {_redact(self._name)[:60]} · {state} — ⏱ {duration} · "
+                 f"{self._tool_calls} tool call{'s' if self._tool_calls != 1 else ''}"]
+        if self._issues:
+            teile.append(f"⚠️ {self._issues} refused or failed · /log for the record")
+        if footer.strip():
+            teile.append(_redact(footer))
+        return "\n".join(teile)
 
     def fail(self, error: str) -> None:
         with self._lock:
@@ -991,8 +1052,13 @@ class TelegramActivity:
             ids = [*self._update_ids]
             if self._message_id is not None:
                 ids.append(self._message_id)
+            if self._receipt_id is not None:
+                # Der Beleg gehoert zur Spur: wer den aufgeraeumten Chat waehlt,
+                # verzichtet mit — das dauerhafte Ergebnis ist die Antwortnachricht.
+                ids.append(self._receipt_id)
             self._update_ids.clear()
             self._message_id = None
+            self._receipt_id = None
         if _keep_work_trail():
             return  # Der Lauf ist beendet; die Spur bleibt stehen.
         for message_id in dict.fromkeys(ids):
@@ -1516,7 +1582,27 @@ class TelegramChannel:
         updates = get_updates(self._offset)
         for update in updates:
             self._offset = max(self._offset, update.update_id + 1)
+            if update.callback is not None:
+                self._ack_immediately(update.callback.query_id)
         return [to_inbound(update) for update in updates]
+
+    def _ack_immediately(self, query_id: str) -> None:
+        """Den Tipp quittieren, sobald er hereinkommt — nicht erst nach der Verarbeitung.
+
+        Freigabe-Knoepfe laufen ueber die Worker-Warteschlange; sitzt dort ein langer
+        Lauf, altert die Callback-Query, und Telegram lehnt das spaete Ack mit 400 ab
+        (gemessen am 15.09.2026 — die Kaskade dahinter war nur so zu erklaeren). Das
+        leere Ack hier stoppt nur den Spinner; die Auskunft („entschieden", „gilt nicht
+        mehr") kommt wie bisher als Kartentext. Ein verfallener Knopf ist Schmuck,
+        kein Fehler — deshalb still.
+        """
+        answer = getattr(self._client, "answer_callback_query", None)
+        if answer is None:
+            return
+        try:
+            answer(query_id)
+        except Exception:
+            pass
 
     def send(self, conversation: str, text: str) -> None:
         # Antworten kommen als Markdown und gehen als Telegram-HTML raus (tgmarkup):
@@ -1548,18 +1634,26 @@ class TelegramChannel:
         if message.callback_query_id and answer is not None:
             try:
                 answer(message.callback_query_id, message.callback_notice)
-            except Exception as error:
-                errors.append(f"answerCallbackQuery: {error}")
+            except Exception:
+                # Der Spinner ist laengst gestoppt (`poll` quittiert beim Eingang) —
+                # ein verfallener oder doppelter Ack ist Schmuck und darf eine
+                # gelungene Zustellung nie zum Fehlschlag erklaeren.
+                pass
         try:
             def deliver(text: str, **kwargs: object) -> None:
                 if message.edit_message_id is not None:
-                    self._client.edit_message_text(
-                        chat_id, message.edit_message_id, text, reply_markup=markup, **kwargs
-                    )
-                else:
-                    self._client.send_message(
-                        chat_id, text, disable_notification=True, reply_markup=markup, **kwargs
-                    )
+                    try:
+                        self._client.edit_message_text(
+                            chat_id, message.edit_message_id, text, reply_markup=markup, **kwargs
+                        )
+                        return
+                    except Exception:
+                        # Die alte Karte ist verfallen oder weg (stale approval) —
+                        # die Auskunft darf nicht von ihr abhaengen: neu zustellen.
+                        pass
+                self._client.send_message(
+                    chat_id, text, disable_notification=True, reply_markup=markup, **kwargs
+                )
 
             if message.markdown:
                 try:

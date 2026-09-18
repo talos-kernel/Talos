@@ -8,6 +8,23 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep the completion of a Telegram run as its own message. The work display may
+  keep morphing (that is its design), but Telegram only ever shows a message's
+  latest state — an interim state the operator had read was effectively deleted by
+  the next edit. The run's end now also goes out as a compact append-only receipt
+  (duration, tool actions, result status), sent after the answer's confirmed
+  delivery and never edited. A run parked at an approval is not finished, so it
+  gets no receipt.
+- Acknowledge callback taps when they arrive instead of after queueing: an
+  approval button that aged in the worker queue made Telegram reject the late
+  `answerCallbackQuery` with a 400, and the error cascade marked the queued turn
+  failed. A stale or duplicate ack is now cosmetic, and a reply that cannot edit
+  the old approval card is delivered as a fresh message instead.
+- Log Telegram's `description` from the error response body. A bare "400 Bad
+  Request" was undiagnosable; the bot token in the URL stays redacted.
+
 ## [0.19.18-alpha] — 2026-09-16
 
 ### Fixed

@@ -56,36 +56,10 @@ def test_structured_message_serializes_inline_keyboard_and_edits_callback(monkey
     assert '"callback_data": "tm:tok:p:0"' in calls[1][1]["reply_markup"]
 
 
-def test_callback_answer_failure_does_not_prevent_keyboard_clearing_edit(monkeypatch) -> None:
-    calls = []
-
-    def post(url, data, timeout):
-        calls.append((url, data))
-        response = _response()
-        if url.endswith("/answerCallbackQuery"):
-            response.raise_for_status.side_effect = RuntimeError("callback too old")
-        return response
-
-    monkeypatch.setattr("talos.telegram.requests.post", post)
-    channel = TelegramChannel(TelegramClient("secret", 1))
-    ui = StructuredMessage(
-        "Working",
-        (),
-        edit_message_id=99,
-        callback_query_id="cb-old",
-    )
-    try:
-        channel.send_structured("telegram:42", ui)
-    except RuntimeError as error:
-        assert "answerCallbackQuery" in str(error)
-    else:
-        raise AssertionError("transport error was hidden")
-
-    assert [url.rsplit("/", 1)[-1] for url, _data in calls] == [
-        "answerCallbackQuery",
-        "editMessageText",
-    ]
-    assert calls[1][1]["reply_markup"] == '{"inline_keyboard": []}'
+# ⚠️ Der fruehere Test an dieser Stelle hielt fest, dass ein verfallener Ack die
+# Zustellung als RuntimeError kippte — genau die Kaskade, die der Betreiber am
+# 15.09.2026 als „This queued turn failed" sah. Seitdem ist der Ack Schmuck:
+# `test_a_late_ack_is_cosmetic_never_a_delivery_failure` haelt das neue Verhalten.
 
 
 def test_callback_data_over_telegram_limit_is_rejected() -> None:
@@ -97,6 +71,109 @@ def test_callback_data_over_telegram_limit_is_rejected() -> None:
         assert "64" in str(error)
     else:
         raise AssertionError("oversize callback data accepted")
+
+
+# --- Verfallene Knöpfe: quittieren, zustellen, nie kaskadieren ------------------------
+
+
+def test_a_callback_is_acknowledged_at_poll_time_not_after_the_queue(monkeypatch) -> None:
+    """Ein Knopfdruck altert in der Worker-Warteschlange — das Ack muss beim Pollen
+    raus, sonst meldet Telegram 400, sobald die Verarbeitung ihn beantwortet."""
+    acked = []
+
+    def post(url, data, timeout):
+        acked.append(url.rsplit("/", 1)[-1])
+        return _response()
+
+    payload = {
+        "result": [{
+            "update_id": 12,
+            "callback_query": {
+                "id": "cb-1",
+                "data": "tm:tok:p:0",
+                "from": {"id": 7},
+                "message": {"message_id": 99, "chat": {"id": 42}},
+            },
+        }]
+    }
+    monkeypatch.setattr("talos.telegram.requests.get", lambda *a, **k: _response(payload))
+    monkeypatch.setattr("talos.telegram.requests.post", post)
+    updates = TelegramChannel(TelegramClient("secret", 1)).poll()
+    assert updates[0].callback is not None
+    assert acked == ["answerCallbackQuery"], "der Tipp wurde nicht beim Pollen quittiert"
+
+
+def test_a_late_ack_is_cosmetic_never_a_delivery_failure(monkeypatch) -> None:
+    """Die Query ist laengst beantwortet oder verfallen — der Spinner-Ack darf eine
+    gelungene Zustellung nicht mehr zum Fehlschlag erklaeren (die alte Kaskade)."""
+    calls = []
+
+    def post(url, data, timeout):
+        calls.append((url.rsplit("/", 1)[-1], data))
+        response = _response()
+        if url.endswith("/answerCallbackQuery"):
+            response.raise_for_status.side_effect = RuntimeError("query is too old")
+        return response
+
+    monkeypatch.setattr("talos.telegram.requests.post", post)
+    channel = TelegramChannel(TelegramClient("secret", 1))
+    ui = StructuredMessage("Working", (), edit_message_id=99, callback_query_id="cb-old")
+    channel.send_structured("telegram:42", ui)  # wirft nicht mehr
+    assert [name for name, _data in calls] == ["answerCallbackQuery", "editMessageText"]
+    assert calls[1][1]["reply_markup"] == '{"inline_keyboard": []}'
+
+
+def test_a_stale_card_edit_falls_back_to_a_fresh_message(monkeypatch) -> None:
+    """Die „no longer applies"-Auskunft darf nicht von der alten Karte abhaengen:
+    ist deren Edit unzustellbar, geht die Antwort als eigene Nachricht raus."""
+    calls = []
+
+    def post(url, data, timeout):
+        calls.append(url.rsplit("/", 1)[-1])
+        response = _response()
+        if url.endswith("/sendMessage"):
+            response.json.return_value = {"ok": True, "result": {"message_id": 100}}
+        if url.endswith("/editMessageText"):
+            response.raise_for_status.side_effect = RuntimeError("message to edit not found")
+        return response
+
+    monkeypatch.setattr("talos.telegram.requests.post", post)
+    channel = TelegramChannel(TelegramClient("secret", 1))
+    ui = StructuredMessage(
+        "This approval no longer applies — it was already decided or it expired.",
+        (), edit_message_id=99, callback_query_id="cb-old",
+    )
+    channel.send_structured("telegram:42", ui)
+    assert calls == ["answerCallbackQuery", "editMessageText", "sendMessage"]
+
+
+def test_a_telegram_error_carries_the_api_description_but_never_the_token(monkeypatch) -> None:
+    """Ein 4xx ohne Telegrams `description` ist nicht diagnostizierbar — gemessen am
+    15.09.2026: „query is too old" stand nur im Body, das Log bekam nur Rauschen."""
+    import requests as _requests
+
+    def post(url, data, timeout):
+        response = Mock()
+        body = Mock()
+        body.json.return_value = {
+            "ok": False,
+            "description": "Bad Request: query is too old and response timeout expired",
+        }
+        error = _requests.HTTPError(f"400 Client Error: Bad Request for url: {url}")
+        error.response = body
+        response.raise_for_status.side_effect = error
+        return response
+
+    monkeypatch.setattr("talos.telegram.requests.post", post)
+    client = TelegramClient("GEHEIMES-TOKEN-123", 1)
+    try:
+        client.edit_message_text(42, 99, "x")
+    except Exception as error:
+        text = str(error)
+        assert "query is too old" in text, f"description fehlt: {text}"
+        assert "GEHEIMES-TOKEN-123" not in text, f"Token im Fehlertext: {text}"
+    else:
+        raise AssertionError("der 400 wurde verschluckt")
 
 
 # --- Angehaengtes: nicht mehr lautlos fallen lassen ---------------------------------

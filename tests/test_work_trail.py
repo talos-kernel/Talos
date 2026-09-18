@@ -108,3 +108,66 @@ def test_cleanup_twice_never_throws(monkeypatch):
     activity.cleanup()
     activity.cleanup()
     assert client.deleted == []
+
+
+# --- Der Abschluss-Beleg: append-only --------------------------------------------------
+# Gemessen am 15.09.2026: der Endstand eines Laufs ueberschrieb die Zwischenstaende per
+# Edit — Telegram zeigt nur den Endzustand einer Nachricht, der gelesene Zwischenstand
+# war damit faktisch geloescht. Die Anzeige darf weiter morphen (ihr Design), aber der
+# Abschluss geht als eigene Nachricht raus, die nie editiert wird.
+
+
+def test_the_completion_receipt_is_a_fresh_message_never_edited_again(monkeypatch):
+    monkeypatch.delenv("TALOS_TIDY_WORK_TRAIL", raising=False)
+    client = _Client()
+    activity = _activity(client)
+    _arbeitet(activity)
+    vorher = len(client.sent)
+    activity.succeed("✓ 5s · 1k tok · testmodell")
+    assert len(client.sent) == vorher + 1, "kein eigener Abschluss-Beleg gesendet"
+    beleg_id, beleg_text = client._next, client.sent[-1][1]
+    assert "Turn finished" in beleg_text
+    assert "1 tool call" in beleg_text
+    assert "testmodell" in beleg_text           # die Quittung gehoert in den Beleg
+    activity.cleanup()
+    client.now[0] += 600
+    activity.tick()
+    assert client.deleted == [], "der Beleg wurde aufgeraeumt"
+    assert all(mid != beleg_id for _c, mid, _t, _k in client.edited), "der Beleg wurde editiert"
+
+
+def test_the_receipt_survives_even_when_its_send_is_the_only_evidence(monkeypatch):
+    """Scheitert die letzte Editierung der Anzeige, traegt der Beleg den Endstand allein."""
+    monkeypatch.delenv("TALOS_TIDY_WORK_TRAIL", raising=False)
+
+    class KaputterEditClient(_Client):
+        def edit_message_text(self, chat_id, message_id, text, **kwargs):
+            raise OSError("message to edit not found")
+
+    client = KaputterEditClient()
+    activity = TelegramActivity(client, 42, clock=lambda: client.now[0], heartbeat_s=0)
+    _arbeitet(activity)
+    activity.succeed()
+    assert any("Turn finished" in text for _c, text, _k in client.sent)
+
+
+def test_a_tidy_operator_loses_the_receipt_with_the_trail(monkeypatch):
+    """Unter TALOS_TIDY_WORK_TRAIL=1 raeumt cleanup wie bisher alles weg — der Beleg
+    gehoert zur Spur, nicht zum Ergebnis; das Ergebnis ist die Antwortnachricht."""
+    monkeypatch.setenv("TALOS_TIDY_WORK_TRAIL", "1")
+    client = _Client()
+    activity = _activity(client)
+    _arbeitet(activity)
+    activity.succeed()
+    beleg_id = client._next
+    activity.cleanup()
+    assert beleg_id in [mid for _c, mid in client.deleted]
+
+
+def test_a_tool_free_answer_still_gets_no_receipt(monkeypatch):
+    """Keine Anzeige, kein Beleg — eine reine Textantwort bleibt allein im Chat."""
+    monkeypatch.delenv("TALOS_TIDY_WORK_TRAIL", raising=False)
+    client = _Client()
+    activity = _activity(client)
+    activity.succeed()
+    assert client.sent == []

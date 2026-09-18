@@ -1063,7 +1063,10 @@ class Conductor:
                 )
         if activity is not None:
             if sent:
-                activity.succeed(self._usage_footer())
+                # Ein geparkter Lauf (NEEDS_HUMAN) ist nicht zu Ende: die Anzeige
+                # friert ein, aber es gibt noch keinen Abschluss zu belegen.
+                activity.succeed(self._usage_footer(),
+                                 receipt=result.status is not AgentStatus.NEEDS_HUMAN)
             elif verworfen:
                 # Kein Fehler: die Zustellung war gewollt unterblieben, der Lauf selbst
                 # ist ordentlich zu Ende gegangen.

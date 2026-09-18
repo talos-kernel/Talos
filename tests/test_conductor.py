@@ -118,7 +118,7 @@ class FakeActivity:
     def progress(self, event) -> None:
         self.events.append(event)
 
-    def succeed(self, footer: str = "") -> None:
+    def succeed(self, footer: str = "", *, receipt: bool = True) -> None:
         self.succeeded += 1
 
     def fail(self, error: str) -> None:
