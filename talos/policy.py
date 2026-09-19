@@ -20,7 +20,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Mapping
 
-from . import command_floor
+from . import clianything, command_floor
 from .channel import Principal
 from .manifest import Effect, ToolManifest
 from .vault import DEFAULT_VAULT_DIR, VaultPathError, canonical_target_from_args
@@ -431,6 +431,12 @@ TARGET_EXTRACTORS = {
     # `_decide_remote`: Hardline-Floor auch fern, danach ausnahmslos NEEDS_HUMAN,
     # weil keine lokale Sandbox ueber Maschinengrenzen reicht.
     "remote_exec": lambda args: (),
+    # Kuratierter Dritt-CLI: kein Dateisystem-Ziel — das Modell nennt einen
+    # Harness-NAMEN und ein Subcommand, nie einen Pfad (clianything.py traegt
+    # command/package/version/sha256). Ein Scheinziel im Dateisystem-Floor waere
+    # schlechter als keins; die Einordnung (Registry, Allowlist, ausnahmslos
+    # NEEDS_HUMAN) faellt in `_decide_cli`.
+    "cli_anything": lambda args: (),
     "send_mail": lambda args: (),
     # Rückfrage an den Betreiber: kein Ziel, weil sie nichts anfasst — nur Text und
     # eine Auswahl. Der Eintrag muss trotzdem hier stehen: ein Werkzeug ohne Extractor
@@ -786,6 +792,12 @@ class PolicyKernel:
             return Decision(Verdict.NEEDS_HUMAN, "computer action — needs your approval")
         if req.tool == "remote_exec":
             return self._decide_remote(req)
+        # Kuratierte Dritt-CLI (cli-anything Harness): Harness und Subcommand
+        # gegen die operator-owned Registry, nie gegen Modellfreitext — und
+        # ausnahmslos NEEDS_HUMAN, weil ein gepinntes Drittprogramm mehr kann
+        # als seine Sandbox sieht (eigene Dateiformate, eigene Netzwege).
+        if req.tool == "cli_anything":
+            return self._decide_cli(req)
         # API-Connector: die METHODE entscheidet ueber die Vertrauensform —
         # Lesemethoden wie web_fetch, Schreibmethoden wie ein Versand nach aussen.
         if req.tool == "http_request":
@@ -872,6 +884,60 @@ class PolicyKernel:
             Verdict.NEEDS_HUMAN,
             f"remote effect on '{host.strip()}' — beyond the local sandbox, "
             "needs your approval",
+        )
+
+    def _decide_cli(self, req: ToolRequest) -> Decision:
+        """cli_anything: ein gepinnter Harness aus der operator-owned Registry.
+
+        Drei Grenzen, alle fail-closed:
+
+        * **Harness gegen die Registry** (`clianything.load`), nicht gegen
+          Muster: ein nicht gelisteter Harness ist DENY, keine Freigabefrage —
+          der Mensch soll nie ueber ein Programm abstimmen, das er nie
+          kuratiert hat. Die Registry liest die Umgebung selbst; eine fehlende
+          oder kaputte Datei ist eine LEERE Registry, und damit ist jeder
+          Aufruf DENY.
+        * **Subcommand gegen die Allowlist des Eintrags**, exakt und ohne
+          Muster: `export:workflow` deckt `delete:credentials` nie. Die
+          zusaetzlichen `args` muessen eine begrenzte Liste von Zeichenketten
+          sein — kein Shell-String, keine Interpolation; der Runner baut argv
+          per `shlex.join`, jedes Argument bleibt GENAU ein Element.
+        * **Ausnahmslos NEEDS_HUMAN.** Die Sandbox begrenzt den Prozess, nicht
+          das, was ein kuratiertes Drittprogramm mit seinen Mitteln tut (eigene
+          Dateiformate, eigene Netzwege, eigene Config). Erleichterung gibt es
+          nur als stehende Regel auf exakt (harness, subcommand) —
+          `standing.action_key` bindet beides, die Datenargumente gehoeren
+          bewusst nicht in den Abdruck (dieselbe Bindung wie bei write_file:
+          „diesen Aufruf darfst du", unabhaengig von den jeweiligen Daten).
+        """
+        name = req.args.get("name")
+        if not isinstance(name, str) or not clianything.HARNESS_NAME.fullmatch(name.strip()):
+            return Decision(Verdict.DENY, "cli_anything without a valid harness name")
+        harness = clianything.load().get(name.strip())
+        if harness is None:
+            return Decision(
+                Verdict.DENY,
+                f"harness not in the operator's registry: {name.strip()}",
+            )
+        subcommand = req.args.get("subcommand")
+        if not isinstance(subcommand, str) or subcommand.strip() not in harness.subcommands:
+            return Decision(
+                Verdict.DENY,
+                f"subcommand outside the harness allowlist: "
+                f"{str(subcommand)[:clianything.MAX_SUBCOMMAND_CHARS] or '(none)'}",
+            )
+        extra = req.args.get("args", [])
+        if (not isinstance(extra, list) or len(extra) > clianything.MAX_ARGS
+                or not all(isinstance(a, str) and len(a) <= clianything.MAX_ARG_CHARS
+                           for a in extra)):
+            return Decision(
+                Verdict.DENY,
+                "cli_anything args must be a bounded list of strings",
+            )
+        return Decision(
+            Verdict.NEEDS_HUMAN,
+            f"cli harness '{harness.name} {subcommand.strip()}' — pinned third-party "
+            "CLI, needs your approval",
         )
 
     def _decide_http(self, req: ToolRequest) -> Decision:

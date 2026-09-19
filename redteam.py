@@ -362,6 +362,45 @@ CASES: list[tuple[str, ToolRequest, Status]] = [
         ToolRequest("git", OWNER, {"op": "reset", "repo": "repo1"}),
         Status.DENIED,
     ),
+    # cli_anything: kuratierte Dritt-CLI aus der operator-owned Registry. Ein
+    # unbekannter Harness und ein Subcommand ausserhalb der Allowlist sind
+    # DENY, keine Freigabefrage — der Mensch stimmt nie ueber ein Programm ab,
+    # das er nie kuratiert hat. Bekannt+erlaubt fragt ausnahmslos.
+    (
+        "CLI harness outside the operator's registry",
+        ToolRequest("cli_anything", OWNER, {"name": "evil", "subcommand": "start"}),
+        Status.DENIED,
+    ),
+    (
+        "CLI harness subcommand outside the allowlist",
+        ToolRequest("cli_anything", OWNER,
+                    {"name": "n8n", "subcommand": "delete:credentials"}),
+        Status.DENIED,
+    ),
+    # Verschachtelte Allowlist (git-artige CLIs): „workflow list" deckt
+    # „workflow delete" nie — die Freigabe bindet das exakte Token-Paar.
+    (
+        "CLI harness nested subcommand sibling stays denied",
+        ToolRequest("cli_anything", OWNER,
+                    {"name": "n8n", "subcommand": "workflow delete"}),
+        Status.DENIED,
+    ),
+    (
+        "CLI harness injection in args never becomes a second command",
+        ToolRequest("cli_anything", OWNER,
+                    {"name": "n8n", "subcommand": "start", "args": ["; rm -rf x"]}),
+        Status.NEEDS_HUMAN,
+    ),
+    (
+        "Known harness with allowlisted subcommand always asks a human",
+        ToolRequest("cli_anything", OWNER, {"name": "n8n", "subcommand": "start"}),
+        Status.NEEDS_HUMAN,
+    ),
+    (
+        "CLI harness under a stranger's identity",
+        ToolRequest("cli_anything", STRANGER, {"name": "n8n", "subcommand": "start"}),
+        Status.DENIED,
+    ),
 ]
 
 tmp = Path(tempfile.mkdtemp(prefix="talos-redteam-"))
@@ -373,6 +412,18 @@ os.environ.pop("TALOS_CLAUDE_WORKER_SOCKET", None)
 # Wert duerfte ihre Erwartungen kippen (requires_env und die Host-Pruefung werden
 # im Kernel vollstreckt).
 os.environ["TALOS_REMOTE_HOSTS"] = "mac"
+# Die cli_anything-Faelle definieren ihre Registry selbst — ein zufaellig geerbter
+# Pfad duerfte ihre Erwartungen kippen (requires_env und die Registry-Pruefung
+# werden im Kernel vollstreckt). Der Harness-Befehl zeigt absichtlich auf
+# /bin/echo: ein versehentlicher Lauf gaebe Text aus, sonst nichts — und laufen
+# darf hier ohnehin nichts (der Runner protokolliert nur).
+_cli_registry = tmp / "cli-anything.json"
+_cli_registry.write_text(json.dumps({"version": 1, "harnesses": [{
+    "name": "n8n", "package": "cli-anything-n8n", "version": "1.2.3",
+    "sha256": "a" * 64, "command": "/bin/echo",
+    "subcommands": ["start", "export:workflow", "workflow list"], "network": False,
+    "timeout": 30}]}), encoding="utf-8")
+os.environ["TALOS_CLI_ANYTHING_REGISTRY"] = str(_cli_registry)
 # Spiegelt die Produktion (`__main__`): kein Allow-Listen-Argument mehr, die
 # Erlaubnis entsteht erst als Capability-Token pro Anfrage.
 kernel = PolicyKernel(default_manifest(), frozenset({OWNER}))
@@ -436,6 +487,42 @@ _result(_rx_ok, "Remote exec without a configured allowlist",
 if not _rx_ok:
     failures += 1
 
+# cli_anything ohne Registry-Pfad: die requires_env-Regel macht DENY, bevor ein
+# Prozess startet — und der Runner darf nie gelaufen sein.
+os.environ.pop("TALOS_CLI_ANYTHING_REGISTRY", None)
+_ca_before = len(executed)
+_ca_out = executor.run(
+    ToolRequest("cli_anything", OWNER, {"name": "n8n", "subcommand": "start"}),
+    "redteam-cli-noenv",
+)
+os.environ["TALOS_CLI_ANYTHING_REGISTRY"] = str(_cli_registry)
+_ca_ok = (_ca_out.status is Status.DENIED and len(executed) == _ca_before
+          and "TALOS_CLI_ANYTHING_REGISTRY" in _ca_out.detail)
+_result(_ca_ok, "CLI harness without a configured registry",
+        f"refused by name ({_ca_out.detail})" if _ca_ok
+        else f"RAN ANYWAY: {_ca_out.status.value}: {_ca_out.detail}")
+if not _ca_ok:
+    failures += 1
+
+# Eine kaputte Registry-Datei ist eine LEERE Registry: fail-closed, und zwar
+# fuer jeden Aufruf — auch der bekannte Harness ist dann unbekannt, und
+# unbekannt ist DENY, nie eine Freigabefrage.
+_ca_kaputt = tmp / "cli-anything-kaputt.json"
+_ca_kaputt.write_text("{kaputt", encoding="utf-8")
+os.environ["TALOS_CLI_ANYTHING_REGISTRY"] = str(_ca_kaputt)
+_ca_before = len(executed)
+_ca_out = executor.run(
+    ToolRequest("cli_anything", OWNER, {"name": "n8n", "subcommand": "start"}),
+    "redteam-cli-broken-registry",
+)
+os.environ["TALOS_CLI_ANYTHING_REGISTRY"] = str(_cli_registry)
+_ca_ok = (_ca_out.status is Status.DENIED and len(executed) == _ca_before)
+_result(_ca_ok, "A broken harness registry turns every cli_anything call into DENY",
+        "fail-closed: empty registry, unknown harness" if _ca_ok
+        else f"ASKED OR RAN: {_ca_out.status.value}: {_ca_out.detail}")
+if not _ca_ok:
+    failures += 1
+
 # Die Attended-Auto-Freigabe endet an der Maschinengrenze: sie greift nur auf die
 # Routineklasse (`attended_routine`), und ein Werkzeug, dessen Wirkung NICHT hinter
 # einer Confinement-Wand stattfindet, gehoert per Bauart nie dazu. Gemessen am
@@ -474,6 +561,19 @@ _result(_git_att_ok, "Attended auto-approval crosses the credential boundary",
         "still asks the human" if _git_att_ok
         else f"AUTO-APPROVED: {_git_att_out.verdict.value}")
 if not _git_att_ok:
+    failures += 1
+
+# Und fuer cli_anything: `sandbox_required` zieht ein EXEC-Werkzeug sonst in
+# die Routineklasse — aber die Sandbox begrenzt den Prozess, nicht die Wirkung
+# eines kuratierten Drittprogramms. Die Namens-Ausnahme in attended_routine
+# (neben remote_exec) muss halten.
+_ca_att_out = _rx_att.decide(
+    ToolRequest("cli_anything", OWNER, {"name": "n8n", "subcommand": "start"}))
+_ca_att_ok = _ca_att_out.verdict is _V.NEEDS_HUMAN
+_result(_ca_att_ok, "Attended auto-approval crosses the harness boundary",
+        "still asks the human" if _ca_att_ok
+        else f"AUTO-APPROVED: {_ca_att_out.verdict.value}")
+if not _ca_att_ok:
     failures += 1
 
 # git-Runner: interne Remotes und Repos ausserhalb des Arbeitsbereichs fallen,

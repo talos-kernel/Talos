@@ -75,6 +75,7 @@ TOOL_PROTOCOL = (
     '- web_fetch {"url": "https://…"}\n'
     '- http_request {"method": "GET|POST|PUT|PATCH|DELETE", "url": "https://…", "headers": {"…": "…"}, "body": "…"} — call any REST API; read methods run, methods that change remote state ALWAYS need the operator\'s approval (standing approvals bind to exact method+url)\n'
     '- git {"op": "clone|fetch|pull|push", "repo": "workspace/path", "url": "https://… or git@host:path", "branch": "…"} — git network ops with credentials; EVERY op needs the operator\'s approval (standing approvals bind to exact op+repo+url); local ops (status/diff/commit/branch) belong in run_shell\n'
+    '- cli_anything {"name": "registry harness", "subcommand": "…", "args": ["…"]} — run a pinned CLI-Anything harness (curated third-party CLI) through the kernel; only harnesses from the operator registry exist — an unknown harness or a subcommand outside its allowlist is denied, never askable; every run needs the operator\'s approval (standing approvals bind to exact name+subcommand)\n'
     '- web_search {"query": "…", "limit": 1..10}\n'
     '- ask_operator {"question": "…", "options": ["…", "…"]}\n'
     '- session_search {"query": "…", "limit": 1..10}\n'

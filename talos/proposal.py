@@ -7,6 +7,7 @@ an action, grants permission, or retries a request that reached the executor.
 REQUIRED_TEXT = {
     "read_file": ("path",), "write_file": ("path",),
     "run_shell": ("command",), "remote_exec": ("host", "command"),
+    "cli_anything": ("name", "subcommand"),
     "web_fetch": ("url",), "browse": ("url",),
     "web_search": ("query",), "vault_search": ("query",),
     "session_search": ("query",), "vault_get": ("path",),

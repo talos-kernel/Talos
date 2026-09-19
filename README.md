@@ -19,13 +19,13 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2826).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2864).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-2826-2e7d32.svg" alt="Tests">
-  <img src="https://img.shields.io/badge/red%20team-254%2F242-2e7d32.svg" alt="Red team">
-  <img src="https://img.shields.io/badge/gate%20path-919%20lines-8a4318.svg" alt="Gate path">
-  <img src="https://img.shields.io/badge/tools-32%20gated-8a4318.svg" alt="Tools">
+  <img src="https://img.shields.io/badge/tests-2864-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/red%20team-263%2F263-2e7d32.svg" alt="Red team">
+  <img src="https://img.shields.io/badge/gate%20path-985%20lines-8a4318.svg" alt="Gate path">
+  <img src="https://img.shields.io/badge/tools-33%20gated-8a4318.svg" alt="Tools">
   <img src="https://img.shields.io/badge/default%20identities-0-c62828.svg" alt="Default identities">
   <img src="https://img.shields.io/badge/python-3.11%2B-1565c0.svg" alt="Python">
   <a href="https://github.com/talos-kernel/talos/releases"><img src="https://img.shields.io/github/v/release/talos-kernel/talos?color=1565c0" alt="Latest release"></a>
@@ -110,7 +110,7 @@ authorised individually, bound to its exact arguments and targets, valid once, f
 seconds. Forgetting to call the gate does not produce an unchecked effect — it produces no
 effect at all, because the raw runners are unreachable without a token.
 
-That design is testable, and it is tested: 254 adversarial scenarios run on every change and
+That design is testable, and it is tested: 263 adversarial scenarios run on every change and
 try to get an effect past the kernel. They are in [`redteam.py`](redteam.py). Read them
 before you trust anything written above.
 
@@ -274,7 +274,7 @@ come from `stdin` instead of `getUpdates`.
 ```
 $ talos chat
 
-  ◉  Talos / 0.19.20-alpha
+  ◉  Talos / 0.19.21-alpha
      Your terminal. Your rules.
   ──────────────────────────────────────────────────────────────────────────
   model      claude-cli/claude-opus-4-1
@@ -652,7 +652,7 @@ permitted it. `/log` shows the last effects, `/undo` rolls back the last file ch
 
 ## Tools
 
-Thirty-one, and every one of them passes the same gate. There is no privileged tool and no
+Thirty-three, and every one of them passes the same gate. There is no privileged tool and no
 tool that skips the kernel — a tool without a target extractor is `DENY` by construction.
 
 | | |
@@ -662,6 +662,7 @@ tool that skips the kernel — a tool without a target extractor is `DENY` by co
 | `remote_exec` | a command on another machine over ssh — operator-allowlisted hosts, always a human's yes, standing rules bind to exact host+command |
 | `http_request` | any REST API — read methods through the SSRF-hardened door, state-changing methods always a human's yes, binding to exact method+URL |
 | `git` | clone / fetch / pull / push with credentials — every op a human's yes, binding to exact op+repo+remote; local git work stays in the sandboxed shell |
+| `cli_anything` | a pinned CLI-Anything harness (curated third-party CLI) from the operator-owned registry — unknown harness or subcommand is `DENY`, the rest always a human's yes, binding to exact name+subcommand; [registry format](docs/cli-anything.md) |
 | `entity_status` | a known name resolved to an operator-configured fixed read-only probe |
 | `read_file` / `write_file` / `undo_last` | ordinary work, with a snapshot behind the write |
 | `browse` / `web_fetch` / `web_search` | render-only, guarded URL, keyless search by default |

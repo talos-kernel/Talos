@@ -731,6 +731,7 @@ def _safe_tool_summary(tool: str, args: dict, targets: tuple[str, ...]) -> str:
         "write_file": "write",
         "run_shell": "shell",
         "remote_exec": "remote shell",
+        "cli_anything": "cli harness",
         "http_request": "api call",
         "git": "git network op",
         "undo_last": "undo",

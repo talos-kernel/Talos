@@ -6,6 +6,31 @@ they make possible that was not possible before — or, more often, what they ta
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions are alpha: the kernel's rules are stable, the surface around them is not.
 
+## [0.19.21-alpha] — 2026-09-19
+
+### Added
+
+- `cli_anything`: Talos runs curated third-party CLIs (cli-anything harnesses such
+  as n8n or LibreOffice) through the same gate as everything else. The
+  operator-owned registry (`data/cli-anything.json`, fail-closed like
+  `mcp-servers.json`) pins each harness by package, version and SHA-256 with an
+  absolute command path and an exact subcommand allowlist — the model names a
+  harness and a subcommand, never a path or a version. What the registry does not
+  list is DENY without an approval question; what it lists is NEEDS_HUMAN, with
+  standing rules binding exactly (harness, subcommand). Runs go through the
+  sandbox with argv built by `shlex.join` — a model argument can never become a
+  second command — with the network off unless the entry allows it, and the
+  harness inherits only the minimized sandbox environment: an `env` field in a
+  registry entry hard-rejects the entry, the MCP credential rule.
+- Nested two-token subcommands for git-style harness CLIs (`workflow list`),
+  split back into two argv elements at their single space; the allowlist stays
+  exact — `workflow list` never covers `workflow delete`.
+
+### Changed
+
+- The site says what the design has been all along: a Swiss army knife whose
+  every blade carries a lock — and you hold the key.
+
 ## [0.19.20-alpha] — 2026-09-19
 
 ### Security

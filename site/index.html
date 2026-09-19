@@ -345,7 +345,7 @@ html.js .rv.in{opacity:1;transform:none}
     <div>
       <p class="sys">self-hosted · open source · your machine</p>
       <h1>Real work.<br>Your rules.</h1>
-      <p class="lede">A capable agent on your own machine. It researches, writes code and puts tools to work. <strong>You can follow every step. The permission kernel has the final say.</strong></p>
+      <p class="lede">A capable agent on your own machine. It researches, writes code and puts tools to work — a Swiss army knife whose every blade carries a lock. <strong>You can follow every step. The permission kernel has the final say, and you hold the key.</strong></p>
       <div class="cta-row">
         <a class="btn" href="#mission">Watch it work ↓</a>
         <a class="btn ghost" href="#install">Install</a>
@@ -358,9 +358,9 @@ html.js .rv.in{opacity:1;transform:none}
         <span class="t-why" id="tickWhy">clean — runs sandboxed, logged before it runs</span>
       </div>
       <div class="meter-row">
-        <span><b>2826</b>unit tests</span>
-        <span><b>254/254</b>adversarial</span>
-        <span><b>919</b>lines · gate</span>
+        <span><b>2864</b>unit tests</span>
+        <span><b>263/263</b>adversarial</span>
+        <span><b>985</b>lines · gate</span>
         <span><b>30s</b>token life</span>
       </div>
     </div>
@@ -441,7 +441,7 @@ html.js .rv.in{opacity:1;transform:none}
         patterns name, and it is the authoritative one. Two things a page cannot show: before
         any of these stages, the real kernel checks <em>who</em> is asking, and there is no
         default allowlist. And file tools walk their own pipeline — system floor, identity,
-        secrets, persistence, effect. 254 adversarial cases run against the Python kernel on
+        secrets, persistence, effect. 263 adversarial cases run against the Python kernel on
         every install and every update.</p>
       </div>
     </div>
@@ -481,7 +481,7 @@ html.js .rv.in{opacity:1;transform:none}
     <h2 class="rv">Every tool has a declared effect.</h2>
     <p class="sub rv">The kernel does not guess what a tool might do. Every tool declares its
     <strong>effect</strong> in the manifest, and anything undeclared is refused on sight.
-    <strong>18 read, 5 write, 9 exec — 32 in all.</strong></p>
+    <strong>18 read, 5 write, 10 exec — 33 in all.</strong></p>
     <div class="tools">
       <div class="tool-row rv">
         <div><h3>read</h3><div class="fx">free at autonomy 5</div></div>
@@ -504,7 +504,7 @@ html.js .rv.in{opacity:1;transform:none}
       <div class="tool-row rv">
         <div><h3>exec</h3><div class="fx">sandboxed — or refused where no sandbox exists</div></div>
         <div class="set">
-          <code>run_shell</code><code>remote_exec</code><code>http_request</code><code>git</code><code>computer_run</code><code>delegate_code</code><code>delegate_dag</code>
+          <code>run_shell</code><code>remote_exec</code><code>http_request</code><code>git</code><code>cli_anything</code><code>computer_run</code><code>delegate_code</code><code>delegate_dag</code>
           <code>delegate_agy</code> <code>delegate_codex</code>
         </div>
         <p>One tool carries all the power, so one tool carries all the suspicion. A path floor
@@ -525,7 +525,11 @@ html.js .rv.in{opacity:1;transform:none}
         and public effect, so every single op asks — local work stays in the shell,
         where no network is needed. The seventh drives the same confined worker's second
         backend (the agy CLI) — same sandbox, same disposable workspace, same deadline,
-        behind its own pair of opt-in gates on agent and worker; MCP stays claude-only.</p>
+        behind its own pair of opt-in gates on agent and worker; MCP stays claude-only.
+        The eighth runs a pinned CLI-Anything harness from the operator-owned registry:
+        the model names a harness and a subcommand, never a path or a version — an
+        unknown harness or a subcommand outside its allowlist is refused on sight, and
+        every run waits for a human.</p>
       </div>
     </div>
   </div>
@@ -597,11 +601,11 @@ html.js .rv.in{opacity:1;transform:none}
     <p class="sub rv">None of this asks for belief. The installer runs both suites in front
     of you. Every number on this page is a number the suite reproduces.</p>
     <div class="stats">
-      <div class="stat rv"><div class="n cnt" data-n="2826">0</div><div class="l">unit tests, run by the installer in front of you</div></div>
-      <div class="stat rv"><div class="n cnt" data-n="254">0</div><div class="l">adversarial cases trying to pass the kernel</div></div>
+      <div class="stat rv"><div class="n cnt" data-n="2864">0</div><div class="l">unit tests, run by the installer in front of you</div></div>
+      <div class="stat rv"><div class="n cnt" data-n="263">0</div><div class="l">adversarial cases trying to pass the kernel</div></div>
       <div class="stat rv"><div class="n cnt" data-n="44">0</div><div class="l">end-to-end cases against a real model</div></div>
-      <div class="stat rv"><div class="n cnt" data-n="919">0</div><div class="l">lines in the file that decides every verdict</div></div>
-      <div class="stat rv"><div class="n cnt" data-n="32">0</div><div class="l">gated tools, each with a declared effect</div></div>
+      <div class="stat rv"><div class="n cnt" data-n="985">0</div><div class="l">lines in the file that decides every verdict</div></div>
+      <div class="stat rv"><div class="n cnt" data-n="33">0</div><div class="l">gated tools, each with a declared effect</div></div>
       <div class="stat rv"><div class="n cnt" data-n="30" data-suf="s">0</div><div class="l">token lifetime, single use</div></div>
       <div class="stat rv"><div class="n cnt" data-n="0">0</div><div class="l">identities allowed by default</div></div>
     </div>
@@ -622,7 +626,7 @@ html.js .rv.in{opacity:1;transform:none}
   <span class="p">▸</span> Checking prerequisites      <span class="ok">✓ Python 3.11+</span>
   <span class="p">▸</span> Running the test suite      <span class="ok">test suite passed</span>
   <span class="p">▸</span> Running the adversarial suite
-    <span class="ok">254/254 cases behaved as expected.</span> <span class="c">— any failure aborts the install</span>
+    <span class="ok">263/263 cases behaved as expected.</span> <span class="c">— any failure aborts the install</span>
 
   <span class="ok">Done.</span> Talos is in <b>~/talos</b> — <span class="warn">and it is not running.</span>
   <span class="c">That is not a forgotten step. The switch is yours.</span></pre>

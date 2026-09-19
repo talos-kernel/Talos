@@ -143,7 +143,7 @@ EXPRESSIVE = Style(
         "delegate_agy": "🚀", "delegate_steer": "🎯",
         "delegate_codex": "🧑‍💻", "computer_run": "🖥️", "computer_status": "🔎",
         "skill_write": "🎓", "remote_exec": "🛰️", "http_request": "🔗",
-        "git": "📦",
+        "git": "📦", "cli_anything": "🧰",
     },
     tool_verbs={
         "read_file": "Reading", "write_file": "Writing", "run_shell": "Running",
@@ -161,6 +161,7 @@ EXPRESSIVE = Style(
         "delegate_steer": "Steering background task",
         "skill_write": "Distilling skill", "remote_exec": "Running remote",
         "http_request": "Calling API", "git": "Running git",
+        "cli_anything": "Running harness",
     },
 )
 

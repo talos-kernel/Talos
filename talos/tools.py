@@ -7,8 +7,8 @@ enthalten keine Sicherheitslogik — Trennung von Gate und Vollzug.
 """
 from __future__ import annotations
 
-from . import (apiclient, browser, claudejobs, dag, documents, frames, gitops, hearing,
-               remoteexec, sandbox, speech, transcript, vision, web)
+from . import (apiclient, browser, claudejobs, clianything, dag, documents, frames,
+               gitops, hearing, remoteexec, sandbox, speech, transcript, vision, web)
 
 import subprocess
 import threading
@@ -100,6 +100,42 @@ def run_shell(req: ToolRequest) -> str:
     elif result.truncated:
         note = "\n[output truncated]"
     return f"rc={result.returncode} [{result.backend}]\n{tail}{note}".strip()
+
+
+def cli_anything(req: ToolRequest) -> str:
+    """Kuratierte Dritt-CLI (cli-anything Harness) — eingesperrt statt geraten.
+
+    Wie `remote_exec` und `git` loest dieser Runner seine Grenzen pro Aufruf
+    selbst auf (`clianything.validated` liest die operator-owned Registry) und
+    waehlt sein einsperrendes Backend selbst: gibt es keines, wird verweigert
+    statt ungeschuetzt ausgefuehrt (fail-closed). Der Kernel hat laengst
+    geurteilt; hier wird nur noch gebaut (argv per `shlex.join`, jedes
+    Modell-Argument bleibt genau ein Element) und quittiert. Netz und
+    Zeitdeckel kommen aus dem Registry-Eintrag, nie aus den Argumenten.
+    """
+    harness, subcommand, extra = clianything.validated(req.args)
+    backend = sandbox.select_backend(sandbox.default_backends())
+    if backend is None:
+        return (
+            f"{SHELL_REFUSED}\nno confined sandbox backend available for cli_anything "
+            "(an unconfined third-party CLI is not a degradation this tool accepts)"
+        )
+    result = sandbox.run_sandboxed(
+        clianything.build_command(harness, subcommand, extra),
+        allow_network=harness.network,
+        backend=backend,
+        limits=sandbox.SandboxLimits(timeout_s=harness.timeout),
+    )
+    out = (result.stdout or "").strip()
+    err = (result.stderr or "").strip()
+    tail = out if not err else f"{out}\n[stderr] {err}".strip()
+    note = ""
+    if result.timed_out:
+        note = f"\n{SHELL_TIMED_OUT}"
+    elif result.truncated:
+        note = "\n[output truncated]"
+    return (f"rc={result.returncode} [{result.backend}] {harness.name} "
+            f"{subcommand}\n{tail}{note}").strip()
 
 
 def normalise_entries(raw: object) -> Entries:
@@ -260,6 +296,10 @@ RUNNERS = {
     # `remote_exec` liest seine Allowlist pro Aufruf selbst (`policy.remote_hosts`)
     # und waehlt sein einsperrendes Backend selbst — dieselbe Selbstaufloesung.
     "remote_exec": remoteexec.remote_exec,
+    # `cli_anything` loest seine Registry pro Aufruf selbst auf
+    # (`clianything.validated`, TALOS_CLI_ANYTHING_REGISTRY) und waehlt sein
+    # einsperrendes Backend selbst — dieselbe Selbstaufloesung.
+    "cli_anything": cli_anything,
     # `http_request` loest seine Freigabe-Adressen pro Aufruf selbst auf
     # (`apiclient.http_request`, TALOS_WEB_ALLOWED_ADDRESSES) — die Produktiv-
     # Verdrahtung in __main__ ersetzt ihn durch den config-gebauten Runner.
@@ -328,6 +368,23 @@ def default_manifest(*, agy_backend: bool = True, codex_backend: bool = True) ->
         # Regeln nur auf exakt (host, command).
         .with_tool(ToolSpec("remote_exec", Effect.EXEC, reversible=False,
                             requires_env=frozenset({"TALOS_REMOTE_HOSTS"})))
+        # Ein kuratierter CLI-Anything-Harness (pip-installierte Dritt-CLI wie
+        # n8n oder LibreOffice): das Modell nennt Harness-Namen + Subcommand,
+        # nie Pfade oder Versionen — die ausfuehrbare Wahrheit liegt in der
+        # operator-owned Registry (`clianything.py`, fail-closed leer). EXEC
+        # mit sandbox_required: der Lauf entsteht hinter der Confinement-Wand
+        # (Wurzel read-only, Env auf die Positivliste reduziert, Netz nur, wenn
+        # der Registry-Eintrag es ausdruecklich oeffnet). Trotzdem antwortet
+        # der Kernel ausnahmslos NEEDS_HUMAN (`policy._decide_cli`): die
+        # Sandbox begrenzt den Prozess, nicht das, was ein kuratiertes
+        # Drittprogramm mit seinen eigenen Mitteln tut — und die
+        # Attended-Auto-Freigabe endet hier per Namens-Ausnahme in
+        # `autonomy.attended_routine`, neben remote_exec. requires_env: ohne
+        # Registry-Pfad des Betreibers gibt es keine Harnesses und keinen
+        # Grant. Stehende Regeln binden exakt (harness, subcommand).
+        .with_tool(ToolSpec("cli_anything", Effect.EXEC, reversible=False,
+                            requires_env=frozenset({"TALOS_CLI_ANYTHING_REGISTRY"}),
+                            sandbox_required=True))
         # Der API-Connector: beliebige REST-Endpunkte mit Methode, Headern und
         # Body. EXEC mit `outward` — die Wirkung eines POST liegt hinter einer
         # fremden API, jenseits jeder Einsperrung; die Attended-Auto-Freigabe

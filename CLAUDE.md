@@ -12,9 +12,9 @@ preferences live in `USER.md`. All three are operator-owned prompt state and rel
 
 | | |
 |---|---|
-| Gate path | `policy.py`, **919 lines** — has to stay readable in one sitting |
-| Tools | **32**, every one gated |
-| Suites | **2826** tests · **254** adversarial · 44 end-to-end |
+| Gate path | `policy.py`, **985 lines** — has to stay readable in one sitting |
+| Tools | **33**, every one gated |
+| Suites | **2864** tests · **263** adversarial · 44 end-to-end |
 | Home | <https://talos-agent.ch> · docs at `/docs/` |
 | Repository | `talos-kernel/talos` is the public source tree |
 
@@ -232,6 +232,15 @@ In practice:
   the log — an override never adds a model. `talos models`, `/usage` and `/status`
   mark overridden values as the operator's word, not the catalogue's. There is no
   token-based context cap: the window shows in the display, it is not a bound.
+- **The harness registry is operator-owned.** `cli_anything` runs curated
+  CLI-Anything harnesses, and which exist at all lives in `data/cli-anything.json`
+  (`clianything.py`, fail-closed like the MCP registry): the model names a harness
+  and a subcommand, never a path or a version. New harnesses enter the registry
+  only pinned (package + version + sha256), hashed and OSV-scanned — an unpinned
+  entry is rejected by the parser, not merely frowned upon. An unknown harness or
+  a subcommand outside its allowlist is `DENY`, never an approval question; the
+  rest is `NEEDS_HUMAN`, and the attended auto-approval stops there by name
+  (the `remote_exec` exception's twin).
 
 ## API stream encoding
 
@@ -252,8 +261,8 @@ properties covered by `test_fallback_control.py` and `test_runtime_failure_repai
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install --require-hashes -r requirements.lock -r requirements-dev.lock
 
-python -m pytest tests/ -q   # 2826 tests, ~30s
-python redteam.py            # 254 adversarial cases — mandatory for any kernel change
+python -m pytest tests/ -q   # 2864 tests, ~30s
+python redteam.py            # 263 adversarial cases — mandatory for any kernel change
 python e2e.py                # 44 cases against a real model (costs tokens and time)
 python -m talos --once       # single cycle, for diagnosis
 python -m talos              # run

@@ -74,6 +74,23 @@ def action_key(req: ToolRequest) -> str | None:
         ):
             return None
         material = ("host", host, "command", command)
+    elif req.tool == "cli_anything":
+        # Der Abdruck bindet WELCHES Programm (harness) und WELCHE Operation
+        # (subcommand) — beides exakt. „immer n8n" gaebe es nicht: ein anderes
+        # Subcommand desselben Harness ist eine andere Handlung. Die
+        # Datenargumente (`args`) gehoeren bewusst NICHT in den Abdruck —
+        # dieselbe Bindung wie bei write_file: „diesen Aufruf darfst du",
+        # unabhaengig von den jeweiligen Daten.
+        name = req.args.get("name")
+        subcommand = req.args.get("subcommand")
+        if (
+            not isinstance(name, str)
+            or not name
+            or not isinstance(subcommand, str)
+            or not subcommand
+        ):
+            return None
+        material = ("name", name, "subcommand", subcommand)
     elif req.tool == "http_request":
         # Methode UND Adresse: ein „GET registriert" sagt nichts ueber POST auf
         # denselben Endpunkt. Der Body gehoert bewusst NICHT in den Abdruck —
@@ -127,6 +144,8 @@ def action_label(req: ToolRequest) -> str:
         body = str(req.args.get("command", ""))
     elif req.tool == "remote_exec":
         body = f"{req.args.get('host', '')}: {req.args.get('command', '')}"
+    elif req.tool == "cli_anything":
+        body = f"{req.args.get('name', '')} {req.args.get('subcommand', '')}".strip()
     elif req.tool == "http_request":
         body = f"{str(req.args.get('method') or 'GET').upper()} {req.args.get('url', '')}"
     elif req.tool == "git":

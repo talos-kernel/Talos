@@ -147,7 +147,13 @@ def attended_routine(req: ToolRequest, spec: ToolSpec | None, kernel: PolicyKern
         # `outward` zuerst: eine Wirkung jenseits der Aussengrenze (ferne Maschine,
         # fremde API) ist per Bauart keine Routine — sie kann nicht eingesperrt
         # werden, und genau das war die Voraussetzung der Auto-Freigabe.
-        if spec.outward or req.tool == "remote_exec":
+        # `cli_anything` traegt `sandbox_required` und fiele sonst in die
+        # Routineklasse — aber die Sandbox begrenzt nur den Prozess, nicht das,
+        # was ein kuratiertes Drittprogramm mit seinen eigenen Mitteln (eigene
+        # Formate, eigene Netzwege) tut. Dieselbe Namens-Ausnahme wie
+        # `remote_exec`, aus demselben Grund: die ehrliche Grenze ist die
+        # Freigabe mit vollem Aufruf, keine Klassenzugehoerigkeit.
+        if spec.outward or req.tool in ("remote_exec", "cli_anything"):
             # Explicit operator opt-ins, scoped to this VM or a closed diagnostic
             # grammar. These do not change the raw kernel or other outward tools.
             from .routine import operator_routine

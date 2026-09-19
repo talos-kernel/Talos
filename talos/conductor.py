@@ -1814,6 +1814,16 @@ class Conductor:
                 lines.append(f"Remote: {pending.args.get('url')}")
             if pending.args.get("branch"):
                 lines.append(f"Branch: {pending.args.get('branch')}")
+        if pending.tool == "cli_anything":
+            # Harness und Subcommand sind die Tatsachen, ueber die der Mensch
+            # urteilt — das Modell nennt nie Pfade oder Versionen, die traegt
+            # die operator-owned Registry. Die Datenargumente gehoeren dazu:
+            # sie sind die Handlung, und eine Freigabe ohne sie waere blind.
+            lines.append(f"Harness: {pending.args.get('name', '')}")
+            lines.append(f"Subcommand: {pending.args.get('subcommand', '')}")
+            extra = pending.args.get("args") or []
+            if isinstance(extra, list) and extra:
+                lines.append(f"Args: {' '.join(str(a) for a in extra)}")
         targets = guard_targets(pending)
         if targets:
             lines.append("Targets: " + ", ".join(targets))

@@ -187,6 +187,11 @@ KEYS: tuple[Key, ...] = (
         "path to the operator-owned MCP server registry (mcp-servers.json) — "
         "the worker builds MCP configs only from this file and its own env, "
         "never from frame contents", default="", validate=_one_line),
+    Key("TALOS_CLI_ANYTHING_REGISTRY", POLICY,
+        "path to the operator-owned CLI-Anything harness registry "
+        "(cli-anything.json) — changing it redecides which pinned third-party "
+        "CLIs the agent may run, so it is policy, not a setting",
+        default="", validate=_one_line),
     # ⚠️ Die Basis-Adressen stehen nicht hier, sondern werden unten aus dem Katalog
     # erzeugt — eine pro Anbieter. Eine einzige `TALOS_API_BASE_URL` fuer alle war der
     # Weg, auf dem OpenAI-Anfragen an Anthropics Basis gingen (Befund 05.08.).
