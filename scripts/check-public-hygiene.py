@@ -38,6 +38,7 @@ ALLOWED_ENDPOINT_FIXTURE_HOSTS = {
     # E2E-Faelle, die einen echten lokalen Server starten, statt gegen eine Attrappe zu
     # pruefen. Die Adresse ist das Fixture.
     "tests/computer_browser_e2e.py": frozenset({"127.0.0.1", "localhost"}),
+    "tests/computer_browser_guard_e2e.py": frozenset({"127.0.0.1"}),
     "tests/test_background_telegram_e2e.py": frozenset({"127.0.0.1"}),
     "tests/test_computer.py": frozenset({"127.0.0.1"}),
     "tests/test_ephemeral_telegram.py": frozenset({"127.0.0.1"}),

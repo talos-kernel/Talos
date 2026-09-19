@@ -3,6 +3,7 @@
 Only the guest's loopback CDP endpoint is used. Host credentials, sockets and browser
 profiles are never imported. Receipts report observations, not invented completion.
 """
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -10,6 +11,90 @@ import time
 from urllib.parse import urlsplit, urlunsplit
 
 ENDPOINT = "http://127.0.0.1:9222"
+
+# The state of one observed element, as a single string. Deliberately excludes
+# geometry and surrounding text: a ticker or lazy-loaded sidebar may change the
+# page freely, but the element a decision was made about may not change unseen.
+# Secret values are masked here too, so a guard never carries a password.
+GUARD_JS = r"""e => {
+  const secret = e.type === 'password' || /cc-|one-time-code/.test(e.autocomplete || '');
+  return [e.tagName, e.type || '', e.name || '', e.id || '',
+    e.disabled ? '1' : '0', e.checked ? '1' : '0', e.required ? '1' : '0',
+    secret ? '[private]' : String(e.value || '').slice(0, 200)].join('\u001f');
+}"""
+
+# The name a screen reader would announce, in the order the accessibility tree
+# resolves it. innerText alone mislabels icon buttons and aria-labelledby layouts,
+# and a wrong label is what makes a model pick the wrong field.
+NAME_JS = r"""(e, seen) => {
+  seen = seen || new Set();
+  if (!e || seen.has(e)) return '';
+  seen.add(e);
+  const clean = s => (s || '').replace(/\s+/g, ' ').trim();
+  const by = e.getAttribute && e.getAttribute('aria-labelledby');
+  if (by) {
+    const parts = by.split(/\s+/).map(id => {
+      const t = e.ownerDocument.getElementById(id);
+      return t ? clean(accName(t, seen) || t.innerText) : '';
+    }).filter(Boolean);
+    if (parts.length) return parts.join(' ');
+  }
+  const aria = clean(e.getAttribute && e.getAttribute('aria-label'));
+  if (aria) return aria;
+  const label = e.labels && e.labels[0];
+  if (label) { const s = clean(label.innerText); if (s) return s; }
+  const alt = clean(e.getAttribute && e.getAttribute('alt'));
+  if (alt) return alt;
+  const own = clean(Array.from(e.childNodes).map(n => {
+    if (n.nodeType === 3) return n.nodeValue;
+    if (n.nodeType === 1 && !n.hasAttribute('aria-hidden')) return n.innerText || n.getAttribute('alt') || '';
+    return '';
+  }).join(' '));
+  if (own) return own;
+  const title = clean(e.getAttribute && e.getAttribute('title'));
+  if (title) return title;
+  const placeholder = clean(e.placeholder);
+  if (placeholder) return placeholder;
+  return clean(e.name);
+}"""
+
+# getClientRects() only proves layout, not reachability: a field under a cookie
+# banner measures fine and then swallows eight seconds of click timeout. Geometry
+# is resolved fresh here, never remembered, and names the blocker instead of the
+# symptom. Outside the viewport the answer is unknown, not blocked — scrolling decides.
+BLOCKED_JS = r"""e => {
+  const r = e.getClientRects()[0];
+  if (!r) return null;
+  const view = e.ownerDocument.defaultView || window;
+  if (r.bottom < 0 || r.right < 0 || r.top > view.innerHeight || r.left > view.innerWidth) return null;
+  const x = Math.min(Math.max(r.left + r.width / 2, 1), view.innerWidth - 1);
+  const y = Math.min(Math.max(r.top + r.height / 2, 1), view.innerHeight - 1);
+  const hit = e.ownerDocument.elementFromPoint(x, y);
+  if (!hit || e.contains(hit) || hit.contains(e)) return null;
+  return (accName(hit) || hit.tagName.toLowerCase()).slice(0, 80);
+}"""
+
+FIELDS_JS = r"""els => {
+  const accName = """ + NAME_JS + r""";
+  const guardSource = """ + GUARD_JS + r""";
+  const blockedBy = """ + BLOCKED_JS + r""";
+  return els.filter(e => e.getClientRects().length).slice(0, 40).map((e, i) => {
+    if (!e.dataset.talosRef) e.dataset.talosRef = 't' + Date.now() + '-' + i;
+    const secret = e.type === 'password' || /cc-|one-time-code/.test(e.autocomplete || '');
+    return {selector:'[data-talos-ref="' + e.dataset.talosRef + '"]', tag:e.tagName.toLowerCase(),
+      type:e.type || '', label:accName(e).slice(0, 100),
+      value:secret ? '[private]' : String(e.value || '').slice(0, 200), required:!!e.required,
+      disabled:!!e.disabled, checked:!!e.checked, valid:e.validity ? e.validity.valid : null,
+      validation:(e.validationMessage || '').slice(0, 180),
+      blocked_by:blockedBy(e), guard_source:guardSource(e),
+      options:e.tagName === 'SELECT' ? Array.from(e.options).slice(0, 20).map(o => ({value:o.value, label:o.text, disabled:o.disabled})) : undefined};
+  });
+}"""
+
+
+def guard(source):
+    """Short digest of one element's observed state, safe to carry in a receipt."""
+    return hashlib.sha256(source.encode("utf-8", "replace")).hexdigest()[:32]
 
 
 def _verbinden(pw):
@@ -68,16 +153,10 @@ def public_url(url):
 def snapshot(page, scope):
     # Hidden fields and password values never enter the agent transcript. Stable
     # references let a model use observed targets instead of guessing coordinates.
-    fields = scope.locator("input:not([type=hidden]),select,textarea,button,a[href],[role=button]").evaluate_all("""els => els.filter(e => e.getClientRects().length).slice(0,40).map((e,i) => {
-      if (!e.dataset.talosRef) e.dataset.talosRef = 't'+Date.now()+'-'+i;
-      const secret = e.type === 'password' || /cc-|one-time-code/.test(e.autocomplete || '');
-      return {selector:'[data-talos-ref="'+e.dataset.talosRef+'"]',tag:e.tagName.toLowerCase(),
-        type:e.type || '',label:(e.labels?.[0]?.innerText || e.getAttribute('aria-label') || e.placeholder || e.innerText || e.name || '').slice(0,100),
-        value:secret ? '[private]' : String(e.value || '').slice(0,200),required:!!e.required,
-        disabled:!!e.disabled,checked:!!e.checked,valid:e.validity ? e.validity.valid : null,
-        validation:(e.validationMessage || '').slice(0,180),
-        options:e.tagName==='SELECT' ? Array.from(e.options).slice(0,20).map(o=>({value:o.value,label:o.text,disabled:o.disabled})) : undefined};
-    })""")
+    fields = scope.locator("input:not([type=hidden]),select,textarea,button,a[href],[role=button]").evaluate_all(FIELDS_JS)
+    # The guard is hashed on this side: the raw state string never needs to travel.
+    for field in fields:
+        field["guard"] = guard(field.pop("guard_source", ""))
     frames = page.locator('iframe').evaluate_all("""els => els.slice(0,10).map((e,i) => {
       if(!e.dataset.talosFrame)e.dataset.talosFrame='frame-'+i;
       return {selector:'[data-talos-frame="'+e.dataset.talosFrame+'"]',url:e.src,name:e.name,title:e.title};
@@ -93,6 +172,7 @@ def snapshot(page, scope):
     alerts = scope.locator('[role="alert"],.toast-message,.toast-title,.alert').all_inner_texts()
     return {"url": public_url(page.url), "title": page.title(), "alerts": [a[:800] for a in alerts[:6]],
             "text": body[:2000], "fields": fields, "frames": frames,
+            "guards": "pass a field's guard as `expect` to have the next action refuse a changed element",
             "challenge": {"interactive": interactive or blocked_text,
                           "instruction": "Use the operator takeover if confirmation is required; inspect again before continuing." if interactive or blocked_text else ""}}
 
@@ -148,6 +228,12 @@ def run(args):
             # Submit buttons, particularly inside nested or repeated forms.
             if target.count() != 1:
                 raise ValueError("target must match exactly one observed element; inspect again")
+            # Code checks freshness, not the model: an element that changed since it
+            # was inspected is a different decision, so the action does not happen.
+            if "expect" in args and guard(target.evaluate(GUARD_JS)) != args["expect"]:
+                return {"state":"needs_review", "action_performed":False, "tab":selected_tab,
+                        "reason":"the observed element changed since it was inspected",
+                        "page":snapshot(page, scope)}
             if action in {"fill", "type"}:
                 kind = target.get_attribute("type")
                 if kind in {"password", "hidden"} or target.get_attribute("autocomplete") in {"one-time-code", "cc-number", "cc-csc"}:

@@ -2,3 +2,5 @@
 # The installer pulls them in because it refuses to finish without running
 # the test suite and the adversarial suite in front of you.
 pytest>=9.1.1
+pygments>=2.20.0   # transitiv ueber pytest. Untergrenze: PYSEC-2023-117 (CVSS 6.8)
+                   # und PYSEC-2026-2987 — kein Beweislauf mit bekannter Luecke.

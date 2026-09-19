@@ -7,6 +7,9 @@ DESKTOP_OPS = {"screenshot", "open", "click", "type", "key", "scroll"}
 READ_OPS = {"status", "job", "screenshot", "files", "routines", "routine"}
 ACTIONS = {"exec", "open", "click", "type", "key", "scroll", "browser", "pause", "resume", "stop"}
 BROWSER_ACTIONS = {"inspect", "navigate", "fill", "type", "select", "check", "click", "submit", "press", "wait", "upload"}
+# A field guard from an earlier inspect: sha256 of the observed element state,
+# truncated by browser.guard(). Code compares it; the model only carries it.
+GUARD = re.compile(r"[a-f0-9]{32}")
 
 
 class SchemaError(ValueError):
@@ -36,6 +39,10 @@ def validate_browser(args):
     elif action != "inspect":
         allowed.add("selector")
         text(args.get("selector"), 500, "observed selector")
+        if "expect" in args:
+            allowed.add("expect")
+            if not isinstance(args["expect"], str) or not GUARD.fullmatch(args["expect"]):
+                raise SchemaError("expect must be a field guard copied from an inspect receipt")
         if action in {"fill", "type", "select", "press"}:
             allowed.add("value")
             if not isinstance(args.get("value"), str) or len(args["value"]) > 8000 or "\x00" in args["value"]:
@@ -54,7 +61,7 @@ KEYS = {"Return", "Tab", "Escape", "BackSpace", "Delete", "Up", "Down", "Left", 
 
 def slug(value, label="name"):
     if not isinstance(value, str) or not SLUG.fullmatch(value):
-        raise SchemaError(f"{label} must contain 1–48 lowercase letters, digits or hyphens")
+        raise SchemaError(f"{label} must contain 1\u201348 lowercase letters, digits or hyphens")
     return value
 
 
@@ -69,7 +76,7 @@ def relative_path(value):
 
 def text(value, limit, name):
     if not isinstance(value, str) or not value or len(value) > limit or "\x00" in value:
-        raise SchemaError(f"{name} must contain 1–{limit} characters")
+        raise SchemaError(f"{name} must contain 1\u2013{limit} characters")
     return value
 
 
@@ -133,7 +140,7 @@ def validate(args, *, read=False):
             allowed |= {"x", "y", "button"}
             for name, limit in (("x", 1439), ("y", 899)):
                 if type(args.get(name)) is not int or not 0 <= args[name] <= limit:
-                    raise SchemaError("click lies outside the 1440×900 desktop")
+                    raise SchemaError("click lies outside the 1440\u00d7900 desktop")
             if args.get("button", 1) not in (1, 2, 3):
                 raise SchemaError("unsupported mouse button")
         elif op == "scroll":

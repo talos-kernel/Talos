@@ -6,6 +6,32 @@ they make possible that was not possible before — or, more often, what they ta
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions are alpha: the kernel's rules are stable, the surface around them is not.
 
+## [0.19.20-alpha] — 2026-09-19
+
+### Security
+
+- Browser actions can no longer be blinded by a page that changed between looking
+  and acting. Inspect receipts now carry a per-field `guard` — an element identity
+  over the accessible state — and mutating browser actions accept `expect` with that
+  guard: if the element changed since it was inspected, the action is refused
+  ("the observed element changed since it was inspected") instead of typing into or
+  clicking whatever sits there now. A malformed guard is rejected by the contract
+  before the browser is ever touched. What this takes away: writing into a field
+  that is no longer the field that was read.
+- Floor the transitive `anyio` pin at 4.14.2 (GHSA-82r6-8w77-94w6, CVSS 9.3, and
+  GHSA-5p39-cfhj-2xmp, CVSS 6.8), `idna` at 3.15 (PYSEC-2026-215, CVSS 6.9) and the
+  dev-only `pygments` at 2.20.0. The locked installs already carried the fixed
+  versions; the requirement ranges claimed to tolerate the vulnerable ones, and an
+  OSV scan resolves a range by its minimum. The rule stands: no installation with a
+  known vulnerability, not even a transitive one.
+
+### Fixed
+
+- `open` navigates the existing Chromium tab instead of piling up a new tab per
+  call. The stacked tabs stole focus from the very navigation meant to prevent
+  them. Chromium is started once if it is not running, detached with `setsid` so
+  the bounded run wrapper cannot kill it with the job.
+
 ## [0.19.19-alpha] — 2026-09-18
 
 ### Fixed

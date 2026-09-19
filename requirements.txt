@@ -10,3 +10,9 @@ pypdf>=6.16.1        # PDFs lesen (BSD) — siehe talos/documents.py. Nur fuer P
                      # Untergrenze 6.16.1: alles darunter traegt PYSEC-2026-3910
                      # bis -3913 (CVSS 4.8-6.9). Eine NEUE Abhaengigkeit wird
                      # nicht mit bekannten Luecken eingefuehrt.
+idna>=3.15           # transitiv ueber requests. Untergrenze 3.15: alles darunter
+                     # traegt PYSEC-2026-215 (CVSS 6.9). Dieselbe Regel wie bei pypdf:
+                     # keine Installation mit bekannter Luecke, auch nicht transitiv.
+anyio>=4.14.2        # transitiv ueber httpx. Untergrenze 4.14.2: alles
+                     # darunter traegt GHSA-82r6-8w77-94w6 (CVSS 9.3) und
+                     # GHSA-5p39-cfhj-2xmp (CVSS 6.8). Dieselbe Regel wie bei idna.

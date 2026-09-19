@@ -99,7 +99,20 @@ def main(args):
     if op == "exec":
         argv = ["/bin/bash", "-lc", args["command"]]
     elif op == "open":
-        argv = ["chromium", "--proxy-server=http://10.0.2.100:3128", "--new-tab", args["url"]]
+        # Im bestehenden Chromium-Fenster navigieren, statt bei jedem Aufruf einen neuen Tab
+        # zu oeffnen (frueher: "--new-tab"). Laeuft noch kein Chromium, wird es einmalig
+        # gestartet - "setsid -f" loest es aus der Prozessgruppe, damit bounded_run es
+        # nicht sofort wieder killt.
+        url = args["url"]
+        if bounded_run(["pgrep", "-x", "chromium"], timeout=10)[0] == 0:
+            bounded_run(["xdotool", "search", "--onlyvisible", "--class", "chromium",
+                         "windowactivate", "--sync"], timeout=15)
+            bounded_run(["xdotool", "key", "--clearmodifiers", "ctrl+l"], timeout=15)
+            bounded_run(["xdotool", "type", "--clearmodifiers", "--delay", "8", "--file", "-"],
+                        timeout=30, data=url.encode())
+            argv = ["xdotool", "key", "--clearmodifiers", "Return"]
+        else:
+            argv = ["setsid", "-f", "chromium", "--proxy-server=http://10.0.2.100:3128", url]
     elif op == "click":
         argv = ["xdotool", "mousemove", "--sync", str(args["x"]), str(args["y"]), "click", str(args.get("button", 1))]
     elif op == "type":
