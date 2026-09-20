@@ -33,7 +33,7 @@ import threading
 import time
 from typing import Callable, Iterator, Protocol
 
-from .agent_loop import AgentStatus, run_agent, tool_history_entry
+from .agent_loop import AgentStatus, parse_tool_call, run_agent, tool_history_entry
 from .approval import ApprovalPicker, ApprovalStore, Pending, is_affirmative, is_always, is_negative
 from .attachment import extract as extract_media
 from .attachment import resolve as resolve_media
@@ -1029,7 +1029,17 @@ class Conductor:
                 task_id=task_id,
             )
         else:
-            reply = _final_answer(result.text) if result.status is AgentStatus.ANSWERED else result.text
+            if result.status is AgentStatus.ANSWERED:
+                reply = _final_answer(result.text)
+            elif result.status is AgentStatus.PLAN_ABORTED:
+                # Der Bericht eines abgebrochenen Plans ist ein Rohdump (Ziel, Zaehler,
+                # Stop-Grund) — ein Maschinenartefakt, keine Nachricht. Der Operator
+                # bekommt eine Schlussmeldung (Endstand zuerst), nachgefordert vom
+                # Reasoner — siehe _closing_message. Der Dump bleibt im Event-Log.
+                # (STEP_LIMIT liefert dagegen schon kuratierte Saetze aus agent_loop.)
+                reply = self._closing_message(update, run_id, result)
+            else:
+                reply = result.text
             # MEDIA:-Tags NUR aus den eigenen Worten des Agenten loesen — und zwar hier,
             # BEVOR Quittung und Notizen angehaengt werden: eine Notiz kann Zeilen aus
             # Werkzeugausgaben tragen, und was ein Werkzeug oder eine Webseite "sagt",
@@ -1098,7 +1108,10 @@ class Conductor:
                       "For a status-only follow-up, explain this blocker from these receipts; "
                       "do not restart the task.\n" + "\n".join(receipts[-4:]))
             self.memory.remember_interrupted(update.conversation, asked=text, detail=detail)
-        remembered_answer = result.text
+        # PLAN_ABORTED liefert eine nachgeforderte Schlussmeldung statt des Rohdumps —
+        # gemerkt wird, was der Operator gesehen hat, nicht das Maschinenartefakt.
+        # (`reply` existiert in diesem Status immer: er kommt nur aus dem Zustell-Zweig.)
+        remembered_answer = reply if result.status is AgentStatus.PLAN_ABORTED else result.text
         if media:
             delivery_note = self._attachment_receipt_note(run_id, len(media))
             remembered_answer = delivery_note + "\n" + extract_media(result.text)[0]
@@ -1120,6 +1133,46 @@ class Conductor:
                     pass
             self._maybe_distill(update, run_id, text, result)
         return sent
+
+    def _closing_message(self, update: Inbound, run_id: str, result) -> str:
+        """Schlussmeldung fuer einen Plan-Lauf, der an einer Stelle haengenblieb.
+
+        Der Rohdump des Stopps (Ziel, Zaehler, Grund) ist ein Maschinenartefakt — der
+        Operator soll lesen: Endstand, was getan, was belegt, was offen. Der Reasoner
+        schreibt die Meldung in einem eigenen Zug und sieht dabei NUR die Fakten des
+        Laufs; Werkzeuge kann er dabei nicht ausfuehren, und ein trotzdem erzeugter
+        TOOL_CALL wird als Fehlschlag gewertet. Dann greift die deterministische
+        Vorlage: diese Luecke darf nie wieder eine Nachfrage des Operators brauchen.
+        Der Zug ist zusaetzliche Modellzeit, aber genau einmal pro gestopptem Lauf.
+        """
+        self.log.append(
+            Event(run_id, "conductor", "closing.requested", {"status": result.status.value})
+        )
+        prompt = (
+            "[Nachforderung — keine neuen Aktionen, kein Werkzeug]\n"
+            "Der Lauf zum Auftrag ist ohne Abschlussmeldung gestoppt "
+            f"({result.status.value}). Der Operator hat bisher nur den Rohdump gesehen.\n"
+            f"Auftrag: {update.text[:400]}\n"
+            f"{_closing_facts(result)}\n"
+            "Schreibe jetzt NUR die Abschlussmeldung an den Operator: erste Zeile der "
+            "Endstand (was ist erledigt, was ist blockiert, was ist offen), dann "
+            "hoechstens fuenf kurze Zeilen — was getan, was belegt, naechster konkreter "
+            "Schritt. Keine erfundenen Belege: wurde nichts fertig, steht das so drin."
+        )
+        closing = ""
+        try:
+            closing = self._ask(prompt, None, run_id).strip()
+        except Exception:
+            closing = ""
+        # Ein Werkzeugruf als „Schlussmeldung" ist ein Fehlschlag, kein Inhalt —
+        # ausgefuehrt wuerde hier nichts, geliefert wuerde rohes Protokoll.
+        if closing and parse_tool_call(closing) is None:
+            self.log.append(
+                Event(run_id, "conductor", "closing.delivered", {"chars": len(closing)})
+            )
+            return closing
+        self.log.append(Event(run_id, "conductor", "closing.fallback", {}))
+        return _closing_fallback(result)
 
     def _maybe_distill(self, update: Inbound, run_id: str, text: str, result) -> None:
         """Der Lernschritt nach zugestellter Antwort — die Destillations-Schleife.
@@ -2027,6 +2080,37 @@ def _final_answer(text: str) -> str:
     """Die Antwort steht fuer sich. Kein Marker davor — Telegram trennt Nachrichten selbst,
     und ein Zeichen in der Prosa widerspricht der Regel, die die SOUL dem Agenten gibt."""
     return text.strip()
+
+
+def _closing_facts(result) -> str:
+    """Die belegten Fakten eines gestoppten Laufs fuer die Schlussmeldung — aus dem
+    Plan-/Laufzustand, nie aus Modellprosa."""
+    if result.plan is not None:
+        plan = result.plan
+        return (
+            f"Fakten (belegt, nicht vom Modell behauptet): Ziel „{plan.plan.goal}“; "
+            f"{plan.calls} Aufrufe von hoechstens {plan.ceiling}; erfuellte Bedingungen "
+            f"{plan.met}/{len(plan.plan.checks)}; gestoppt an: {plan.failure or 'unbekannt'}."
+        )
+    return f"Stopp-Text (Auszug): {result.text[:300]}"
+
+
+def _closing_fallback(result) -> str:
+    """Deterministische Schlussmeldung, wenn der Nachforderungs-Zug selbst scheitert:
+    Endstand zuerst, nur belegte Fakten, naechster Schritt als Angebot."""
+    if result.plan is not None:
+        plan = result.plan
+        grund = plan.failure or "ohne Angabe"
+        return (
+            f"Gestoppt — {plan.plan.goal}: {grund}.\n"
+            f"Ausgefuehrt wurden {plan.calls} von hoechstens {plan.ceiling} Aufrufen; "
+            "nichts Halbfertiges ist damit erledigt. Frag nach dem Stand oder sag, "
+            "wie es weitergehen soll."
+        )
+    return (
+        "Der Lauf ist ohne Abschluss gestoppt worden. "
+        "Frag nach dem Stand oder sag, wie es weitergehen soll."
+    )
 
 
 def _plan_after_approval(

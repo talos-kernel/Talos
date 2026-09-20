@@ -23,12 +23,12 @@
 <meta property="og:site_name" content="Talos">
 <meta property="og:title" content="Talos — an AI agent with a permission kernel">
 <meta property="og:description" content="Hand it a shell. Every tool call passes a gate that grants authority for exact arguments, once, for 30 seconds — and logs the verdict.">
-<meta property="og:image" content="https://talos-agent.ch/brand/og-logo.png">
+<meta property="og:image" content="https://talos-agent.ch/brand/og-preview.jpg">
 <meta property="og:url" content="https://talos-agent.ch/">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Talos — an AI agent with a permission kernel">
 <meta name="twitter:description" content="Hand it a shell. Every tool call passes a gate that grants authority for exact arguments, once, for 30 seconds.">
-<meta name="twitter:image" content="https://talos-agent.ch/brand/og-logo.png">
+<meta name="twitter:image" content="https://talos-agent.ch/brand/og-preview.jpg">
 
 <script type="application/ld+json">
 {
@@ -270,6 +270,36 @@ h2{font-family:var(--crt);font-weight:600;font-size:clamp(30px,4vw,54px);line-he
 .install-note{color:var(--faint);font-size:13px;margin-top:20px;max-width:72ch;line-height:1.65}
 .install-note code{color:var(--accent);background:var(--accent-soft);padding:1px 6px;border-radius:2px}
 
+/* ── field notes ───────────────────────────────────────────────────────────── */
+.field{border-top:1px solid var(--line);margin-top:44px}
+.field-row{display:grid;grid-template-columns:210px 1fr;gap:clamp(18px,3vw,48px);
+  padding:34px 0;border-bottom:1px solid var(--line)}
+@media(max-width:760px){.field-row{grid-template-columns:1fr;gap:8px;padding:26px 0}}
+.field-row code{font-family:var(--mono);font-size:12.5px;color:var(--accent);
+  background:var(--accent-soft);padding:2px 8px;border-radius:2px}
+.field-row .f-no{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.2em;
+  color:var(--faint);margin-bottom:12px}
+.field-row h3{font-family:var(--serif);font-weight:600;font-size:clamp(21px,2.2vw,26px);
+  color:var(--hot);line-height:1.25;margin:10px 0 12px;max-width:28ch;text-wrap:balance}
+.field-row p{color:var(--dim);font-size:15.5px;line-height:1.7;max-width:70ch}
+.field-row .f-receipt{margin-top:14px;font-family:var(--mono);font-size:12px;color:var(--faint)}
+.field-row .f-receipt b{color:var(--allow);font-weight:500}
+.field-row .f-receipt .fr-deny{color:var(--deny);font-weight:500}
+
+/* ── faq ───────────────────────────────────────────────────────────────────── */
+.qa{display:grid;grid-template-columns:1fr 1fr;gap:14px 26px;margin-top:40px;align-items:start}
+@media(max-width:820px){.qa{grid-template-columns:1fr}}
+.q{border:1px solid var(--line);background:var(--bg)}
+.q summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:16px;
+  align-items:baseline;padding:18px 20px;font-family:var(--serif);font-size:17.5px;color:var(--hot)}
+.q summary::-webkit-details-marker{display:none}
+.q summary::after{content:"+";font-family:var(--mono);color:var(--accent);flex:none}
+.q[open] summary::after{content:"–"}
+.q summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.q p{padding:0 20px 18px;color:var(--dim);font-size:14.5px;line-height:1.7}
+.q code{font-family:var(--mono);font-size:.9em;color:var(--accent);background:var(--accent-soft);
+  padding:1px 6px;border-radius:2px}
+
 /* ── footer ────────────────────────────────────────────────────────────────── */
 footer{border-top:1px solid var(--line);padding:40px 0 54px;font-family:var(--mono);
   font-size:12px;color:var(--faint)}
@@ -358,7 +388,7 @@ html.js .rv.in{opacity:1;transform:none}
         <span class="t-why" id="tickWhy">clean — runs sandboxed, logged before it runs</span>
       </div>
       <div class="meter-row">
-        <span><b>2864</b>unit tests</span>
+        <span><b>2868</b>unit tests</span>
         <span><b>263/263</b>adversarial</span>
         <span><b>985</b>lines · gate</span>
         <span><b>30s</b>token life</span>
@@ -601,13 +631,96 @@ html.js .rv.in{opacity:1;transform:none}
     <p class="sub rv">None of this asks for belief. The installer runs both suites in front
     of you. Every number on this page is a number the suite reproduces.</p>
     <div class="stats">
-      <div class="stat rv"><div class="n cnt" data-n="2864">0</div><div class="l">unit tests, run by the installer in front of you</div></div>
+      <div class="stat rv"><div class="n cnt" data-n="2868">0</div><div class="l">unit tests, run by the installer in front of you</div></div>
       <div class="stat rv"><div class="n cnt" data-n="263">0</div><div class="l">adversarial cases trying to pass the kernel</div></div>
       <div class="stat rv"><div class="n cnt" data-n="44">0</div><div class="l">end-to-end cases against a real model</div></div>
       <div class="stat rv"><div class="n cnt" data-n="985">0</div><div class="l">lines in the file that decides every verdict</div></div>
       <div class="stat rv"><div class="n cnt" data-n="33">0</div><div class="l">gated tools, each with a declared effect</div></div>
       <div class="stat rv"><div class="n cnt" data-n="30" data-suf="s">0</div><div class="l">token lifetime, single use</div></div>
       <div class="stat rv"><div class="n cnt" data-n="0">0</div><div class="l">identities allowed by default</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="field">
+  <div class="wrap">
+    <p class="sec-tag rv">field notes</p>
+    <h2 class="rv">Not demos. Tuesdays.</h2>
+    <p class="sub rv">These are workflows the agent runs for its operator today. Each one
+    passes the same gate, and each one ends in the ledger, not in a claim.</p>
+    <div class="field">
+      <div class="field-row rv">
+        <div><span class="f-no">01</span><code>computer_run · guard</code></div>
+        <div>
+          <h3>It fills real web forms, and refuses to be fooled by the page.</h3>
+          <p>Navigate, inspect, fill, submit — in a persistent browser on your own machine.
+          Every inspected field carries a guard. If the page changed between looking and
+          typing, the action is refused instead of writing into whatever sits there now.
+          A submit waits for your word, and the receipt records what the server answered.</p>
+          <p class="f-receipt">inspect → fill → guard <b>✓ unchanged</b> → submit <b>✓ 200</b> → receipt logged</p>
+        </div>
+      </div>
+      <div class="field-row rv">
+        <div><span class="f-no">02</span><code>cli_anything</code></div>
+        <div>
+          <h3>Your other tools become blades: pinned, allowlisted, gated.</h3>
+          <p>Curated third-party CLIs — an n8n or LibreOffice harness, for example — run through
+          the same kernel. The operator-owned registry pins package, version and SHA-256 with an
+          exact subcommand allowlist. The model names a harness and a subcommand, never a path
+          or a version. What is not listed is refused on sight; what is listed still waits
+          for a human.</p>
+          <p class="f-receipt">unknown harness <span class="fr-deny">denied</span> · known subcommand → your approval → <b>done</b></p>
+        </div>
+      </div>
+      <div class="field-row rv">
+        <div><span class="f-no">03</span><code>schedules · unattended</code></div>
+        <div>
+          <h3>It lives on a small always-on box, and knocks before it acts.</h3>
+          <p>A Raspberry Pi is enough. Scheduled runs work under the unattended ceiling:
+          reading and reporting happen, anything that would need your approval is reported,
+          never performed. The briefing arrives as a message; every effect waits for the one
+          identity you proved you control.</p>
+          <p class="f-receipt">morning briefing <b>sent</b> · approval-needing step <span class="fr-deny">reported, not run</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <p class="sec-tag rv">questions</p>
+    <h2 class="rv">Asked, answered.</h2>
+    <div class="qa">
+      <details class="q rv"><summary>What does it cost?</summary>
+        <p>Talos is MIT-licensed and free. You pay only the model provider you configure,
+        and the installer starts nothing until you say so.</p></details>
+      <details class="q rv"><summary>Which models does it run on?</summary>
+        <p>Claude through the Claude Code CLI by default, other providers by configuration.
+        The kernel does not care which model proposes: it judges the call, not the model.</p></details>
+      <details class="q rv"><summary>Is my setup exposed as an example?</summary>
+        <p>No. Your deployment is not a public example: operator identity, notes, credentials
+        and runtime data live outside the source tree. Model requests go to the provider you
+        configure; self-hosting the agent does not make every model local.</p></details>
+      <details class="q rv"><summary>Can it act on its own while I sleep?</summary>
+        <p>Scheduled runs work under the unattended ceiling: reading and reporting happen,
+        anything that would need your approval is reported, never performed. Outward and
+        irreversible effects always wait for a human; standing approvals bind to exact
+        arguments, expire, and are logged.</p></details>
+      <details class="q rv"><summary>What if it makes a mistake?</summary>
+        <p><code>/stop</code> aborts mid-thought, <code>/undo</code> rolls back the last file
+        change, <code>/autonomy 0</code> shortens the leash to nothing. No model sits between
+        you and the brake: a brake that has to think first is not a brake.</p></details>
+      <details class="q rv"><summary>Does it run on my machine?</summary>
+        <p>macOS and Linux, including a Raspberry Pi. Execution runs sandboxed (sandbox-exec,
+        bubblewrap); where no sandbox exists, the gate refuses rather than running unprotected.</p></details>
+      <details class="q rv"><summary>How is this different from other agents?</summary>
+        <p>The model proposes, it does not decide. A deterministic kernel grants authority for
+        exact arguments, once, for 30 seconds, and writes every verdict to an append-only log.
+        Both suites run on every install, in front of you.</p></details>
+      <details class="q rv"><summary>Does it need a server of mine?</summary>
+        <p>No listening socket, ever. Every channel fetches: Telegram long-polls, mail is
+        pulled over IMAP, WhatsApp goes through an operator-controlled broker over SSH.</p></details>
     </div>
   </div>
 </section>
@@ -643,6 +756,7 @@ html.js .rv.in{opacity:1;transform:none}
     <a href="/docs/">Docs</a>
     <a href="#ledger">Ledger</a>
     <a href="#limits">Limits</a>
+    <a href="#faq">FAQ</a>
     <a href="/console.html">Console</a>
     <a href="https://github.com/talos-kernel/talos">GitHub</a>
     <span class="sp"></span>

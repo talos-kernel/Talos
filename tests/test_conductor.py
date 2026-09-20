@@ -822,3 +822,73 @@ def test_a_stale_approval_button_claims_nothing_ran() -> None:
         "der Zweig sagt nicht mehr, dass dieser Knopf verbraucht ist")
     # Und er verweist auf die Stelle, die es wirklich beantworten kann.
     assert "log before repeating" in quelle, "er sagt nicht, wo die Antwort steht"
+
+
+class QueueReasoner:
+    """Antworten in vorgegebener Reihenfolge; danach leer (loest keine Reparatur aus)."""
+
+    def __init__(self, *antworten: str) -> None:
+        self._q = list(antworten)
+        self.calls = 0
+
+    def reason(self, prompt: str, *args, **kwargs) -> str:
+        self.calls += 1
+        return self._q.pop(0) if self._q else ""
+
+
+_PLAN = 'PLAN: {"goal": "Testlauf", "steps": ["analysieren", "schreiben"]}'
+_DENIERT = _tool_call("nuke_everything", {}, [])  # unbekanntes Werkzeug -> DENY, Plan bricht
+
+
+def _events(conductor) -> list[str]:
+    return [e["type"] for e in conductor.log.recent(200)]
+
+
+def test_plan_abort_delivers_closing_message_not_the_raw_dump(tmp_path) -> None:
+    """Gemessener Fehler 20.09.2026: ein Plan-Lauf, der an einer Ablehnung endete,
+    lieferte den Rohdump („Goal: … Ran 9 tool calls … Stopped at …") als letzte
+    Nachricht — der Operator musste mit „?" nachfragen. Jetzt fordert der Conductor
+    eine Schlussmeldung nach; der Dump bleibt im Event-Log."""
+    r = QueueReasoner(_PLAN, _DENIERT, "Blockiert: der Schreibschritt war nicht erlaubt. Getan: Analyse. Offen: Freigabe.")
+    conductor, sent = _build(tmp_path, r)
+    conductor.handle(msg(1, OWNER, "bitte planen und ausfuehren"))
+    assert sent, "keine Nachricht zugestellt"
+    text = sent[-1][1]
+    assert text.startswith("Blockiert:"), text[:120]
+    assert "PLAN:" not in text and "Stopped" not in text, text[:200]
+    typen = _events(conductor)
+    assert "closing.requested" in typen and "closing.delivered" in typen
+    assert "closing.fallback" not in typen
+
+
+def test_plan_abort_closing_falls_back_when_the_pass_returns_a_tool_call(tmp_path) -> None:
+    """Ein Werkzeugruf als Schlussmeldung ist ein Fehlschlag, kein Inhalt: es wird
+    nichts ausgefuehrt und nichts Rohes geliefert — die Vorlage traegt die Fakten."""
+    r = QueueReasoner(_PLAN, _DENIERT, _tool_call("read_file", {"path": "/x"}, ["/x"]))
+    conductor, sent = _build(tmp_path, r)
+    conductor.handle(msg(1, OWNER, "bitte planen und ausfuehren"))
+    text = sent[-1][1]
+    assert text.startswith("Gestoppt — Testlauf:"), text[:120]
+    assert "TOOL_CALL" not in text
+    assert "closing.fallback" in _events(conductor)
+
+
+def test_plan_abort_closing_falls_back_when_the_pass_is_empty(tmp_path) -> None:
+    """Auch ein leerer Nachforderungs-Zug endet mit der deterministischen Vorlage,
+    nie mit Schweigen."""
+    r = QueueReasoner(_PLAN, _DENIERT, "")
+    conductor, sent = _build(tmp_path, r)
+    conductor.handle(msg(1, OWNER, "bitte planen und ausfuehren"))
+    assert sent[-1][1].startswith("Gestoppt — Testlauf:")
+    assert "closing.fallback" in _events(conductor)
+
+
+def test_answered_run_never_pays_for_a_closing_pass(tmp_path) -> None:
+    """Der Normalfall bleibt unberuehrt: eine fertige Antwort loest keinen zusaetzlichen
+    Reasoner-Zug und kein closing-Ereignis aus."""
+    r = QueueReasoner("Alles fertig.")
+    conductor, sent = _build(tmp_path, r)
+    conductor.handle(msg(1, OWNER, "sag was"))
+    assert sent[-1][1] == "Alles fertig."
+    assert r.calls == 1
+    assert "closing.requested" not in _events(conductor)
