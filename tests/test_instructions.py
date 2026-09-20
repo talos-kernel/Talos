@@ -183,3 +183,12 @@ def test_cli_and_api_use_the_same_system_prompt_assembly(monkeypatch, tmp_path: 
     assert "CLI-SKILLS" in calls[0][0]
     assert "CLAUDE-SKILLS" in calls[1][0]
     assert "API-SKILLS" in calls[2][0]
+
+def test_protocol_carries_the_scope_rule() -> None:
+    """Gemessen am 20.09.2026: ein Lauf verkleinerte den Auftrag still (drei Schritte
+    angekuendigt, einer gelaufen, Abschluss behauptet). Der Prompt sagt es jetzt
+    ausdruecklich: der verlangte Umfang ist das Ergebnis, Verkleinern entscheidet
+    der Betreiber, nicht das Modell."""
+    assert "never quietly narrow, widen or transform" in TOOL_PROTOCOL
+    assert "Scaling the work down is the operator's decision" in TOOL_PROTOCOL
+

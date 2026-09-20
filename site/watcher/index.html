@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="../brand/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="../brand/apple-touch-icon.png">
+<title>The Watcher — Talos</title>
+<meta name="description" content="A minute with the watcher of Crete. The model proposes. It never decides.">
+<link rel="canonical" href="https://talos-agent.ch/watcher/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Talos">
+<meta property="og:title" content="The Watcher — Talos">
+<meta property="og:description" content="The model proposes. It never decides.">
+<meta property="og:image" content="https://talos-agent.ch/brand/og-preview.jpg">
+<meta property="og:url" content="https://talos-agent.ch/watcher/">
+<meta name="twitter:card" content="summary_large_image">
+<script>document.documentElement.classList.add('js')</script>
+<style>
+/* ── The Watcher · demoscene-myth · local fonts only, no third party ──────────
+   Der Koloss ist kein Bild: jede Zelle ist ein Zeichen aus derselben ASCII-Figur,
+   die die Startseite traegt. Partikel ziehen sich zu ihr zusammen und bleiben.  */
+@font-face{font-family:"Talos Display";src:url("../fonts/cinzel-var.woff2") format("woff2");
+  font-weight:400 900;font-display:swap}
+@font-face{font-family:"Sometype Mono";src:url("../fonts/sometype-mono-var.woff2") format("woff2");
+  font-weight:400 700;font-display:swap}
+@font-face{font-family:"VT323";src:url("../fonts/vt323.woff2") format("woff2");
+  font-weight:400;font-display:swap}
+
+:root{
+  --ink:    oklch(0.155 0.012 60);
+  --bone:   oklch(0.945 0.008 84);
+  --dim:    oklch(0.700 0.014 66);
+  --faint:  oklch(0.520 0.012 64);
+  --amber:  oklch(0.700 0.100 72);
+  --amber-hi: oklch(0.780 0.115 74);
+  --line:   oklch(0.945 0.008 84 / 0.14);
+  --crt:  "Talos Display",Georgia,serif;
+  --mono: "Sometype Mono",ui-monospace,Menlo,monospace;
+  --tui:  "VT323","Sometype Mono",monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:auto}
+body{background:var(--ink);color:var(--bone);font-family:var(--mono);
+  font-size:16px;line-height:1.6;overflow-x:clip;-webkit-font-smoothing:antialiased}
+::selection{background:var(--amber);color:var(--ink)}
+a{color:var(--bone)}
+
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block}
+
+.scene{position:relative;min-height:100dvh;display:grid;align-items:center;
+  padding:clamp(20px,5vw,64px)}
+.scene-grid{display:grid;grid-template-columns:minmax(0,42ch) 1fr;gap:clamp(24px,4vw,72px);
+  max-width:1360px;margin:0 auto;width:100%;align-items:center}
+@media(max-width:900px){.scene-grid{grid-template-columns:1fr;align-content:end;
+  min-height:100dvh;padding-bottom:8dvh}}
+
+.eyebrow{font-family:var(--mono);font-weight:500;font-size:11px;letter-spacing:.24em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:26px}
+h1{font-family:var(--crt);font-weight:600;font-size:clamp(40px,5.4vw,76px);line-height:1.04;
+  letter-spacing:-.005em;text-wrap:balance;color:var(--bone)}
+h1 .never{color:var(--amber-hi)}
+.lede{margin-top:24px;color:var(--dim);font-size:15px;line-height:1.75;max-width:36ch}
+.lede b{color:var(--bone);font-weight:500}
+
+.cta-row{display:flex;gap:14px;margin-top:38px;flex-wrap:wrap}
+.btn{font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;
+  text-decoration:none;min-height:46px;display:inline-flex;align-items:center;gap:8px;
+  padding:0 22px;border:1px solid var(--amber);color:var(--ink);background:var(--amber);
+  transition:background-color .2s,color .2s,border-color .2s,translate .1s}
+.btn:hover{background:var(--amber-hi);border-color:var(--amber-hi)}
+.btn:active{translate:0 1px}
+.btn.ghost{background:transparent;color:var(--bone);border-color:var(--line)}
+.btn.ghost:hover{border-color:var(--amber);color:var(--amber-hi);background:transparent}
+.btn:focus-visible{outline:2px solid var(--amber-hi);outline-offset:3px}
+
+/* der Verdict-Ticker: VT323 ist die kleine Signatur, nicht Fliesstext */
+.ticker{position:fixed;top:clamp(14px,3vw,28px);right:clamp(16px,4vw,40px);text-align:right;
+  font-family:var(--tui);font-size:19px;line-height:1.35;color:var(--dim);pointer-events:none;
+  max-width:44ch}
+.ticker .v-deny{color:oklch(0.705 0.150 32)}
+.ticker .v-ask{color:var(--amber-hi)}
+.ticker .v-allow{color:oklch(0.700 0.120 148)}
+@media(max-width:900px){.ticker{position:static;text-align:left;margin-top:34px;pointer-events:auto}}
+
+.foot{position:fixed;left:clamp(16px,4vw,40px);bottom:clamp(14px,3vw,28px);
+  font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint)}
+.foot a{color:var(--dim);text-decoration:none;border-bottom:1px solid var(--line);
+  padding-bottom:2px;transition:color .2s,border-color .2s}
+.foot a:hover{color:var(--amber-hi);border-color:var(--amber)}
+@media(max-width:900px){.foot{position:static;margin-top:40px}}
+
+/* Inhalt steht sofort; die Formation ist Wetter, nicht Tuer. Wer keine Bewegung
+   mag, bekommt die fertige Figur ohne Choreografie. */
+</style>
+</head>
+<body>
+
+<canvas id="stage" aria-hidden="true"></canvas>
+
+<main class="scene">
+  <div class="scene-grid">
+    <div>
+      <p class="eyebrow">The watcher of Crete</p>
+      <h1>The model proposes.<br><span class="never">It never decides.</span></h1>
+      <p class="lede">Every tool call passes the gate. <b>Exact arguments. Once.
+      Thirty seconds.</b> The verdict is written before anything runs, in a log
+      nothing rewrites.</p>
+      <div class="cta-row">
+        <a class="btn" href="/#kernel">Try the gate</a>
+        <a class="btn ghost" href="/#install">Install</a>
+      </div>
+      <div class="ticker" id="ticker" aria-hidden="true"></div>
+    </div>
+    <div></div>
+  </div>
+</main>
+
+<p class="foot">A minute with the giant · <a href="/">talos-agent.ch</a></p>
+
+<script>
+/* Das Gesicht des Wächters: dieselbe Figur wie auf der Startseite, Zelle für Zelle. */
+const ART = `                                 :                  ..:-=====-:... .-+******++=-:.    -+-.
+                               .=.             .:-=+**************+=--+***********+-.  =**=.
+                              .*+  .       .:==+**************++************+-=******= .****-
+                              +**- :-.          .:=+********#**+-:---++--+***+.:*=****+-+****-
+                      ..     :****=.:++=------++****+++==----=+**+-.  .-..:+**: =:-**********+ .:--==--:..
+                      =.     =******+=++**#*#*##******+==--:   .-+#+.   .-=.+*.-.--+**********=**#**+=:...
+                     :*:   : =*************++=======+=++==-:.     =**=:  -#=:-:*=+=****************++=-:.
+                     =*+.  -..************+++==---:.  .:=*#*+=:  -.=***. +#*:-****************************+-.
+                     +***- .=:-*************+-:.......   .-*#**+:-+=***-=**++*******************+-:.-++******=.
+                     +#**#*==+=++**#***+=--:.      ...   .::+**#*+********#**++*****##*******+=--=+=--+*#******-
+                     -************++=-::---:......  .:=+- .=-************+++++**********+==+****=. .::.:=***=::==:
+                :     +*********+===+++=====++++***+=-:=**-:++**********+++==-:::-=**++**+-..=++**=. ..  :+***-. .
+                .=:    =**********##*+=---..    .:-+***++**==*******+++*******+=:.  -++--===:   :==-. :=:-.=****=.
+                 :++=:..-+********+-:..      .:==+==+*******+****+=--::.::=+**++*=.   -*=:. ..    ...  .+++-=*****:
+                  .=*#********+=::::::::.  :=+=:.  .:=+*********+==+**+-.   .-==---:   .+*-      .-:     +**++*****.
+                    .-=+***+=::-++===:.   :=-.       ..-+******=::  .-**+-     =*=...    -**-.   =-=+=:-  +********+.
+                      .-++::-+*#*+=:     .=-.  :: :=+*+=:=***+::=*=   :*#*+-    :**=     .:=**+=..=**#*=+:.*********=
+                     =*+-:=*****=.  .   .+=: :+..=**+=+**-+*+:+#***=.. :****=  ..-**+:    :--+***=:=******-=*****+=**.
+                   .+*=-+*****+:  :-.   ++- -*:.**********+*=**++***-=  ++***+  -.+***=. ...-==+*#*=+******=******:.+=
+                  .**=+******+.  == . .+*= -*-.****++===--==-----::-=+: +-=+**- :--*****=.::..-+******************+  -
+                 .*****++***+. :++.: :***:.**:+*=---::...:......:..:**= =.:=***..*=*******+===-::=+****************+
+                 +#**=:=****: -**.=.:**** =#+-*+**+-.   ::.    .    *#=--  :+*#-.***+=*****#*****=---=++************+.
+                :**+..=+***- :**:=:.*****:=*++#**#-    .=:-.   .    **==   :=**=:#+=*+-=+*****++*++**+===+************-
+                =*=  =-**** .**=== +***-*==#******:     .-     ....:**+:....:=*++*-.:=+=:-++*#*+--..-+******************=:.
+               .*+  -:-#*#+ =#*+*:-**++-**+*******-    ...:::::--:-+#*=--==--=***+++==+**=--=+*#**=-...:=++********=-===-:.
+               .=  .- +**#-.****+.*#*-=++****+===++:...:--:...    :*=    ..  :#*- :+**+=++*********#**+=-==++*******.
+               ..  :: +**#:-#**#=:****-+**++#*=+==-::--:  .:.    .=:  :===:. -*-   :+***=..:-=+++***##***==********#=
+                   :. +***-=***#==***=.+**-.+*=-::--::.  :-.     . .-+*##*****+-:   .-+***=::--=+***+=+***=-+*****=+*.
+                   .. -***-=*++*++***=+**+-  -+--   .=  .:    .:-=+*##*=-:..-..:-.     :+*****+**+-..::.+**+-*****=.+:
+                    .  +**+=*-+************=:.--=.. -.... .:=+***#***+--::.. .:::       -+*******-.-==*-.***+=****+ ::
+                       :***+*.-#**+***:=**#*#**++.- =--=+**###*******+++--=+=-:.        :******-..+*= -=:=******+++
+                        :***+  +*+-***+-+*+**#**#+=--===++**#**+:.=-=.-. .=+:  .... ... .+*****. =-:. .-::******:-+
+                         -***. :** -=+#+-+.--=-=-**...:==-+*+-=-..::::::---.  ..  .      +****+ -#*+.  -.:#****+ ::
+                          -**.  :*: ::-*.-+---===*=   :.  .-+**++=-:.  ..                +**#+-:-=--+. - :*****- .
+                           -*=   .=. . -::=+#*****.  ..      :--:.       .   ..      .:  +**+.  ++  =..: =****#-
+                            :+.    :   -:++=+=:=*+   .          ..            ..    :-. :-**.  -*= .:::.+******=
+                             .-        -:+=   -*#-                             .. .-=:  .==.  =#*. .-::+#*******-
+                                       -:=+. .*#+...                            .:=-:   .:     .  .  -***********:
+                                       .=:*= =**=..:.   ..                    .:--::               .+*********-:=+=.
+                                        ---*-*#*.   :.  ....                 .:--:.         -:   .-************.
+                                         +:+**#-     .     -                 .-:.          .*******************+
+                                         .=:****=--:::===:-:                 ::            -*+**+=**********++**.
+                                          :=:**##***++-.                    ::             ++.  .-**********+-**.
+                                           -::+***#*-.-                     :             -*:    =*********** =+
+                                            +.-+**+-  :                    .              ++    .**+=*******+ --
+                                            :- -*=+*+-. .....                            .*:   .++- .*******=:--:.
+                                             =.:*++--=-::.:::::::-:       .             .+=   .:.   .*******+=-::-=:
+                                             .=.++::              .      ..           .=*=.   .     .*==********. .+.
+                                              :=.**+++++++==-.          ..          :=**=:   ..     =- :*******=   -=
+                                               --:****+===+==-:                  .-+*#*=:    .:    ..   +*****-  .. +.
+                                                =::=*=       ......           .-+*****+-.    :.         .***=. .::: -=
+                                                 =.=+.                      :=********-.    .:.         .==. .-:-*=  +:
+                                                 --==                    .=******=-=*=.     :-        :--. .::=+***: :+
+                                                  =-+:                .-+******=. :++:     .=-     :--: .:--=+*****+  +-
+                                                  .===-...         .-+*******+:   -+:      -+: .:--:..:::::-=-++****- .+:.      .:.       ..
+                                                   .+===---:::::-=+*********-     ==       =+---:..:--:    .:-=+****+..=.:-+-----==-:--:===-==.
+                                                  :+--*##******#**********=.     :=.    .:==:...::--::.     .--=***+-==:---:::---.       ...:-=+=---::
+                                                 .+-=********:=*********+-.      -: .:--:...::::::::::      .:-+*+=---++-:::==+=-:::..:... .::::::::::
+                                          ::-:.:-++.:+*******-.+*******+=:     .-=:::.... ..     ..:::      .:-----.-=:.:----=*=. .===-===:..::..:-===
+                                      ..:==------+=. .=**##**+.=+******+-:::::::....... -. .      ..::.     .::--..=- .-:. .  :------===:..:..:=+=-:..
+                                  :-=+-::...--:-+*.:-   :-=+*+-=++++==-:::....::.:..    :-.       ..::.    .---..-=. ::            .-=: .:..=+*+=-.
+                                :--==--==+*+-:+***.-+--:..  . .......    .::.. ....    .-.        .:::. .:--.::-+: ::              :.  . .=*+======-==
+                           .:---:-+******#+:-*****.-#*=::...........                  :-          .:::-=-.   :+=. -:             .-. .  -*=..:::----==
+                     .:----:-+-:+*++====+=:=******.=**-:=---:::::::=                 ::          .:==-.     .=- .-.   .         :-    .++:        . .:
+                 .----:.  .:-.-==:.--::=-:=+****** =*+-.=+++=.::-.:-           :    :. ..     .:=-:.       .+: :-   ::  .-     ::    -*=
+              :-=-.  .:=+**-.:..=..-: -: :+*******:=*+=  : == = .-:         .      :  .:.  .---:.         :+. ::    =+-::=    -.    =*-
+           .-=-. .:---=-+*:.:   :-:  -:  +*+*+++=+*=+*=.   ==.=             .        ..:---:.  .: .-     :+. -:     .--::    -. . .+*:..
+         .==.  ....    :*..-        -:  =#==+-:::::===+:   ==.=           .       .:---:.-     :==--    :*: -:             .=. : .+*.     ..
+       .==.           .*:.-        :-  =**+:=.-:.=  -==:  -+- -:             ..:---:.   ...      ..  .--*- :-         ...  =:.:. +*:        ..
+      -=:  :.        :*-.-        .-. -#***:-.---:   .-=:  -=::         .::---:.        .:       .::::-+= .=          .   -: :. +*:         .
+    .+-  :-.      .:=*= =  :..:   - ..**+=#+.-         .---... ...::----:..    :. :.         .:--::-=*#+  =.             :- :: -*+.
+   :+: :=-:.   .:=+=*+ -. == .=  -.. +#+-==*=.-           .:::--:...           =+--:      .:::::=+*+***. -:   .:..:.    .- .- -**=.
+  =+  -*==---==+*****..-  :+=-. ::. =**--:--*-.-.                      .        ::    .:::.:-+**+=.-*#: :-   .=:  .=    .- - .***-:..
+ ==  =*+++++*******#- =         = .:#*--... :*=.:.                   ..           .::::::=+**+=.  .*#=  =    .+++==:   :: :: +**+=-::..
+=+  =**************+ ::        -:. +*-.      .++:::.                        ....:::--=+*++-:      +#*. -:      .:.    .- .- -***+==--:.
++. +***#***********- =        .=:.:#+          +*=.:-                   .::::.:-=+***=:.         =##- .=              -. = .*****+==--::..`;
+
+/* Echte Urteile aus der adversarialen Suite (derselbe Bestand wie #ledger). */
+const VERDICTS = [
+  ["deny",  "DENY",  "cat ~/.secrets/talos.env", "protected path"],
+  ["ask",   "ASK",   "rm -rf ~/talos/scratch", "risky, asks you"],
+  ["allow", "ALLOW", "read ~/talos/README.md", "ordinary work"],
+  ["deny",  "DENY",  "echo pwned >> /etc/sudoers", "protected path"],
+  ["deny",  "DENY",  "rm -rf /", "no recovery path"],
+  ["ask",   "ASK",   "write ~/.bashrc", "runs again later, asks you"],
+];
+
+const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const canvas = document.getElementById("stage");
+const ctx = canvas.getContext("2d");
+
+/* ── Zellen aus der Figur: jedes Nicht-Leerzeichen ist ein Partikel-Ziel ────── */
+const CELLS = [];
+ART.split("\n").forEach((row, y) => {
+  [...row].forEach((ch, x) => {
+    if (ch !== " ") CELLS.push({ ch, x, y, hot: "*#@%+=".includes(ch) });
+  });
+});
+const COLS = Math.max(...ART.split("\n").map(r => r.length));
+const ROWS = ART.split("\n").length;
+
+let W = 0, H = 0, DPR = 1, cell = 8, ox = 0, oy = 0;
+let parts = [];
+
+function layout() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const wide = W > 900;
+  /* Zielraster: rechte Bildhaelfte auf Desktop, grosse Flaeche dahinter auf Mobile */
+  const availW = wide ? W * 0.62 : W;
+  const availH = H * (wide ? 0.9 : 0.62);
+  cell = Math.min(availW / COLS, availH / ROWS) * 1.04;
+  ox = wide ? W - COLS * cell - W * 0.04 : (W - COLS * cell) / 2;
+  oy = (H - ROWS * cell) / 2 + (wide ? 0 : -H * 0.06);
+  ctx.font = `${Math.max(6, cell * 1.15)}px "Sometype Mono", monospace`;
+  ctx.textBaseline = "top";
+  if (!parts.length) spawn();
+  if (REDUCED) drawStill();
+}
+
+function spawn() {
+  parts = CELLS.map((c, i) => ({
+    ch: c.ch, hot: c.hot,
+    hx: ox + c.x * cell, hy: oy + c.y * cell,
+    x: Math.random() * W, y: Math.random() * H,
+    delay: (c.x / COLS) * 900 + Math.random() * 700,
+    born: 0, seed: Math.random() * 1000,
+  }));
+}
+
+const DURATION = 2100;
+let t0 = 0, pointer = { x: -9999, y: -9999 };
+
+function easeOutExpo(t) { return t >= 1 ? 1 : 1 - Math.pow(2, -10 * t); }
+
+function frame(now) {
+  if (!t0) t0 = now;
+  const t = now - t0;
+  ctx.clearRect(0, 0, W, H);
+  for (const p of parts) {
+    const k = easeOutExpo(Math.min(1, Math.max(0, (t - p.delay) / DURATION)));
+    /* Leichtes Atmen nach der Formation, sonst steht der Riese wie Beton */
+    const breathe = k >= 1 ? Math.sin(now / 1400 + p.seed) * cell * 0.14 : 0;
+    let x = p.x + (p.hx - p.x) * k;
+    let y = p.y + (p.hy - p.y) * k + breathe;
+    /* Der Zeiger draengt den Staub, mehr nicht */
+    const dx = x - pointer.x, dy = y - pointer.y, d2 = dx * dx + dy * dy;
+    if (d2 < 14400) {
+      const d = Math.sqrt(d2) || 1, f = (120 - d) / 120 * cell * 1.6;
+      x += dx / d * f; y += dy / d * f;
+    }
+    ctx.fillStyle = p.hot ? "oklch(0.780 0.115 74)" : "oklch(0.660 0.095 68 / 0.85)";
+    ctx.fillText(p.ch, x, y);
+  }
+  if (t < 2600 && !canvas.classList.contains("formed")) canvas.classList.add("formed");
+  requestAnimationFrame(frame);
+}
+
+function drawStill() {
+  ctx.clearRect(0, 0, W, H);
+  for (const p of parts) {
+    ctx.fillStyle = p.hot ? "oklch(0.780 0.115 74)" : "oklch(0.660 0.095 68 / 0.85)";
+    ctx.fillText(p.ch, p.hx, p.hy);
+  }
+  canvas.classList.add("formed");
+}
+
+/* ── Ticker: echte Urteile, eine Zeile nach der anderen ─────────────────────── */
+const ticker = document.getElementById("ticker");
+let vi = 0;
+function tick() {
+  const [cls, v, cmd, why] = VERDICTS[vi % VERDICTS.length];
+  vi++;
+  const line = document.createElement("div");
+  line.innerHTML = `<span class="v-${cls}">${v}</span> ${cmd.replace(/</g, "&lt;")} · ${why}`;
+  line.style.opacity = "0";
+  line.style.transition = "opacity .9s ease-out";
+  ticker.prepend(line);
+  requestAnimationFrame(() => { line.style.opacity = "1"; });
+  while (ticker.children.length > 3) ticker.lastChild.remove();
+}
+
+layout();
+if (REDUCED) {
+  tick();
+} else {
+  window.addEventListener("pointermove", e => { pointer.x = e.clientX; pointer.y = e.clientY; }, { passive: true });
+  requestAnimationFrame(frame);
+  tick();
+  setInterval(tick, 3600);
+}
+window.addEventListener("resize", () => { layout(); });
+</script>
+</body>
+</html>

@@ -868,7 +868,7 @@ def test_plan_abort_closing_falls_back_when_the_pass_returns_a_tool_call(tmp_pat
     conductor, sent = _build(tmp_path, r)
     conductor.handle(msg(1, OWNER, "bitte planen und ausfuehren"))
     text = sent[-1][1]
-    assert text.startswith("Gestoppt — Testlauf:"), text[:120]
+    assert text.startswith("Stopped — Testlauf:"), text[:120]
     assert "TOOL_CALL" not in text
     assert "closing.fallback" in _events(conductor)
 
@@ -879,7 +879,7 @@ def test_plan_abort_closing_falls_back_when_the_pass_is_empty(tmp_path) -> None:
     r = QueueReasoner(_PLAN, _DENIERT, "")
     conductor, sent = _build(tmp_path, r)
     conductor.handle(msg(1, OWNER, "bitte planen und ausfuehren"))
-    assert sent[-1][1].startswith("Gestoppt — Testlauf:")
+    assert sent[-1][1].startswith("Stopped — Testlauf:")
     assert "closing.fallback" in _events(conductor)
 
 

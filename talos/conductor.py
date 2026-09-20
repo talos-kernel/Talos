@@ -1149,15 +1149,15 @@ class Conductor:
             Event(run_id, "conductor", "closing.requested", {"status": result.status.value})
         )
         prompt = (
-            "[Nachforderung — keine neuen Aktionen, kein Werkzeug]\n"
-            "Der Lauf zum Auftrag ist ohne Abschlussmeldung gestoppt "
-            f"({result.status.value}). Der Operator hat bisher nur den Rohdump gesehen.\n"
-            f"Auftrag: {update.text[:400]}\n"
+            "[Follow-up request — no new actions, no tools]\n"
+            "The run for the task ended without a closing message "
+            f"({result.status.value}). So far the operator has only seen the raw dump.\n"
+            f"Task: {update.text[:400]}\n"
             f"{_closing_facts(result)}\n"
-            "Schreibe jetzt NUR die Abschlussmeldung an den Operator: erste Zeile der "
-            "Endstand (was ist erledigt, was ist blockiert, was ist offen), dann "
-            "hoechstens fuenf kurze Zeilen — was getan, was belegt, naechster konkreter "
-            "Schritt. Keine erfundenen Belege: wurde nichts fertig, steht das so drin."
+            "Write ONLY the closing message to the operator: first line the end state "
+            "(what is done, what is blocked, what is open), then at most five short "
+            "lines — what was done, what is proven, the next concrete step. No invented "
+            "evidence: if nothing finished, say so plainly."
         )
         closing = ""
         try:
@@ -2088,11 +2088,11 @@ def _closing_facts(result) -> str:
     if result.plan is not None:
         plan = result.plan
         return (
-            f"Fakten (belegt, nicht vom Modell behauptet): Ziel „{plan.plan.goal}“; "
-            f"{plan.calls} Aufrufe von hoechstens {plan.ceiling}; erfuellte Bedingungen "
-            f"{plan.met}/{len(plan.plan.checks)}; gestoppt an: {plan.failure or 'unbekannt'}."
+            f"Facts (proven, not claimed by the model): goal \"{plan.plan.goal}\"; "
+            f"{plan.calls} calls of at most {plan.ceiling}; conditions met "
+            f"{plan.met}/{len(plan.plan.checks)}; stopped at: {plan.failure or 'unknown'}."
         )
-    return f"Stopp-Text (Auszug): {result.text[:300]}"
+    return f"Stop text (excerpt): {result.text[:300]}"
 
 
 def _closing_fallback(result) -> str:
@@ -2100,16 +2100,15 @@ def _closing_fallback(result) -> str:
     Endstand zuerst, nur belegte Fakten, naechster Schritt als Angebot."""
     if result.plan is not None:
         plan = result.plan
-        grund = plan.failure or "ohne Angabe"
+        reason = plan.failure or "no reason given"
         return (
-            f"Gestoppt — {plan.plan.goal}: {grund}.\n"
-            f"Ausgefuehrt wurden {plan.calls} von hoechstens {plan.ceiling} Aufrufen; "
-            "nichts Halbfertiges ist damit erledigt. Frag nach dem Stand oder sag, "
-            "wie es weitergehen soll."
+            f"Stopped — {plan.plan.goal}: {reason}.\n"
+            f"{plan.calls} of at most {plan.ceiling} calls ran; "
+            "nothing half-finished counts as done. Ask for the status, or say how to proceed."
         )
     return (
-        "Der Lauf ist ohne Abschluss gestoppt worden. "
-        "Frag nach dem Stand oder sag, wie es weitergehen soll."
+        "The run ended without a conclusion. "
+        "Ask for the status, or say how to proceed."
     )
 
 

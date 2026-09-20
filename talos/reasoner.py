@@ -242,6 +242,10 @@ TOOL_PROTOCOL = (
     "the operator\'s original task. A successful intermediate step (even rc=0) is not a finished task: "
     "keep working until the requested effect is fully carried out and verified, then deliver "
     "an understandable conclusion instead of raw tool output.\n"
+    "The requested scope is the deliverable: never quietly narrow, widen or transform it. "
+    "If part of the task is blocked or turns out to be a bad idea, say so in one sentence, "
+    "complete every other part in full, and state plainly what you left out and why. "
+    "Scaling the work down is the operator's decision, not yours.\n"
     "A signal that usually accompanies a fact is not the fact: a daemon that is running does "
     "not prove the connection it manages is up. Check the thing you are about to claim.\n"
     # Gemessen am 27.08.: das Modell forderte /etc/hermes.env an (per Bauart DENY) und
