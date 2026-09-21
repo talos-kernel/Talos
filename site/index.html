@@ -365,6 +365,7 @@ html.js .rv.in{opacity:1;transform:none}
     <a class="brand" href="#top"><img class="mark" src="brand/sigil-78.png" alt="" width="26" height="26">TALOS</a>
     <a class="lnk" href="#kernel">Kernel</a>
     <a class="lnk" href="#grants">Grants</a>
+    <a class="lnk" href="#chronicle">Chronicle</a>
     <a class="lnk" href="#does">Deeds</a>
     <a class="lnk" href="#tools">Arsenal</a>
     <a class="lnk" href="#nail">The Nail</a>
@@ -440,6 +441,34 @@ html.js .rv.in{opacity:1;transform:none}
       </div>
       <div class="preview-actions"><button type="button" class="btn" data-play>Read the deed again</button><small>A true deed leaves a measured trail.</small></div>
     </div>
+  </div>
+</section>
+
+<section id="chronicle">
+  <div class="wrap">
+    <p class="sec-tag rv">the working of the gate</p>
+    <h2 class="rv">A deed, line by line.</h2>
+    <p class="sub rv">This is the path a risky task follows: the model proposes, the kernel judges, you choose the breadth of the grant, and the receipt remains. The record is staged here; no command runs in your browser.</p>
+    <div class="chronicle-terminal rv" id="chronicle-terminal">
+      <div class="chronicle-bar"><span class="seal" aria-hidden="true"></span><span>talos chat · a rehearsed record</span><span class="state" data-terminal-state>REHEARSAL · NO EXECUTION</span></div>
+      <div class="chronicle-screen" role="log" aria-label="Illustrated Talos terminal transcript" aria-live="polite">
+        <ol class="chronicle-transcript">
+          <li class="chronicle-line" data-terminal-line="0"><span class="line-no">01</span><span class="line-kind">$</span><code>talos chat</code></li>
+          <li class="chronicle-line" data-terminal-line="1"><span class="line-no">02</span><span class="line-kind">session</span><code>approvals possible · terminal present</code></li>
+          <li class="chronicle-line" data-terminal-line="2"><span class="line-no">03</span><span class="line-kind">you ›</span><code>remove workspace/old-logs</code></li>
+          <li class="chronicle-line" data-terminal-line="3"><span class="line-no">04</span><span class="line-kind">kernel</span><code>NEEDS_HUMAN</code></li>
+          <li class="chronicle-line" data-terminal-line="4"><span class="line-no">05</span><span class="line-kind">reason</span><code>risky recursive delete · your word is required</code></li>
+          <li class="chronicle-line grant" data-terminal-line="5"><span class="line-no">06</span><span class="line-kind">operator ›</span><code>allow this task</code></li>
+          <li class="chronicle-line grant" data-terminal-line="6"><span class="line-no">07</span><span class="line-kind">kernel</span><code>TASK GRANT · active until this task ends</code></li>
+          <li class="chronicle-line" data-terminal-line="7"><span class="line-no">08</span><span class="line-kind">exec</span><code>sandboxed · exact action checked · event logged first</code></li>
+          <li class="chronicle-line receipt" data-terminal-line="8"><span class="line-no">09</span><span class="line-kind">receipt</span><code>exec.result · done</code></li>
+          <li class="chronicle-line receipt" data-terminal-line="9"><span class="line-no">10</span><span class="line-kind">ledger</span><code>/log · the proof remains</code></li>
+        </ol>
+        <p class="chronicle-caption" data-terminal-caption>Illustration only. The terminal is showing the order of events, not executing a command.</p>
+      </div>
+      <div class="chronicle-controls"><button class="btn" type="button" data-terminal-play>Unfurl the deed</button><small>Every line is readable before the animation begins.</small></div>
+    </div>
+    <p class="chronicle-note rv">The important boundary is visible: the model proposes the command, but the kernel decides whether a human must answer. The operator's grant is never a hidden model decision, and the receipt follows the effect.</p>
   </div>
 </section>
 
@@ -1102,6 +1131,70 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   (function kick(t) {
     if (t < t0) requestAnimationFrame(kick); else show();
   })(performance.now());
+})();
+
+/* ─── terminal chronicle: staged, readable, and never connected ─── */
+(() => {
+  const demo = document.getElementById('chronicle-terminal');
+  if (!demo) return;
+  const lines = [...demo.querySelectorAll('[data-terminal-line]')];
+  const state = demo.querySelector('[data-terminal-state]');
+  const caption = demo.querySelector('[data-terminal-caption]');
+  const play = demo.querySelector('[data-terminal-play]');
+  if (!lines.length || !state || !caption || !play) return;
+  const states = ['SESSION OPEN', 'SESSION OPEN', 'TASK RECEIVED', 'KERNEL ASKS',
+    'KERNEL ASKS', 'OPERATOR CHOOSES', 'TASK GRANT ACTIVE', 'EXECUTION CHECKED',
+    'RECEIPT SEALED', 'RECORD COMPLETE'];
+  let timer = 0;
+  let autoPlayed = false;
+
+  function clear() { clearTimeout(timer); timer = 0; }
+  function finish() {
+    clear();
+    lines.forEach(line => line.classList.add('is-revealed'));
+    lines.forEach(line => line.classList.remove('is-current'));
+    state.textContent = 'RECORD COMPLETE';
+    caption.textContent = 'Rehearsal complete. The order is the point: model proposes · kernel judges · operator grants · execute · prove.';
+    play.disabled = false;
+    play.textContent = 'Rehearse the deed again';
+  }
+  function paint(index) {
+    lines.forEach((line, i) => {
+      line.classList.toggle('is-revealed', i <= index);
+      line.classList.toggle('is-current', i === index);
+    });
+    state.textContent = states[index] || 'REHEARSAL · NO EXECUTION';
+    caption.textContent = index >= lines.length - 1
+      ? 'Rehearsal complete. The order is the point: model proposes · kernel judges · operator grants · execute · prove.'
+      : 'Illustration only. The terminal is showing the order of events, not executing a command.';
+  }
+  function playRecord() {
+    autoPlayed = true;
+    clear();
+    if (reduced) { finish(); return; }
+    play.disabled = true;
+    play.textContent = 'Reading the record…';
+    let index = -1;
+    function advance() {
+      index += 1;
+      paint(index);
+      if (index >= lines.length - 1) { finish(); return; }
+      timer = setTimeout(advance, 560);
+    }
+    advance();
+  }
+  play.addEventListener('click', playRecord);
+  paint(-1);
+  if (reduced) finish();
+  else {
+    const observer = new IntersectionObserver(entries => {
+      if (!entries.some(entry => entry.isIntersecting) || autoPlayed) return;
+      playRecord();
+      observer.disconnect();
+    }, {threshold:.35});
+    observer.observe(demo);
+  }
+  document.addEventListener('visibilitychange', () => { if (document.hidden && !reduced) finish(); });
 })();
 
 /* ─── reveals + counters ─── */

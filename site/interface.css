@@ -350,6 +350,37 @@ html.js .rv.in{opacity:1;transform:none}
 .preview-actions .btn{padding:0 16px;font-size:11px;min-height:42px}
 .preview-actions small{font-size:12px;color:var(--faint)}
 
+/* ── terminal chronicle · the gate at work ─────────────────────────────────── */
+.chronicle-terminal{border:1px solid var(--line);background:var(--ink);border-top:2px solid var(--accent);
+  margin-top:44px;box-shadow:0 24px 60px oklch(0.4 0.03 70 / .10)}
+.chronicle-bar{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 18px;
+  border-bottom:1px solid oklch(0.42 0.04 75 / .62);font:11px var(--mono);letter-spacing:.09em;
+  text-transform:uppercase;color:var(--faint)}
+.chronicle-bar .seal{width:8px;height:8px;background:var(--accent);box-shadow:0 0 12px var(--accent-soft)}
+.chronicle-bar .state{margin-left:auto;color:var(--accent);font-size:10px}
+.chronicle-screen{padding:clamp(22px,4vw,38px);background:
+  linear-gradient(90deg,transparent 0,transparent 3.5em,oklch(0.32 0.035 75 / .28) 3.5em,transparent calc(3.5em + 1px)),
+  var(--ink);font:clamp(12px,1.35vw,15px)/1.85 var(--mono);overflow-x:auto}
+.chronicle-transcript{list-style:none;min-width:680px;margin:0;padding:0}
+.chronicle-line{display:grid;grid-template-columns:3.5em 10.5em minmax(0,1fr);gap:12px;align-items:baseline;
+  color:oklch(0.53 0.035 78);transition:color .35s,text-shadow .35s,opacity .35s}
+.chronicle-line .line-no{color:oklch(0.34 0.035 76);user-select:none;text-align:right}
+.chronicle-line .line-kind{color:oklch(0.54 0.07 75)}
+.chronicle-line code{padding:0;border:0;background:none;color:inherit;font:inherit;white-space:pre}
+.chronicle-line.is-revealed{color:var(--ink-fg)}
+.chronicle-line.is-current{color:var(--hot);text-shadow:0 0 12px var(--accent-soft)}
+.chronicle-line.is-current .line-kind{color:var(--accent)}
+.chronicle-line.grant .line-kind{color:var(--ask)}
+.chronicle-line.receipt .line-kind{color:var(--allow)}
+.chronicle-caption{margin:24px 0 0;padding-top:16px;border-top:1px solid oklch(0.42 0.04 75 / .62);
+  color:oklch(0.58 0.04 78);font:11px/1.6 var(--mono);max-width:74ch}
+.chronicle-controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:16px 18px;
+  border-top:1px solid oklch(0.42 0.04 75 / .62)}
+.chronicle-controls .btn{min-height:40px;padding:0 16px;font-size:10px;border-color:var(--accent);color:var(--accent);background:transparent}
+.chronicle-controls .btn:hover{background:var(--accent);color:var(--bg)}
+.chronicle-controls small{color:var(--faint);font:11px var(--mono)}
+.chronicle-note{color:var(--faint);font-size:13px;line-height:1.65;margin-top:20px;max-width:76ch}
+
 .worker-roster{display:grid;margin-top:34px;border-top:1px solid var(--line)}
 .worker-row{display:grid;grid-template-columns:42px 180px minmax(0,1fr);gap:22px;
   align-items:start;padding:24px 0;border-bottom:1px solid var(--line)}
@@ -382,6 +413,13 @@ html.js .rv.in{opacity:1;transform:none}
   .chat-preview{padding:16px}
   .chat-receipt{padding:16px}
   .chat-request{margin-left:18px}
+  .chronicle-bar{padding:0 14px;font-size:10px}
+  .chronicle-bar .state{font-size:9px}
+  .chronicle-screen{padding:20px 14px}
+  .chronicle-transcript{min-width:0}
+  .chronicle-line{grid-template-columns:2.4em 7.8em minmax(0,1fr);gap:7px;line-height:1.7}
+  .chronicle-line code{white-space:pre-wrap;overflow-wrap:anywhere}
+  .chronicle-controls{padding:14px}
   .worker-row{grid-template-columns:30px minmax(0,1fr);gap:12px}
   .worker-row p{grid-column:2}
   .preview-actions{align-items:flex-start}
