@@ -344,10 +344,11 @@ html.js .rv.in{opacity:1;transform:none}
 /* The shared skin layers body children for the site-wide dust canvas. Keep the
    Command Hall's CRT layers fixed so they cannot create a blank 900px prelude. */
 #rain,.crt-fx,.flicker,.rule,body>nav{position:fixed !important}
-#rain{inset:0 !important}
-.crt-fx,.flicker{inset:0 !important}
-.rule{top:0 !important;left:0 !important}
-body>nav{inset:0 0 auto 0 !important}
+#rain{inset:0 !important;z-index:0 !important;pointer-events:none !important}
+.crt-fx{inset:0 !important;z-index:90 !important;pointer-events:none !important}
+.flicker{inset:0 !important;z-index:91 !important;pointer-events:none !important}
+.rule{top:0 !important;left:0 !important;z-index:60 !important;pointer-events:none !important}
+body>nav{inset:0 0 auto 0 !important;z-index:50 !important;pointer-events:auto !important}
 </style>
 <script src="/interface.js" defer></script>
 </head>
