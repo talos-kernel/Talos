@@ -218,14 +218,14 @@ html.js .rv.in{opacity:1; transform:none}
 <nav>
   <div class="wrap">
     <a class="brand" href="/"><img class="mark" src="../brand/sigil-78.png" alt="" width="26" height="26">TALOS</a>
-    <a class="lnk" href="/">Home</a>
+    <a class="lnk" href="/">Keep</a>
     <a class="lnk" href="/#kernel">Kernel</a>
     <a class="lnk" href="/#ledger">Ledger</a>
-    <a class="lnk on" href="/docs/" aria-current="page">Docs</a>
-    <a class="lnk" href="/registry/">Registry</a>
-    <a class="lnk" href="/vergleich/">Compare</a>
-    <a class="lnk" href="/console.html">Console</a>
-    <a class="lnk" href="https://github.com/talos-kernel/talos">GitHub</a>
+    <a class="lnk on" href="/docs/" aria-current="page">Codex</a>
+    <a class="lnk" href="/registry/">Roll of Arms</a>
+    <a class="lnk" href="/vergleich/">Weigh the Orders</a>
+    <a class="lnk" href="/console.html">Command Hall</a>
+    <a class="lnk" href="https://github.com/talos-kernel/talos">Source</a>
     <span class="sp"></span>
     <span class="status"><i>●</i> FIELD MANUAL · REV 0.19.21-ALPHA</span>
   </div>
@@ -258,10 +258,10 @@ html.js .rv.in{opacity:1; transform:none}
   </div>
 
   <div class="index rv"><ol>
-    <li><a href="#install">Install</a></li>
-    <li><a href="#identity">Give it an identity</a></li>
+    <li><a href="#install">Raise the keep</a></li>
+    <li><a href="#identity">Name the sworn</a></li>
     <li><a href="#model">Give it a mind</a></li>
-    <li><a href="#run">Run it</a></li>
+    <li><a href="#run">Set it to work</a></li>
     <li><a href="#session">The terminal session</a></li>
     <li><a href="#background">Work on the side</a></li>
     <li><a href="#memory">What it remembers</a></li>
@@ -424,9 +424,22 @@ speaking as cli:1000  ·  approvals possible — you are at a terminal
       <tr><td>talos ask "…"</td><td class="d">Always refused. A one-liner waits for nothing.</td></tr>
       </tbody>
     </table></div>
-    <p>Answering is just typing: <code>yes</code>, <code>no</code>, or
-    <code>always</code> — the last creates a standing rule for <em>that exact action</em>,
-    bound to its arguments, never to the tool's name.</p>
+    <h3>The four grants</h3>
+    <p>A question from the gate does not mean a fresh click for every step. In a
+    button-capable channel, Talos offers four choices. You choose the breadth; the model
+    cannot choose a wider grant.</p>
+    <div class="tw"><table>
+      <thead><tr><th>Choice</th><th>What it grants</th></tr></thead>
+      <tbody>
+      <tr><td><code>Allow once</code></td><td class="d">One approval for one exact action. It is consumed when used.</td></tr>
+      <tr><td><code>Allow this task</code></td><td class="d">All approval-required actions in this present foreground task until it ends or you stop it. A new task asks again. Kernel denials still stand.</td></tr>
+      <tr><td><code>Always allow</code></td><td class="d">A standing rule for the exact action fingerprint — its command or kernel-derived target — never the tool in general. It can be revoked later.</td></tr>
+      <tr><td><code>Deny</code></td><td class="d">The writ closes. Nothing runs, and the denial never becomes permission.</td></tr>
+      </tbody>
+    </table></div>
+    <p>At a terminal, the same choices are typed as <code>yes</code>, <code>allow this task</code>,
+    <code>always</code>, or <code>no</code>. The choice is yours; the kernel still checks every
+    action.</p>
     <div class="note warn">
       <b>A session cannot start itself</b>
       <p>The agent has a shell. If it could run <code>talos chat</code> inside it, it
@@ -689,11 +702,11 @@ TALOS_CLAUDE_WORKER_CODEX_HOME=/var/lib/talos/codex-home</code></pre>
 <footer>
   <div class="wrap">
     <a href="https://talos-agent.ch">talos-agent.ch</a>
-    <a href="/docs/">Docs</a>
+    <a href="/docs/">Codex</a>
     <a href="/#ledger">Ledger</a>
-    <a href="/vergleich/">Compare</a>
-    <a href="/console.html">Console</a>
-    <a href="https://github.com/talos-kernel/talos">GitHub</a>
+    <a href="/vergleich/">Weigh the Orders</a>
+    <a href="/console.html">Command Hall</a>
+    <a href="https://github.com/talos-kernel/talos">Source</a>
     <span class="sp"></span>
     <span>MIT · the gate is why the work can be trusted</span>
   </div>

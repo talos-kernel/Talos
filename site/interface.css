@@ -3,9 +3,9 @@
    One design system loaded last on every page, so every page inherits the look.
    Local assets only; no third-party fonts, no telemetry, no agent data here.
 
-   Register: a bronze giant's gate carved on warm paper. Cinzel for the monument,
+   Register: a bronze giant's gate in a dark chamber. Cinzel for the monument,
    EB Garamond for the reflective line, Sometype Mono for the machine's own voice,
-   Inter for the calm body. One bronze accent marks authority — the gate, the nail.
+   Inter for the calm body. One amber accent marks authority — the gate, the nail.
    ─────────────────────────────────────────────────────────────────────────── */
 
 /* ── fonts (local, absolute paths resolve from site root for sub-pages too) ── */
@@ -16,33 +16,33 @@
 @font-face{font-family:"Talos Sans";src:url("/fonts/inter-var.woff2") format("woff2");
   font-weight:100 900;font-display:swap}
 
-/* ── tokens · LIGHT (default) ──────────────────────────────────────────────── */
+/* ── tokens · DARK (the Talos surface) ─────────────────────────────────────── */
 :root{
-  color-scheme:light;
+  color-scheme:dark;
 
-  /* warm paper → warm ink */
-  --bg:      oklch(0.977 0.006 84);   /* paper                       */
-  --bg2:     oklch(0.953 0.010 82);   /* panel                       */
-  --surface: oklch(0.938 0.012 80);   /* raised card                 */
-  --hot:     oklch(0.255 0.020 58);   /* strongest ink (headings)    */
-  --amber:   oklch(0.320 0.018 58);   /* body ink                    */
-  --dim:     oklch(0.460 0.017 62);   /* secondary                   */
-  --faint:   oklch(0.600 0.014 66);   /* meta / captions             */
-  --line:    oklch(0.872 0.013 78);   /* hairline                    */
+  /* charcoal ground → bone text */
+  --bg:      oklch(0.115 0.012 75);   /* ground                      */
+  --bg2:     oklch(0.145 0.016 78);   /* panel                       */
+  --surface: oklch(0.185 0.020 78);   /* raised card                 */
+  --hot:     oklch(0.920 0.130 85);   /* strongest text               */
+  --amber:   oklch(0.800 0.155 80);   /* body / machine voice         */
+  --dim:     oklch(0.620 0.090 80);   /* secondary                   */
+  --faint:   oklch(0.420 0.055 80);   /* meta / captions             */
+  --line:    oklch(0.280 0.040 80);   /* hairline                    */
 
-  /* the single accent: bronze */
-  --accent:      oklch(0.605 0.090 66);
-  --accent-lift: oklch(0.700 0.100 72);
-  --accent-soft: oklch(0.605 0.090 66 / 0.15);
+  /* the single accent: amber */
+  --accent:      oklch(0.800 0.155 80);
+  --accent-lift: oklch(0.880 0.130 82);
+  --accent-soft: oklch(0.800 0.155 80 / 0.18);
 
   /* verdict semantics, restrained */
   --deny:  oklch(0.510 0.150 32);
   --ask:   oklch(0.585 0.090 66);
   --allow: oklch(0.505 0.086 148);
 
-  /* inverted (ink) panels */
-  --ink:    oklch(0.190 0.014 60);
-  --ink-fg: oklch(0.945 0.008 84);
+  /* inverted panels / terminal ground */
+  --ink:    oklch(0.075 0.008 72);
+  --ink-fg: oklch(0.930 0.020 82);
 
   /* type roles — the sub-pages drive headings through --crt and code through --mono */
   --crt:   "Talos Display", "Cinzel", Georgia, "Times New Roman", serif;
@@ -52,33 +52,14 @@
   --body:  var(--sans);
 }
 
-/* ── tokens · DARK (respects the OS setting; no toggle on these pages) ──────── */
-@media (prefers-color-scheme: dark){
-  :root{
-    color-scheme:dark;
-    --bg:      oklch(0.168 0.012 64);
-    --bg2:     oklch(0.208 0.014 64);
-    --surface: oklch(0.238 0.016 64);
-    --hot:     oklch(0.940 0.022 82);
-    --amber:   oklch(0.862 0.030 82);
-    --dim:     oklch(0.700 0.030 80);
-    --faint:   oklch(0.560 0.026 78);
-    --line:    oklch(0.340 0.022 74);
-    --accent:      oklch(0.770 0.110 78);
-    --accent-lift: oklch(0.840 0.100 82);
-    --accent-soft: oklch(0.770 0.110 78 / 0.18);
-    --deny:  oklch(0.680 0.170 32);
-    --ask:   oklch(0.780 0.110 78);
-    --allow: oklch(0.760 0.130 150);
-    --ink:    oklch(0.120 0.010 60);
-    --ink-fg: oklch(0.930 0.020 82);
-  }
-}
-
 /* ── base ──────────────────────────────────────────────────────────────────── */
-html{background:var(--bg)}
+html{background:var(--bg);color-scheme:dark}
 body{
-  background:var(--bg);
+  isolation:isolate;
+  background:
+    radial-gradient(circle at 10% 0%, color-mix(in oklch, var(--accent) 8%, transparent), transparent 34rem),
+    radial-gradient(circle at 90% 14%, color-mix(in oklch, var(--accent) 5%, transparent), transparent 28rem),
+    var(--bg);
   color:var(--amber);
   font-family:var(--body);
   font-size:16px;
@@ -88,6 +69,48 @@ body{
   text-rendering:optimizeLegibility;
   overflow-x:clip;
 }
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:-1;
+  pointer-events:none;
+  opacity:.34;
+  background-image:
+    linear-gradient(color-mix(in oklch, var(--accent) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklch, var(--accent) 8%, transparent) 1px, transparent 1px),
+    radial-gradient(circle at 50% 20%, color-mix(in oklch, var(--accent) 10%, transparent), transparent 24rem);
+  background-size:48px 48px,48px 48px,100% 100%;
+  mask-image:linear-gradient(to bottom, #000 0%, transparent 78%);
+  -webkit-mask-image:linear-gradient(to bottom, #000 0%, transparent 78%);
+  animation:talos-drift 24s ease-in-out infinite alternate;
+}
+body::after{
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:100;
+  pointer-events:none;
+  opacity:.18;
+  background:
+    repeating-linear-gradient(0deg, oklch(0 0 0 / .18) 0 1px, transparent 1px 4px),
+  radial-gradient(ellipse at 50% 42%, transparent 56%, oklch(0 0 0 / .42) 100%);
+}
+#talos-dust{
+  position:fixed;
+  inset:0;
+  z-index:0;
+  width:100%;
+  height:100%;
+  pointer-events:none;
+  opacity:.72;
+  mix-blend-mode:screen;
+}
+body > *:not(#talos-dust):not(.skip-link){position:relative;z-index:1}
+@keyframes talos-drift{
+  from{transform:translate3d(-1.5%, -1%, 0) scale(1)}
+  to{transform:translate3d(1.5%, 1%, 0) scale(1.04)}
+}
 p,li{max-width:74ch}
 a,button,input,select,textarea{touch-action:manipulation}
 ::selection{background:var(--accent);color:var(--bg)}
@@ -96,13 +119,14 @@ section,[id]{scroll-margin-top:88px}
 .wrap{max-width:1160px}
 b,strong{color:var(--hot)}
 
-/* Decorations from the terminal skin have no place on paper. */
-.crt-fx,.flicker,#rain,#boot,.rule,.scanbox .scanline{display:none !important}
+/* The shared skin is dark again: keep the page-specific CRT layer restrained. */
+.crt-fx{display:block !important;opacity:.42}
+.flicker,#boot,.rule{display:none !important}
 html.js #boot{display:none}
 
-/* Kill every leftover amber glow so text sits crisp on the paper ground. */
-h1,h2,h3,.brand,.sec-tag,.sys,.spec b,.stat .n,.myth-pull,.led-row .v,
-.tick .t-verdict,.vs,nav a.lnk.on,.verdict pre,.doc-line,.nail code{text-shadow:none !important}
+/* Amber is a signal, not a flood: keep its glow close to the object. */
+h1,h2,.brand,.myth-pull,.stat .n,.led-row .v,.tick .t-verdict,
+.vs,.verdict pre,.spec b{ text-shadow:0 0 18px color-mix(in oklch, var(--accent) 25%, transparent) !important }
 
 /* ── links ─────────────────────────────────────────────────────────────────── */
 a{color:var(--hot);text-decoration:none}
@@ -365,5 +389,6 @@ html.js .rv.in{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   *,*::before,*::after{animation:none !important;transition:none !important}
+  #talos-dust{display:none !important}
   html.js .rv{opacity:1;transform:none}
 }

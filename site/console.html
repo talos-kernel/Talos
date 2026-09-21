@@ -17,7 +17,7 @@
   Self-contained wie der Rest der Site: inline style, inline script, keine
   externen Requests ausser ./status.json (same-origin, einmal).
 -->
-<title>Talos console: one real session, replayed</title>
+<title>Talos Command Hall: one true record, unfurled</title>
 <meta name="description" content="Not a mockup and not a live feed: one recorded Talos session, replayed event for event. Policy verdicts with their targets, a hash-chained log, a delegated coding job from accepted to done, and the completion push that brought the result back.">
 <link rel="canonical" href="https://talos-agent.ch/console.html">
 <meta name="theme-color" content="#17140F">
@@ -352,13 +352,13 @@ html.js .rv.in{opacity:1;transform:none}
 <nav>
   <div class="wrap">
     <a class="brand" href="/"><img class="mark" src="brand/sigil-78.png" alt="" width="26" height="26">TALOS</a>
-    <a class="lnk" href="/">Home</a>
+    <a class="lnk" href="/">Keep</a>
     <a class="lnk" href="/#kernel">Kernel</a>
     <a class="lnk" href="/#ledger">Ledger</a>
-    <a class="lnk" href="/docs/">Docs</a>
-    <a class="lnk" href="/vergleich/">Compare</a>
-    <a class="lnk on" href="/console.html" aria-current="page">Console</a>
-    <a class="lnk" href="https://github.com/talos-kernel/talos">GitHub</a>
+    <a class="lnk" href="/docs/">Codex</a>
+    <a class="lnk" href="/vergleich/">Weigh the Orders</a>
+    <a class="lnk on" href="/console.html" aria-current="page">Command Hall</a>
+    <a class="lnk" href="https://github.com/talos-kernel/talos">Source</a>
     <span class="sp"></span>
     <span class="status"><i>●</i> REPLAY · RECORDED 2026-08-26 · NOT A WIRE</span>
   </div>
@@ -367,16 +367,16 @@ html.js .rv.in{opacity:1;transform:none}
 <header class="hero" id="top">
   <div class="wrap">
     <p class="sys">talos 0.19.21-alpha · operator console · MIT</p>
-    <span class="rec-chip">recorded · replayed · not a live feed</span>
-    <h1>Watch one session, end to end.</h1>
-    <p class="lede">This console replays one real session, recorded on my production machine
-    on 26 August 2026, event for event. <strong>A message comes in,
-    the reasoner thinks, the gate refuses one call and authorises another, a coding job runs
-    in the sandboxed worker, and the completion push finds its own way back.</strong>
-    Every line below is the shape the append-only log actually writes.</p>
+    <span class="rec-chip">recorded · unfurled · no live wire</span>
+    <h1>Witness one deed from door to ledger.</h1>
+    <p class="lede">This hall unfurls one true session, recorded on the working machine
+    on 26 August 2026, event by event. <strong>A message arrives,
+    the reasoner proposes, the gate refuses one call and grants another, a bounded deed is
+    carried out in the worker, and the final word finds its way back.</strong>
+    Every line below is the shape the append-only ledger actually keeps.</p>
     <div class="cta-row">
-      <button class="btn" id="replayBtn" type="button">Replay the session ▸</button>
-      <a class="btn ghost" href="#measured">This release, measured ▾</a>
+      <button class="btn" id="replayBtn" type="button">Unfurl the record</button>
+      <a class="btn ghost" href="#measured">This release, measured</a>
     </div>
     <div class="meter-row">
       <span><b>2869</b>unit tests</span>
@@ -392,8 +392,8 @@ html.js .rv.in{opacity:1;transform:none}
 <!-- ── I · the stream ─────────────────────────────────────────────────────── -->
 <section id="stream">
   <div class="wrap">
-    <p class="sec-tag rv">the stream</p>
-    <h2 class="rv">The event log, replayed at reading speed.</h2>
+    <p class="sec-tag rv">the chronicle</p>
+    <h2 class="rv">The ledger, unfurled at reading speed.</h2>
     <p class="sub rv">I asked Talos to cap the retry backoff in
     <code>talos/provider.py</code> using the sandboxed coding worker, and to report back when the
     job landed. What follows is the session the kernel recorded: twelve events across two runs,
@@ -430,7 +430,7 @@ html.js .rv.in{opacity:1;transform:none}
 
           <div class="ev t-exec ev-deny" data-ts="21:14:09.961">
             <span class="ts">21:14:09.961</span><span class="actor">executor</span>
-            <span class="type">exec.intent<span class="v deny">⛒ DENY</span></span>
+            <span class="type">exec.intent<span class="v deny">DENY</span></span>
             <span class="payload">{"tool":"run_shell","args":{"cmd":"ls -l /etc/talos/worker.sock"},"targets":["/etc/talos/worker.sock"],"verdict":<b class="vd">"deny"</b>,"reason":"protected path in command: /etc/talos/worker.sock"}</span>
             <span class="hash" title="chain 7104be2d8a53…">7104be…</span>
           </div>
@@ -458,7 +458,7 @@ html.js .rv.in{opacity:1;transform:none}
 
           <div class="ev t-exec ev-allow" data-ts="21:14:16.113">
             <span class="ts">21:14:16.113</span><span class="actor">executor</span>
-            <span class="type">exec.intent<span class="v allow">✓ ALLOW</span></span>
+            <span class="type">exec.intent<span class="v allow">ALLOW</span></span>
             <span class="payload">{"tool":"delegate_code","args":{"prompt":"Cap the retry backoff in talos/provider.py at 30 s, then run the provider tests"},"targets":["~/talos/workspace/claude-jobs"],"verdict":<b class="va">"allow"</b>,"reason":"exec allowed"}</span>
             <span class="hash" title="chain 0f6c2e89d471…">0f6c2e…</span>
           </div>
@@ -564,7 +564,7 @@ html.js .rv.in{opacity:1;transform:none}
 
     <div class="measure-note rv">
       <span class="src" id="statusSrc">embedded snapshot · status.json not requested yet</span>
-      <button class="chipbtn" id="statusRefresh" type="button">refresh from status.json</button>
+      <button class="chipbtn" id="statusRefresh" type="button">read the status scroll</button>
     </div>
   </div>
 </section>
@@ -574,11 +574,11 @@ html.js .rv.in{opacity:1;transform:none}
 <footer>
   <div class="wrap">
     <a href="https://talos-agent.ch">talos-agent.ch</a>
-    <a href="/docs/">Docs</a>
+    <a href="/docs/">Codex</a>
     <a href="/#ledger">Ledger</a>
-    <a href="/vergleich/">Compare</a>
-    <a href="/console.html">Console</a>
-    <a href="https://github.com/talos-kernel/talos">GitHub</a>
+    <a href="/vergleich/">Weigh the Orders</a>
+    <a href="/console.html">Command Hall</a>
+    <a href="https://github.com/talos-kernel/talos">Source</a>
     <span class="sp"></span>
     <span>MIT · the gate is why I trust the work</span>
   </div>
@@ -600,7 +600,7 @@ if (!reduced) setInterval(() => { if (Math.random() < 0.12) flickOnce(); }, 4000
 (() => {
   if (reduced) return;
   const cv = document.getElementById('rain'), ctx = cv.getContext('2d');
-  const GLYPHS = '✓⏸⛒·:=+#01';
+  const GLYPHS = '·:=+#01';
   let cols, drops;
   function size() {
     cv.width = innerWidth; cv.height = innerHeight;
@@ -692,7 +692,7 @@ if (!reduced) setInterval(() => { if (Math.random() < 0.12) flickOnce(); }, 4000
     setState('accepted', false); setState('running', false); setState('done', false);
     push.classList.add('pending');
     box.classList.add('playing');
-    replayBtn.textContent = 'Replaying a recorded session…';
+    replayBtn.textContent = 'Unfurling the recorded deed…';
     replayBtn.disabled = true;
 
     let t = 250;
@@ -715,7 +715,7 @@ if (!reduced) setInterval(() => { if (Math.random() < 0.12) flickOnce(); }, 4000
     });
     later(() => {
       box.classList.remove('playing');
-      replayBtn.textContent = 'Replay the session ▸';
+      replayBtn.textContent = 'Unfurl the record';
       replayBtn.disabled = false;
     }, t + 700);
   }

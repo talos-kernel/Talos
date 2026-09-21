@@ -1,5 +1,67 @@
 /* Public, local-only interface interactions. No agent connection or telemetry. */
 (() => {
+  /* The Watcher lets the pointer part the dust. The shared surface gets a quieter
+     version so the interaction belongs to Talos as a whole, not one hidden page. */
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const finePointer = matchMedia('(pointer: fine)').matches;
+  if (!reduced && finePointer) {
+    const canvas = document.createElement('canvas');
+    canvas.id = 'talos-dust';
+    canvas.setAttribute('aria-hidden', 'true');
+    document.body.prepend(canvas);
+    const ctx = canvas.getContext('2d');
+    const particles = Array.from({length: 1400}, (_, index) => ({
+      x: Math.random(), y: Math.random(),
+      size: index % 11 === 0 ? 2 : 1,
+      phase: Math.random() * Math.PI * 2,
+      speed: .00008 + Math.random() * .00012,
+      hot: index % 13 === 0,
+    }));
+    let width = 0, height = 0, dpr = 1;
+    let pointer = {x: -9999, y: -9999};
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth; height = window.innerHeight;
+      canvas.width = width * dpr; canvas.height = height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function frame(now) {
+      ctx.clearRect(0, 0, width, height);
+      if (pointer.x > -1000) {
+        const aura = ctx.createRadialGradient(pointer.x, pointer.y, 0, pointer.x, pointer.y, 150);
+        aura.addColorStop(0, 'oklch(0.78 0.115 74 / .075)');
+        aura.addColorStop(1, 'oklch(0.78 0.115 74 / 0)');
+        ctx.fillStyle = aura;
+        ctx.fillRect(pointer.x - 150, pointer.y - 150, 300, 300);
+      }
+      for (const particle of particles) {
+        const drift = now * particle.speed + particle.phase;
+        let x = particle.x * width + Math.sin(drift) * 10;
+        let y = particle.y * height + Math.cos(drift * .8) * 8;
+        const dx = x - pointer.x, dy = y - pointer.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance < 150) {
+          const force = (150 - distance) / 150 * 28;
+          const safe = distance || 1;
+          x += dx / safe * force; y += dy / safe * force;
+        }
+        ctx.fillStyle = particle.hot ? 'oklch(0.78 0.115 74 / .78)' : 'oklch(0.66 0.095 68 / .48)';
+        ctx.fillRect(x, y, particle.size, particle.size);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    resize();
+    window.addEventListener('resize', resize, {passive:true});
+    window.addEventListener('pointermove', event => {
+      pointer.x = event.clientX; pointer.y = event.clientY;
+    }, {passive:true});
+    window.addEventListener('pointerleave', () => { pointer = {x:-9999, y:-9999}; }, {passive:true});
+    requestAnimationFrame(frame);
+  }
+
   const nav = document.querySelector('nav');
   if (nav) {
     const wrap = nav.querySelector('.wrap');
@@ -9,12 +71,12 @@
       group.className = 'nav-links'; group.id = 'site-navigation';
       links.forEach(link => group.append(link));
       const toggle = document.createElement('button');
-      toggle.type = 'button'; toggle.className = 'menu-toggle'; toggle.textContent = 'Menu +';
+      toggle.type = 'button'; toggle.className = 'menu-toggle'; toggle.textContent = 'Gate +';
       toggle.setAttribute('aria-expanded', 'false'); toggle.setAttribute('aria-controls', group.id);
-      const close = () => { nav.removeAttribute('data-open'); toggle.setAttribute('aria-expanded','false'); toggle.textContent='Menu +'; };
+      const close = () => { nav.removeAttribute('data-open'); toggle.setAttribute('aria-expanded','false'); toggle.textContent='Gate +'; };
       toggle.addEventListener('click', () => {
         if (nav.hasAttribute('data-open')) close();
-        else { nav.setAttribute('data-open',''); toggle.setAttribute('aria-expanded','true'); toggle.textContent='Close −'; }
+        else { nav.setAttribute('data-open',''); toggle.setAttribute('aria-expanded','true'); toggle.textContent='Close Gate'; }
       });
       nav.addEventListener('keydown', event => { if (event.key==='Escape') {close();toggle.focus();} });
       links.forEach(link => link.addEventListener('click', close));
@@ -31,22 +93,22 @@
   const preview=document.getElementById('mission-preview');
   if (!preview) return;
   const scenarios={
-    build:{request:'Fix the failing test. Show me what changed.',state:'TURN FINISHED',meta:'Example · 34s · 4 tool calls',
-      steps:[['🔎','Read the failure and its surrounding code.'],['🧑‍💻','Hand a scoped implementation to the worker.'],['🧪','Read back the patch and run the relevant check.'],['✅','Report the checked result and remaining limits.']],
-      result:'The patch is ready to review. A worker receipt is followed by a separate check.'},
-    approval:{request:'Run this maintenance command on the server.',state:'NEEDS YOUR APPROVAL',meta:'Example · remote effect · waiting for you',
-      steps:[['📡','Select an operator-configured host.'],['🛡️','Check the exact host and command.'],['⏸️','Show the action that needs approval.']],
-      result:'Nothing remote runs until the operator approves. A chat reply cannot grant itself permission.'},
-    failure:{request:'Build the change with the coding worker.',state:'WORKER UNAVAILABLE',meta:'Example · configuration missing · no job started',
-      steps:[['🧭','Choose the enabled worker for the task.'],['⚠️','The worker reports missing configuration.'],['🔎','Name the missing prerequisite or another enabled route.']],
-      result:'A visible failure with a concrete next step. No invented success, no unconfined fallback.'}
+    build:{request:'Mend the failed test. Show me what was changed.',state:'DEED RECORDED',meta:'Illustration · 34s · 4 tool calls',
+      steps:[['I','Read the failure and the code around it.'],['II','Give the bounded task to the sworn worker.'],['III','Read back the patch and prove the result.'],['IV','Report what was proved and what remains.']],
+      result:'The patch stands ready for inspection. The worker record is followed by a separate proof.'},
+    approval:{request:'Run this maintenance command upon the server.',state:'THE WRIT AWAITS',meta:'Illustration · remote effect · awaiting your word',
+      steps:[['I','Name the host held by the operator.'],['II','Examine the exact host and command.'],['III','Set the deed before the one who may grant it.']],
+      result:'Nothing remote stirs until the operator grants it. A spoken reply cannot grant its own authority.'},
+    failure:{request:'Forge the change with the coding worker.',state:'WORKER ABSENT',meta:'Illustration · missing provision · no deed begun',
+      steps:[['I','Choose the worker sworn for this task.'],['II','The worker names the missing provision.'],['III','Name the next provision or another sworn path.']],
+      result:'A plain failure with a named next step. No invented victory and no unguarded fallback.'}
   };
   const request=preview.querySelector('[data-request]'),state=preview.querySelector('[data-state]');
   const meta=preview.querySelector('[data-meta]'),trail=preview.querySelector('[data-trail]'),result=preview.querySelector('[data-result]');
   const play=preview.querySelector('[data-play]');
   const controls=[...document.querySelectorAll('[data-scenario]')];
   let current='build',timer=null;
-  const stop=()=>{clearTimeout(timer);timer=null;play.disabled=false;play.textContent='Replay example';};
+  const stop=()=>{clearTimeout(timer);timer=null;play.disabled=false;play.textContent='Read the deed again';};
   function render(count,playing=false){
     const item=scenarios[current];request.textContent=item.request;
     state.textContent=playing?'WORKING':item.state;
@@ -55,7 +117,7 @@
       const row=document.createElement('li'),glyph=document.createElement('span'),label=document.createElement('span');
       glyph.textContent=icon;glyph.setAttribute('aria-hidden','true');label.textContent=text;row.append(glyph,label);return row;
     }));
-    result.textContent=playing?'Following the example…':item.result;
+    result.textContent=playing?'The record is being unfurled…':item.result;
   }
   controls.forEach(button=>button.addEventListener('click',()=>{
     stop();current=button.dataset.scenario;
@@ -65,7 +127,7 @@
   play.addEventListener('click',()=>{
     stop();
     if(matchMedia('(prefers-reduced-motion: reduce)').matches){render(scenarios[current].steps.length);return;}
-    play.disabled=true;play.textContent='Playing example…';let count=0;
+    play.disabled=true;play.textContent='Unfurling the record…';let count=0;
     function advance(){count++;const finished=count>=scenarios[current].steps.length;render(count,!finished);
       if(finished)stop();else timer=setTimeout(advance,850);}
     advance();

@@ -200,15 +200,15 @@ html.js .rv.in{opacity:1; transform:none}
 <nav>
   <div class="wrap">
     <a class="brand" href="/"><img class="mark" src="../brand/sigil-78.png" alt="" width="26" height="26">TALOS</a>
-    <a class="lnk" href="/">Home</a>
+    <a class="lnk" href="/">Keep</a>
     <a class="lnk" href="/#kernel">Kernel</a>
     <a class="lnk" href="/#ledger">Ledger</a>
-    <a class="lnk" href="/docs/">Docs</a>
-    <a class="lnk" href="/registry/">Registry</a>
+    <a class="lnk" href="/docs/">Codex</a>
+    <a class="lnk" href="/registry/">Roll of Arms</a>
     <a class="lnk on" href="/redteam/" aria-current="page">Redteam</a>
-    <a class="lnk" href="/vergleich/">Compare</a>
-    <a class="lnk" href="/console.html">Console</a>
-    <a class="lnk" href="https://github.com/talos-kernel/talos">GitHub</a>
+    <a class="lnk" href="/vergleich/">Weigh the Orders</a>
+    <a class="lnk" href="/console.html">Command Hall</a>
+    <a class="lnk" href="https://github.com/talos-kernel/talos">Source</a>
     <span class="sp"></span>
     <span class="status"><i>●</i> ADVERSARIAL · REV 0.19.21-ALPHA</span>
   </div>
@@ -334,7 +334,7 @@ halb.example  →  [ <span class="g">100.100.100.100</span>, <span class="d">93.
 
 <span class="c"># a naive check: "is an allowed address in the answer?" → passes. LEAK.</span>
 <span class="c"># talos: every resolved address must be named — one foreign answer refuses the fetch.</span>
-guard_url(...)  <span class="f">→ UrlRefusedError</span>   <span class="g">✓ refused, the neighbour stays dark</span></pre>
+guard_url(...)  <span class="f">→ UrlRefusedError</span>   <span class="g">refused, the neighbour stays dark</span></pre>
     <p>The same section proves the neighbouring properties: one allowed address does
     <strong>not</strong> open its range; an unlisted address stays refused even to the
     operator's own machine; plain <code>http</code> stays limited to named addresses;
@@ -354,7 +354,7 @@ guard_url(...)  <span class="f">→ UrlRefusedError</span>   <span class="g">✓
     the machine.</p>
 <pre><span class="c"># only an anthropic key in the store, asked for an openai route:</span>
 ApiReasoner(<span class="f">"openai-api"</span>, ...)   <span class="f">→ ValueError</span>
-  <span class="g">✓ nothing sent</span>   <span class="g">✓ key not in the error</span>   <span class="c"># refused before the wire exists</span>
+  <span class="g">nothing sent</span>   <span class="g">key not in the error</span>   <span class="c"># refused before the wire exists</span>
 
 <span class="c"># both keys present, openai route used:</span>
 headers sent  →  <span class="g">only the openai key</span>   <span class="c"># the anthropic key never leaves</span></pre>
@@ -402,11 +402,11 @@ cd talos && python3 -m venv .venv && .venv/bin/pip install -q requests cryptogra
   <div class="wrap">
     <span>TALOS — an agent you can hand a shell to</span>
     <span class="sp"></span>
-    <a href="/">Home</a>
-    <a href="/docs/">Docs</a>
-    <a href="/registry/">Registry</a>
-    <a href="/vergleich/">Compare</a>
-    <a href="https://github.com/talos-kernel/talos">GitHub</a>
+    <a href="/">Keep</a>
+    <a href="/docs/">Codex</a>
+    <a href="/registry/">Roll of Arms</a>
+    <a href="/vergleich/">Weigh the Orders</a>
+    <a href="https://github.com/talos-kernel/talos">Source</a>
     <span>MIT · REV 0.19.21-ALPHA</span>
   </div>
 </footer>

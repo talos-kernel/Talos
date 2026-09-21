@@ -424,8 +424,22 @@ and the executor calls no runner before it has one.
 | Secret reads, system paths | `cat /etc/passwd`, anything under `/etc /boot /usr /bin` | **refused** |
 
 `DENY` returns **before** the approval check, so a "yes" cannot reach a hardline rule.
-Approvals are one-shot, five-minute TTL, bound to the exact request, and re-verified against
-file hashes immediately before execution (TOCTOU).
+A one-shot approval has a five-minute TTL, is bound to the exact request, and is re-verified
+against file hashes immediately before execution (TOCTOU). When a human is asked, the
+approval surface offers four deliberately different grants:
+
+- **Allow once** approves one exact action. The approval is consumed when that action runs;
+  a later request asks again.
+- **Allow this task** approves every approval-required action in the current foreground task
+  until it ends or the operator stops it. It has no time limit, includes later commands and
+  targets in that task, and does not carry into a new task. Kernel `DENY` still wins.
+- **Always allow** creates a standing rule for the exact action fingerprint — its command or
+  kernel-derived target — not for the tool in general. It remains until the operator revokes
+  it through `/revoke`.
+- **Deny** closes the request. Nothing runs, and a denial never becomes permission.
+
+The model can request an action, but it cannot choose a wider grant. The kernel still judges
+each action, even when the question itself is skipped by a standing rule.
 
 Targets are derived from real tool arguments, never from a field the model could omit. A
 tool without a target extractor is `DENY` by construction.
