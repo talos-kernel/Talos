@@ -452,6 +452,9 @@ html.js .rv.in{opacity:1;transform:none}
     <div class="chronicle-terminal rv" id="chronicle-terminal">
       <div class="chronicle-bar"><span class="seal" aria-hidden="true"></span><span>talos chat · a rehearsed record</span><span class="state" data-terminal-state>REHEARSAL · NO EXECUTION</span></div>
       <div class="chronicle-screen" role="log" aria-label="Illustrated Talos terminal transcript" aria-live="polite">
+        <video class="chronicle-motion" aria-hidden="true" autoplay loop muted playsinline preload="metadata">
+          <source src="media/talos-terminal-gemini.mp4" type="video/mp4">
+        </video>
         <ol class="chronicle-transcript">
           <li class="chronicle-line" data-terminal-line="0"><span class="line-no">01</span><span class="line-kind">$</span><code>talos chat</code></li>
           <li class="chronicle-line" data-terminal-line="1"><span class="line-no">02</span><span class="line-kind">session</span><code>approvals possible · terminal present</code></li>
@@ -1142,6 +1145,10 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const caption = demo.querySelector('[data-terminal-caption]');
   const play = demo.querySelector('[data-terminal-play]');
   if (!lines.length || !state || !caption || !play) return;
+  const motion = demo.querySelector('.chronicle-motion');
+  if (motion && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    motion.play().catch(() => {});
+  }
   const states = ['SESSION OPEN', 'SESSION OPEN', 'TASK RECEIVED', 'KERNEL ASKS',
     'KERNEL ASKS', 'OPERATOR CHOOSES', 'TASK GRANT ACTIVE', 'EXECUTION CHECKED',
     'RECEIPT SEALED', 'RECORD COMPLETE'];

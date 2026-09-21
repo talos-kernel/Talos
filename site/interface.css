@@ -358,9 +358,14 @@ html.js .rv.in{opacity:1;transform:none}
   text-transform:uppercase;color:var(--faint)}
 .chronicle-bar .seal{width:8px;height:8px;background:var(--accent);box-shadow:0 0 12px var(--accent-soft)}
 .chronicle-bar .state{margin-left:auto;color:var(--accent);font-size:10px}
-.chronicle-screen{padding:clamp(22px,4vw,38px);background:
+.chronicle-screen{position:relative;isolation:isolate;padding:clamp(22px,4vw,38px);background:
   linear-gradient(90deg,transparent 0,transparent 3.5em,oklch(0.32 0.035 75 / .28) 3.5em,transparent calc(3.5em + 1px)),
-  var(--ink);font:clamp(12px,1.35vw,15px)/1.85 var(--mono);overflow-x:auto}
+  var(--ink);font:clamp(12px,1.35vw,15px)/1.85 var(--mono);overflow:hidden}
+.chronicle-motion{position:absolute;z-index:0;inset:0;width:100%;height:100%;object-fit:cover;opacity:.27;
+  filter:saturate(.72) sepia(.30) brightness(.48) contrast(1.12);pointer-events:none}
+.chronicle-screen::after{content:"";position:absolute;z-index:1;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,oklch(0.12 0.015 60 / .76),oklch(0.12 0.015 60 / .88))}
+.chronicle-transcript,.chronicle-caption{position:relative;z-index:2}
 .chronicle-transcript{list-style:none;min-width:680px;margin:0;padding:0}
 .chronicle-line{display:grid;grid-template-columns:3.5em 10.5em minmax(0,1fr);gap:12px;align-items:baseline;
   color:oklch(0.53 0.035 78);transition:color .35s,text-shadow .35s,opacity .35s}
@@ -428,5 +433,6 @@ html.js .rv.in{opacity:1;transform:none}
   html{scroll-behavior:auto}
   *,*::before,*::after{animation:none !important;transition:none !important}
   #talos-dust{display:none !important}
+  .chronicle-motion{display:none !important}
   html.js .rv{opacity:1;transform:none}
 }
