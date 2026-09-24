@@ -6,6 +6,24 @@ they make possible that was not possible before — or, more often, what they ta
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions are alpha: the kernel's rules are stable, the surface around them is not.
 
+## [0.19.22-alpha] — 2026-09-24
+
+### Added
+
+- A local deterministic fast-evaluation preflight now runs before every
+  model-backed task. It removes the remote classifier round-trip from the hot
+  path without granting permission or changing the kernel's authority.
+
+### Changed
+
+- `/eval` reports the local classification and its measured no-network timing;
+  it remains diagnostic, while normal messages use the same preflight
+  automatically.
+- Python 3.11 test collection is now isolated from unrelated installed
+  `tests` namespaces, keeping the cross-platform suite deterministic.
+- The published test claim is now 2,880 collected tests; the adversarial suite
+  remains 263/263.
+
 ## [0.19.21-alpha] — 2026-09-19
 
 ### Added

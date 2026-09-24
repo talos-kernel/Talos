@@ -19,10 +19,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2869).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2880).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-2869-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-2880-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-263%2F263-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-985%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-33%20gated-8a4318.svg" alt="Tools">
@@ -165,6 +165,13 @@ Stated plainly, because a security claim without its limits is marketing:
 - **It does not generate pictures or video, on purpose.** Reading one is a `READ` with a
   target; making one is a paid call to somebody else's model, and it was removed rather
   than kept around waiting for credit. Seeing stays.
+- **Fast evaluation is local and advisory.** `/eval <text>` uses a bounded deterministic
+  classifier with no provider, key, network call or Vercel dependency. It reports a
+  measured duration; it never grants, denies or changes a permission. The same local
+  preflight runs once before every model-backed task, including background tasks and
+  resumptions, and records only category, confidence and duration. It does not replace
+  or shorten Claude, Gemini, Ollama or another configured provider call; the deterministic
+  kernel remains the only authority.
 
 ## Install
 
@@ -274,7 +281,7 @@ come from `stdin` instead of `getUpdates`.
 ```
 $ talos chat
 
-  ◉  Talos / 0.19.21-alpha
+  ◉  Talos / 0.19.22-alpha
      Your terminal. Your rules.
   ──────────────────────────────────────────────────────────────────────────
   model      claude-cli/claude-opus-4-1
@@ -735,7 +742,7 @@ command centre.
 
 `/stop` `/stopall` `/queue` `/status` `/new` `/retry` `/background` · `/pending` `/approve` `/deny`
 `/allowed` `/revoke` · `/log` `/undo` `/policy` `/autonomy` `/tools` `/whoami` `/version` ·
-`/usage` `/model` `/reasoning` `/debug`
+`/usage` `/model` `/eval` `/reasoning` `/debug`
 
 **On the command line** — thirteen, each answering a question an operator actually asks:
 
@@ -750,6 +757,10 @@ command centre.
 
 `/policy <path|command>` is a dry run: it calls `decide()` and shows the verdict without
 executing anything. It is the fastest way to understand the kernel.
+
+`/eval <text>` is a separate local diagnostic. The local classifier reports a
+likely category and explicitly does not establish truth. Its result is never consulted
+by `decide()` and cannot approve an action.
 
 ## Architecture
 

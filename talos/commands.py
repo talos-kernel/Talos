@@ -86,6 +86,10 @@ class Minting(Protocol):
     def stats(self) -> dict[str, int]: ...
 
 
+class Evaluating(Protocol):
+    def evaluate(self, text: str) -> str: ...
+
+
 @dataclass(frozen=True)
 class CommandResult:
     """Ergebnis eines Kommandos.
@@ -151,6 +155,7 @@ Accountability
 Inside view
 /usage — runs, tokens, thinking time, computed cost
 /model (also /models) — show the provider/model or select one safely
+/eval <text> — run the local fast, advisory classification
 /reasoning — how thinking happens, and what deliberately does not exist here
 /debug — state worth looking at: paths, permissions, counters
 /health — the traffic light: what runs, what stumbled lately, what is quiet
@@ -223,6 +228,8 @@ class CommandCenter:
     standing: StandingStore | None = None
     start_status: Callable[[], Mapping[str, object]] | None = None
     model_picker: ModelPicker | None = None
+    # Advisory only: this result never reaches the executor or the policy kernel.
+    evaluator: Evaluating | None = None
     # Modell-Eckdaten (Kontextfenster, Preise) fuer `/usage` und `/status`: Katalog
     # plus die beim Laden installierten Betreiber-Overrides (`modelinfo`). Als
     # Funktionen injizierbar, damit Tests nichts Globales anfassen muessen.
@@ -318,6 +325,8 @@ class CommandCenter:
             return CommandResult(reply=self._version())
         if name == "usage":
             return CommandResult(reply=self._usage())
+        if name == "eval":
+            return CommandResult(reply=self._eval(rest))
         if name in ("model", "models"):
             if self.model_picker is None:
                 return CommandResult(reply=self._model())
@@ -351,6 +360,14 @@ class CommandCenter:
         matches = [entry for entry in entries if query in entry.lower()]
         return (f"Commands matching {query}:\n\n" + "\n".join(matches) if matches
                 else f"No commands match {query}. /help lists all commands.")
+
+    def _eval(self, rest: str) -> str:
+        statement = rest.strip()
+        if not statement:
+            return "Usage: /eval <statement or text>"
+        if self.evaluator is None:
+            return "Fast evaluation is not configured."
+        return self.evaluator.evaluate(statement)
 
     def _tasks(self, principal: Principal, conversation: str) -> str:
         jobs = () if self.background is None else self.background.running()

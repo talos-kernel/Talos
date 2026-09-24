@@ -43,6 +43,7 @@ from .executor import Executor
 from .fallback import FallbackReasoner, parse_chain
 from .memory import Memory
 from .intelligence import EntityRegistry, IntelligenceLayer, make_entity_status_runner
+from .fast_eval import FastEvalEngine
 from .mcpservers import McpServerRegistry
 from .policy import WORKSPACE_DIR, PolicyKernel, claude_work_root
 from .question import QuestionDesk
@@ -568,6 +569,9 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     # Ein Store, zwei Nutzer: der Conductor parkt, das CommandCenter zeigt/entscheidet.
     approvals = ApprovalStore()
     approval_picker = ApprovalPicker()
+    # One local, network-free evaluator is shared by the command path and every
+    # model-backed task. It is advisory metadata, never a policy decision.
+    fast_eval = FastEvalEngine()
     # Stehende Freigaben ueberleben den Neustart im Event-Log, nicht in einer Config-Datei
     # — dieselbe Mechanik wie beim Autonomie-Regler. Wer sie faelschen will, muss das Log
     # faelschen; ein unlesbares Log ergibt einen leeren Store (dann wird wieder gefragt).
@@ -618,6 +622,7 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
         background=background_desk,
         start_status=lambda: _start_status(reasoner, config),
         model_picker=model_picker,
+        evaluator=fast_eval,
     )
     conductor = Conductor(
         log=log,
@@ -630,6 +635,7 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
         approval_picker=approval_picker,
         standing=standing,
         commands=commands,
+        fast_eval=fast_eval,
         memory=memory,
         begin_activity=registry.begin_activity,
         # Die mitwachsende Antwortnachricht. Sie ist etwas anderes als die

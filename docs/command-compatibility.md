@@ -22,6 +22,7 @@ This describes this source branch, not an already-published release.
 | Retry last question | `/retry`; does not inherit consent or replay recorded tools |
 | Model picker | `/model`, `/models`; existing configured providers, validated selection |
 | Usage | `/usage`: measured tokens and calculated API-price equivalent, not a subscription bill |
+| Fast statement evaluation | `/eval <text>`: local deterministic classification with measured latency; the same network-free preflight is recorded before model-backed tasks; advisory only |
 | Approve / deny | `/approve [once|task|always]`, `/deny`; task lasts until completion/stop/error, no clock expiry |
 | Inspect approvals | `/pending`, `/approvals`, `/allowed`, `/revoke <n>` |
 | Memory | `/remember`, `/memory`, `/forget`; Talos' explicit fact store |
@@ -38,6 +39,7 @@ This describes this source branch, not an already-published release.
 | `/yolo` toggles approval bypass | Talos offers explicit **Allow this task**. Hard denials, capability checks and sandbox boundaries remain active. |
 | `/reasoning <level>` controls effort/display | Talos `/reasoning` currently explains the active reasoning path; it does not implement Hermes' effort/display controls. |
 | `/debug` uploads a report | Talos displays diagnostics locally; it does not publish private logs. |
+| Model evaluation decides an action | Talos keeps `/eval` outside the kernel; the local classifier never grants or denies permission. |
 | Account credits / billing / top-up | Nous-specific billing has no equivalent in a provider-neutral Talos subscription setup. |
 
 ## Not implemented as matching chat features yet

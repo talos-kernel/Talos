@@ -224,6 +224,10 @@ class Conductor:
     # It is quality control, never an authority source: the layer can request one retry
     # or qualify an answer, but every resulting tool call still passes the same kernel.
     intelligence: object | None = None
+    # Shared local preflight for every model-backed task. This is observability and a
+    # future routing hint only; it never grants permission, changes the prompt, or
+    # replaces the configured reasoner/provider.
+    fast_eval: object | None = None
     # Gespraechsarchiv (session_search). Der Conductor SCHREIBT nur — am selben Punkt
     # wie `memory.remember`, also ausschliesslich zugestellte, beantwortete Zuege.
     # Gelesen wird nie automatisch: der Rueckweg in einen Prompt fuehrt allein ueber
@@ -877,6 +881,7 @@ class Conductor:
                     self.log.append(Event(run_id, "conductor", "task.status_readback", {}))
                     return self._reply(update, run_id, summary +
                                        "\n\nNo retry was started. The unfinished request is retained.")
+        self._fast_preflight(text, run_id)
         self.log.append(Event(run_id, "conductor", "reason.started",
                               {"kontext_zuege": len(past), "task_id": task_id or run_id}))
         activity = self._begin_activity(update, run_id)
@@ -1755,6 +1760,33 @@ class Conductor:
                 Event(run_id, "conductor", "error", {"stage": "activity", "error": str(error)})
             )
             return None
+
+    def _fast_preflight(self, text: str, run_id: str) -> None:
+        """Run the local classifier once before a model-backed task.
+
+        A diagnostic failure is fail-open for inference: the normal provider path and
+        the policy kernel must remain available even if this optional measurement fails.
+        The event contains fixed metadata only, never the user's text.
+        """
+        if self.fast_eval is None:
+            return
+        classify = getattr(self.fast_eval, "classify", None)
+        if not callable(classify):
+            return
+        try:
+            result = classify(text)
+        except Exception as error:
+            self.log.append(Event(run_id, "fast_eval", "eval.preflight_failed", {
+                "error": type(error).__name__,
+            }))
+            return
+        self.log.append(Event(run_id, "fast_eval", "eval.preflight", {
+            "category": str(getattr(result, "category", "unknown")),
+            "confidence": float(getattr(result, "confidence", 0.0)),
+            "duration_ms": round(float(getattr(result, "duration_s", 0.0)) * 1000, 3),
+            "external_call": False,
+            "authority": "advisory",
+        }))
 
     def _propose(
         self,

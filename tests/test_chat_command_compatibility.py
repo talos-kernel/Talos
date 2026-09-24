@@ -6,6 +6,7 @@ import time
 import pytest
 
 from talos.channel import Trust
+from talos.fast_eval import FastEvalEngine
 from talos.schedule import UnattendedCeiling
 from test_standing_flow import Rig, Scripted, OWNER, ZWEITER, CHAT, msg, call
 
@@ -128,3 +129,67 @@ def test_control_commands_fail_closed_on_ask_channels(tmp_path, command):
     assert 'control.rejected' in rig.types()
     assert rig.conductor.redirect.take() == ()
     assert rig.conductor.reasoner.calls == 0
+
+
+def test_eval_is_local_and_does_not_need_full_channel_trust(tmp_path):
+    rig = Rig(tmp_path, Scripted('unused'), trust_of=lambda _: Trust.ASK)
+    object.__setattr__(rig.commands, 'evaluator', FastEvalEngine())
+
+    assert rig.conductor.is_inline(msg(900, '/eval public statement')) is True
+    rig.say('/eval public statement')
+
+    assert 'Fast evaluation (local)' in rig.sent[-1][1]
+    assert 'no external call' in rig.sent[-1][1]
+    assert rig.conductor.reasoner.calls == 0
+
+
+def test_shared_fast_preflight_runs_before_any_reasoner_provider(tmp_path):
+    rig = Rig(tmp_path, Scripted('The provider answer.'))
+    object.__setattr__(rig.conductor, 'fast_eval', FastEvalEngine())
+
+    assert rig.say('Please check the service') == 'The provider answer.'
+
+    events = rig.conductor.log.recent(50)
+    preflight = [event for event in events if event['type'] == 'eval.preflight']
+    assert len(preflight) == 1
+    assert preflight[0]['payload'] == {
+        'category': 'instruction',
+        'confidence': 0.91,
+        'duration_ms': preflight[0]['payload']['duration_ms'],
+        'external_call': False,
+        'authority': 'advisory',
+    }
+    assert 'Please check the service' not in str(preflight[0]['payload'])
+    assert rig.conductor.reasoner.calls == 1
+
+
+def test_shared_fast_preflight_failure_does_not_block_provider(tmp_path):
+    class BrokenEval:
+        def classify(self, _text):
+            raise RuntimeError('fixture failure')
+
+    rig = Rig(tmp_path, Scripted('The provider answer.'))
+    object.__setattr__(rig.conductor, 'fast_eval', BrokenEval())
+
+    assert rig.say('Continue normally') == 'The provider answer.'
+    assert rig.conductor.reasoner.calls == 1
+    failed = [event for event in rig.conductor.log.recent(50)
+              if event['type'] == 'eval.preflight_failed']
+    assert failed[0]['payload'] == {'error': 'RuntimeError'}
+
+
+def test_shared_fast_preflight_never_authorizes_a_tool(tmp_path):
+    target = tmp_path / 'must-still-need-approval'
+    rig = Rig(tmp_path, Scripted(call('write_file', {
+        'path': str(target),
+        'content': 'no',
+    }, [str(target)])))
+    object.__setattr__(rig.conductor, 'fast_eval', FastEvalEngine())
+
+    rig.say('Please write the file')
+
+    assert not target.exists()
+    assert rig.approvals.get(CHAT) is not None
+    assert rig.conductor.reasoner.calls == 1
+    assert any(event['type'] == 'eval.preflight'
+               for event in rig.conductor.log.recent(50))

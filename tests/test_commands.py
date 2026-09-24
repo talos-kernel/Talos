@@ -83,6 +83,30 @@ def _center(tmp_path: Path, *, reasoner=None, worker=None, approvals=None, **ext
     )
 
 
+def test_eval_is_explicit_and_never_uses_the_reasoner(tmp_path: Path) -> None:
+    class Evaluator:
+        def __init__(self):
+            self.calls = []
+
+        def evaluate(self, text: str) -> str:
+            self.calls.append(text)
+            return "Fast evaluation result"
+
+    evaluator = Evaluator()
+    center = _center(tmp_path, evaluator=evaluator)
+
+    result = center.dispatch("eval", "service is active", principal=OWNER, conversation=CHAT)
+
+    assert result.reply == "Fast evaluation result"
+    assert evaluator.calls == ["service is active"]
+
+
+def test_eval_without_text_explains_usage(tmp_path: Path) -> None:
+    result = _center(tmp_path).dispatch("eval", "", principal=OWNER, conversation=CHAT)
+
+    assert result.reply == "Usage: /eval <statement or text>"
+
+
 def _snapshot_event(log: EventLog, original: str, backup: str) -> None:
     log.append(
         Event(
