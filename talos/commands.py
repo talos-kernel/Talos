@@ -145,6 +145,9 @@ Accountability
 /remember <text> — keep something across restarts
 /memory — what is kept · /forget <id|all> — drop it
 /every <min> or <M H DOM MON DOW> <task> — recurring job · /schedules · /unschedule <id>
+/heartbeat <min> <what to look at> — a recurring look that skips beats falling into
+  busy moments and stays silent when there is nothing to say
+  (/heartbeat status|pause|resume|clear)
 /blueprints — installable automations with plain-language schedules
   (/blueprint install|remove|enable|disable|status <name>)
 /skills — what is loaded, what was refused; /reload-skills re-scans the live catalogue
@@ -293,6 +296,16 @@ class CommandCenter:
             return CommandResult(reply=self._forget(rest))
         if name in ("every", "schedule"):
             return CommandResult(reply=self._every(rest, principal, conversation))
+        if name in ("heartbeat", "hb"):
+            # Dieselbe Begruendung wie bei /every: NUR der Kommando-Pfad legt einen
+            # Takt an, an die Identitaet des Betreibers gebunden. Es gibt bewusst kein
+            # Werkzeug dafuer — ein Modell, das sich selbst einen Wachzustand anlegen
+            # kann, verlaengert seine eigene Leine.
+            from . import heartbeat as _heartbeat
+
+            return CommandResult(reply=_heartbeat.command(
+                rest, schedules=self.schedules, principal=principal,
+                conversation=conversation))
         if name in ("schedules", "jobs"):
             return CommandResult(reply=self._schedules(conversation))
         if name in ("unschedule", "cancel_job"):

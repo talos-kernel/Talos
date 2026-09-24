@@ -75,7 +75,9 @@ CREATE TABLE IF NOT EXISTS schedules (
     probe            TEXT NOT NULL DEFAULT '',
     last_fingerprint TEXT NOT NULL DEFAULT '',
     last_result      TEXT NOT NULL DEFAULT '',
-    last_error_key   TEXT NOT NULL DEFAULT ''
+    last_error_key   TEXT NOT NULL DEFAULT '',
+    paused           INTEGER NOT NULL DEFAULT 0,
+    heartbeat        INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_schedules_next ON schedules(next_run);
 """
@@ -91,13 +93,16 @@ _MIGRATIONS = (
     ("last_fingerprint", "TEXT NOT NULL DEFAULT ''"),
     ("last_result", "TEXT NOT NULL DEFAULT ''"),
     ("last_error_key", "TEXT NOT NULL DEFAULT ''"),
+    ("paused", "INTEGER NOT NULL DEFAULT 0"),
+    ("heartbeat", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 # EINE Spaltenliste fuer jede Leseabfrage: `_task_from_row` zaehlt Positionen, und zwei
 # abweichende SELECTs waeren zwei Gelegenheiten, ein Feld in die falsche Spalte zu lesen.
 _COLUMNS = (
     "id, conversation, principal, prompt, interval_s, next_run, created, last_run,"
-    " cron, once, continuity, monitor, probe, last_fingerprint, last_result, last_error_key"
+    " cron, once, continuity, monitor, probe, last_fingerprint, last_result, last_error_key,"
+    " paused, heartbeat"
 )
 
 UNATTENDED_REASON = (
@@ -136,6 +141,14 @@ class Task:
     last_fingerprint: str = ""
     last_result: str = ""
     last_error_key: str = ""
+    # Angehalten, nicht geloescht. Ein `/heartbeat pause` soll den Auftrag behalten:
+    # loeschen und spaeter neu tippen ist der sicherste Weg, einen Waechter nach der
+    # Pause nie wieder anzuschalten. `due()` ueberspringt pausierte Eintraege.
+    paused: bool = False
+    # Ein Wachzustand statt eines Auftrags mit Termin (siehe `heartbeat.py`): faellt der
+    # Takt in einen laufenden Auftrag, entfaellt er statt sich anzustellen, und der Lauf
+    # darf mit dem Stille-Marker enden. NUR hier gilt dieser Marker.
+    heartbeat: bool = False
 
     def describe(self) -> str:
         if self.cron:
@@ -145,8 +158,10 @@ class Task:
         else:
             minutes = self.interval_s // 60
             wann = f"every {minutes} min" if minutes < 60 else f"every {minutes // 60} h"
-        schalter = [name for name, an in (("continuity", self.continuity),
-                                          ("monitor", self.monitor)) if an]
+        schalter = [name for name, an in (("heartbeat", self.heartbeat),
+                                          ("continuity", self.continuity),
+                                          ("monitor", self.monitor),
+                                          ("paused", self.paused)) if an]
         zusatz = f"  [{', '.join(schalter)}]" if schalter else ""
         return f"{self.id}  {wann}  — {self.prompt}{zusatz}"
 
@@ -183,6 +198,11 @@ def _task_from_row(r: tuple) -> Task:
         last_fingerprint=_text(r[13]),
         last_result=_text(r[14]),
         last_error_key=_text(r[15]),
+        # `_flag` und nicht `bool()`: ein kaputter Wert darf einen Takt hoechstens
+        # laufen lassen (nicht pausiert) und einen Eintrag hoechstens zum gewoehnlichen
+        # Zeitplan machen — nie umgekehrt einen stumm schalten, den niemand so anlegte.
+        paused=_flag(r[16]),
+        heartbeat=_flag(r[17]),
     )
 
 
@@ -272,6 +292,7 @@ class ScheduleStore:
         self, *, conversation: str, principal: str, prompt: str, interval_s: int = 0,
         cron: str = "", once: bool = False, now: float | None = None,
         continuity: bool = False, monitor: bool = False, probe: str = "",
+        heartbeat: bool = False,
     ) -> Task | None:
         """Legt einen Auftrag an. `None` = abgelehnt (Grenzen, kein Speicher).
 
@@ -325,14 +346,17 @@ class ScheduleStore:
                     continuity=bool(continuity),
                     monitor=bool(monitor),
                     probe=sonde,
+                    heartbeat=bool(heartbeat),
                 )
                 self._conn.execute(
                     "INSERT INTO schedules (id, conversation, principal, prompt, interval_s,"
-                    " cron, once, next_run, created, last_run, continuity, monitor, probe)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)",
+                    " cron, once, next_run, created, last_run, continuity, monitor, probe,"
+                    " heartbeat)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)",
                     (task.id, task.conversation, task.principal, task.prompt,
                      task.interval_s, task.cron, int(task.once), task.next_run, task.created,
-                     int(task.continuity), int(task.monitor), task.probe),
+                     int(task.continuity), int(task.monitor), task.probe,
+                     int(task.heartbeat)),
                 )
                 self._conn.commit()
                 return task
@@ -344,7 +368,8 @@ class ScheduleStore:
         """Faellige Auftraege. Der Aufrufer quittiert mit `mark_run`."""
         moment = time.time() if now is None else float(now)
         return self._rows(
-            f"SELECT {_COLUMNS} FROM schedules WHERE next_run <= ? ORDER BY next_run",
+            f"SELECT {_COLUMNS} FROM schedules WHERE next_run <= ? AND paused = 0"
+            " ORDER BY next_run",
             (moment,),
         )
 
@@ -353,6 +378,42 @@ class ScheduleStore:
             f"SELECT {_COLUMNS} FROM schedules WHERE conversation = ? ORDER BY created",
             (str(conversation),),
         )
+
+    def heartbeat_for(self, conversation: str) -> Task | None:
+        """Der EINE Takt dieser Konversation, pausiert oder nicht.
+
+        Einer pro Chat ist Absicht (siehe `heartbeat.py`): zwei Takte waeren keine zwei
+        Wachzustaende, sondern zwei Wecker, die sich gegenseitig den Leerlauf nehmen.
+        Der aelteste gewinnt, damit ein halb angelegter zweiter Eintrag den bestehenden
+        nicht verdraengt.
+        """
+        zeilen = self._rows(
+            f"SELECT {_COLUMNS} FROM schedules WHERE conversation = ? AND heartbeat = 1"
+            " ORDER BY created LIMIT 1",
+            (str(conversation),),
+        )
+        return zeilen[0] if zeilen else None
+
+    def set_paused(self, task_id: str, *, conversation: str, paused: bool) -> bool:
+        """Anhalten oder weiterlaufen lassen — nur aus der eigenen Konversation.
+
+        Dieselbe Schranke wie `remove`: ohne sie koennte ein zweiter Chat den Waechter
+        des ersten stumm schalten, und „meiner meldet sich nicht mehr" waere von einem
+        Defekt nicht zu unterscheiden.
+        """
+        with self._lock:
+            if self._conn is None:
+                return False
+            try:
+                cursor = self._conn.execute(
+                    "UPDATE schedules SET paused = ? WHERE id = ? AND conversation = ?",
+                    (int(bool(paused)), str(task_id), str(conversation)),
+                )
+                self._conn.commit()
+                return cursor.rowcount > 0
+            except sqlite3.Error:
+                self._conn.rollback()
+                return False
 
     def record_probe(self, task_id: str, fingerprint: str) -> None:
         """Merkt den Abdruck einer ERFOLGREICH gelesenen Sonde.

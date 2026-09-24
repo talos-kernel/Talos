@@ -688,30 +688,45 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
             time.sleep(SCHEDULE_TICK_S)
             try:
                 for task in schedules.due():
-                    schedules.mark_run(task.id)
-                    principal = Principal.parse(task.principal)
-                    if principal not in config.allowed_principals:
-                        # Die Erlaubnis kann sich geaendert haben, seit der Auftrag entstand.
-                        # Ein Zeitplan darf keine Identitaet konservieren, die heute nicht
-                        # mehr gilt — sonst waere er ein Weg, eine entzogene Zulassung
-                        # weiterlaufen zu lassen.
-                        log.append(Event(new_run_id(), "schedule", "schedule.refused",
-                                         {"id": task.id, "reason": "principal no longer allowed"}))
+                    # Ein Takt (heartbeat.py) schlaegt NUR im Leerlauf. Laeuft gerade ein
+                    # Auftrag, faellt er aus, statt sich anzustellen — ohne diese Zeilen
+                    # wartete der Ticker im Schloss, und der Takt kaeme an, wenn der
+                    # Zustand, den er messen sollte, laengst ein anderer ist. `mark_run`
+                    # steht hinter dem Schloss: der Termin rueckt dann nicht weiter, der
+                    # Takt bleibt faellig und schlaegt beim naechsten freien Tick.
+                    schloss = conductor.execution_lock if task.heartbeat else None
+                    if schloss is not None and not schloss.acquire(blocking=False):
+                        log.append(Event(new_run_id(), "schedule", "heartbeat.busy",
+                                         {"id": task.id}))
                         continue
-                    with unattended.active():
-                        # Sonde und Gedaechtnis VOR dem Lauf, unter derselben Decke:
-                        # `None` heisst „unveraendert" — im Log belegt, kein Modellzug.
-                        bereit = continuity_desk.prepare(task, principal, run_id=new_run_id())
-                        if bereit is None:
+                    try:
+                        schedules.mark_run(task.id)
+                        principal = Principal.parse(task.principal)
+                        if principal not in config.allowed_principals:
+                            # Die Erlaubnis kann sich geaendert haben, seit der Auftrag entstand.
+                            # Ein Zeitplan darf keine Identitaet konservieren, die heute nicht
+                            # mehr gilt — sonst waere er ein Weg, eine entzogene Zulassung
+                            # weiterlaufen zu lassen.
+                            log.append(Event(new_run_id(), "schedule", "schedule.refused",
+                                             {"id": task.id, "reason": "principal no longer allowed"}))
                             continue
-                        update = Inbound(
-                            principal=principal,
-                            conversation=task.conversation,
-                            text=bereit.text,
-                            dedup_key=f"schedule:{task.id}:{int(time.time())}",
-                        )
-                        log.append(Event(new_run_id(), "schedule", "schedule.fired", {"id": task.id}))
-                        conductor.handle(update, before_reply=bereit.before_reply)
+                        with unattended.active():
+                            # Sonde und Gedaechtnis VOR dem Lauf, unter derselben Decke:
+                            # `None` heisst „unveraendert" — im Log belegt, kein Modellzug.
+                            bereit = continuity_desk.prepare(task, principal, run_id=new_run_id())
+                            if bereit is None:
+                                continue
+                            update = Inbound(
+                                principal=principal,
+                                conversation=task.conversation,
+                                text=bereit.text,
+                                dedup_key=f"schedule:{task.id}:{int(time.time())}",
+                            )
+                            log.append(Event(new_run_id(), "schedule", "schedule.fired", {"id": task.id}))
+                            conductor.handle(update, before_reply=bereit.before_reply)
+                    finally:
+                        if schloss is not None:
+                            schloss.release()
             except Exception as error:  # ein kaputter Zeitplan darf den Agenten nicht anhalten
                 log.append(Event(new_run_id(), "schedule", "schedule.error", {"error": _ohne_token(str(error))}))
 

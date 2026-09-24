@@ -6,6 +6,23 @@ they make possible that was not possible before — or, more often, what they ta
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions are alpha: the kernel's rules are stable, the surface around them is not.
 
+## [0.19.23-alpha] — 2026-09-24
+
+### Added
+
+- `/heartbeat` adds an operator-owned, one-per-conversation watch: it runs only when
+  Talos is idle, may remain silent when nothing changed, and can be paused or resumed
+  without losing its standing instruction.
+- Heartbeat state is additive in the schedule database, so existing schedule stores
+  migrate without being rewritten or losing their task history.
+
+### Changed
+
+- Heartbeats use the same Conductor, deterministic kernel, and unattended ceiling as
+  every other scheduled run. A heartbeat cannot create a second execution path or
+  bypass approval boundaries.
+- The release contains 2,900 collected tests; the adversarial suite remains 263/263.
+
 ## [0.19.22-alpha] — 2026-09-24
 
 ### Added

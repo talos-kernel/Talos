@@ -52,7 +52,7 @@ import json
 from dataclasses import dataclass
 from typing import Callable
 
-from . import outcome
+from . import heartbeat, outcome
 from .channel import Principal
 from .eventlog import Event, EventLog
 from .executor import Outcome, Status
@@ -147,9 +147,16 @@ class Continuity:
             else:
                 self.log.append(Event(run_id, "schedule", "schedule.probe_failed",
                                       {"id": task.id, "reason": lesung.reason}))
-        if not task.continuity:
-            return Prepared(task.prompt)
-        return Prepared(framed_prompt(task.prompt, task.last_result), self._hook(task))
+        # Der Heartbeat-Rahmen liegt INNEN, das Vorergebnis aussen: „was zuletzt war“
+        # gehoert vor die stehende Anweisung, nicht vor die Schweigeerlaubnis — sonst
+        # laese das Modell „antworte mit {marker}, wenn nichts neu ist“ als Kommentar
+        # zum Vorlauf statt als Regel fuer diesen.
+        auftrag = heartbeat.frame(task.prompt) if task.heartbeat else task.prompt
+        # Ein Takt braucht den Hook auch ohne Gedaechtnis: er entscheidet ueber die
+        # Stille. Ein gewoehnlicher Zeitplan ohne `continuity` bleibt wie bisher ohne.
+        if not (task.continuity or task.heartbeat):
+            return Prepared(auftrag)
+        return Prepared(framed_prompt(auftrag, task.last_result), self._hook(task))
 
     def _probe(self, task: Task, principal: Principal, run_id: str) -> _Reading:
         """Die Sonde als gewoehnlicher `run_shell` — jede Abweichung von DONE ist ein
@@ -186,7 +193,20 @@ class Continuity:
             except Exception:
                 fehlgeschlagen = ()  # ein kaputtes Log kostet die Dedup, nie die Antwort
             schluessel = error_key(status, fehlgeschlagen)
-            self.schedules.record_result(task.id, result=reply, error_key=schluessel)
+            # Stille NUR bei einem Takt und NUR als alleinstehende Zeile (siehe
+            # `heartbeat.wants_silence`). Der Marker faellt aus dem Gedaechtnis: sonst
+            # stuende er im naechsten Prompt als „so hat es der Vorlauf gemacht“ und
+            # aus einer einmaligen Stille wuerde eine Gewohnheit.
+            still = task.heartbeat and heartbeat.wants_silence(reply)
+            self.schedules.record_result(
+                task.id,
+                result=heartbeat.strip_marker(reply) if still else reply,
+                error_key=schluessel,
+            )
+            if still:
+                self.log.append(Event(run_id, "schedule", "heartbeat.silent",
+                                      {"id": task.id}))
+                return False
             if schluessel and schluessel == vorheriger:
                 self.log.append(Event(run_id, "schedule", "schedule.error_repeated",
                                       {"id": task.id, "key": schluessel}))
