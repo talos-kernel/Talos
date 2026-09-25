@@ -6,7 +6,7 @@ they make possible that was not possible before — or, more often, what they ta
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions are alpha: the kernel's rules are stable, the surface around them is not.
 
-## Unreleased — RC2 preparation
+## [0.20.0-alpha.rc.2] — 2026-09-25
 
 ### Security
 

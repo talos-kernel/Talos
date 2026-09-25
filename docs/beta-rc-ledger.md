@@ -21,7 +21,9 @@ text-assertion failures were retained in the audit. Locked Python/Swift OSV scan
 found no issues. The revised installer passed clean installation on Mac and ARM64
 Linux using the existing signed RC1 archive; poisoned verifier hashes were rejected.
 These are source/bootstrap checks, not a new signed RC. The app preview is not
-notarized; a fresh visual E2E of that preview remains pending.
+notarized. A fresh visual E2E of the 0.3.3 preview passed: account status, attended
+chat, project/model-origin separation and persisted history were checked. This
+desktop verification does not replace the distinct RC2 signed-archive gate.
 
 Do not label any artifact `0.20.0-beta.1` or update the website's latest-version
 pointer until the release audit and beta exit gates are complete. Track a failed
