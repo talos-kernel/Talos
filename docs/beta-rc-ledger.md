@@ -10,8 +10,8 @@ RCs must meet the gate without an unresolved critical/high finding.
 | Candidate | State | Evidence |
 |---|---|---|
 | RC1 — 0.20.0-alpha.rc.1 | **passed, 1 of 3** | Signed artifact at `c14d3c8`; local gate, hosted macOS/Ubuntu CI, OSV/hygiene, Mac/Pi install/upgrade/rollback and pre-launch audit passed. [Executed evidence](beta-evidence-rc1-2026-09-25.md). |
-| RC2 | source preparation passed, **not counted** | App build/provenance, pinned installer verifier and live-model E2E checked at `a8f165f`; [hosted CI](https://github.com/talos-kernel/Talos/actions/runs/36137817309) passed. Still requires a distinct versioned, signed release artifact after RC1. |
-| RC3 | not started | Requires a distinct versioned, signed artifact after RC2. |
+| RC2 — 0.20.0-alpha.rc.2 | **passed, 2 of 3** | Distinct signed artifact at `d972ea2`; Mac/ARM64 Linux clean install, previous-alpha/RC1 upgrades and rollback, isolated service restart, 44 real-model cases and [hosted CI](https://github.com/talos-kernel/Talos/actions/runs/36140983150) passed. [Executed evidence](beta-evidence-rc2-2026-09-25.md). |
+| RC3 — 0.20.0-alpha.rc.3 | qualification in progress, **not counted** | Distinct stabilization source and artifact; no runtime feature or permission change from RC2. Full gates must be repeated. |
 
 RC2 preparation (2026-09-25): hosted Python 3.11 macOS/Ubuntu each passed 2,912
 tests with two repository-specific skips and 263 adversarial cases. macOS additionally

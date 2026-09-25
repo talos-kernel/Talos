@@ -281,7 +281,7 @@ come from `stdin` instead of `getUpdates`.
 ```
 $ talos chat
 
-  ◉  Talos / 0.20.0-alpha.rc.2
+  ◉  Talos / 0.20.0-alpha.rc.3
      Your terminal. Your rules.
   ──────────────────────────────────────────────────────────────────────────
   model      claude-cli/claude-opus-4-1

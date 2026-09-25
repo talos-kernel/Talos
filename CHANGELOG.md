@@ -6,6 +6,15 @@ they make possible that was not possible before — or, more often, what they ta
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions are alpha: the kernel's rules are stable, the surface around them is not.
 
+## [0.20.0-alpha.rc.3] — 2026-09-25
+
+### Qualification
+
+- A distinct stabilization candidate after RC2, with no runtime feature or permission
+  changes. Repeat the signed clean-install, previous-alpha/RC2 upgrade, state migration,
+  rollback, isolated service restart, real-model and cross-platform hosted gates.
+- Record RC2's completed qualification; the seven-day observation gate remains separate.
+
 ## [0.20.0-alpha.rc.2] — 2026-09-25
 
 ### Security

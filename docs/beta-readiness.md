@@ -4,7 +4,7 @@ Talos is still labelled alpha because the deterministic permission kernel is sta
 while the operator-facing surface is still allowed to change. This document makes the
 exit criteria explicit instead of treating `beta` as a calendar decision.
 
-## Published baseline — 0.19.23-alpha; candidate — 0.20.0-alpha.rc.2
+## Published baseline — 0.19.23-alpha; candidate — 0.20.0-alpha.rc.3
 
 | Gate | State | Evidence |
 |---|---|---|
