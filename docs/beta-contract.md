@@ -1,8 +1,11 @@
-# Beta contract candidate
+# Frozen beta contract baseline
 
-This is the operator-facing contract proposed for `0.20.0-beta.1`. It does not
-retroactively freeze the alpha line. Before the first beta tag, every item needs a
-corresponding test and migration note where a prior alpha behaved differently.
+This is the frozen operator-facing baseline for the `0.20.0-beta` release-candidate
+line, based on public source commit `8376890` and running `0.19.23-alpha`. It does
+not retroactively freeze the alpha line or claim a beta release. Before the first
+beta tag, every item needs a corresponding test and migration note where a prior
+alpha behaved differently. Any change to this baseline requires an explicit
+compatibility review and entry in the [RC ledger](beta-rc-ledger.md).
 
 ## Supported platforms
 
@@ -18,7 +21,10 @@ corresponding test and migration note where a prior alpha behaved differently.
 ## Commands and permission semantics
 
 The command names and arguments in [command compatibility](command-compatibility.md)
-are the beta baseline. `/eval` is local advisory preflight; it never replaces a model
+are the frozen baseline. New optional commands may be added with tests; an existing
+name, argument or approval meaning must not be silently repurposed. Exact wording of
+model answers and cosmetic CLI prose is not a compatibility promise. `/eval` is local
+advisory preflight; it never replaces a model
 call or grants permission. `/heartbeat` controls scheduled idle work; an unattended
 run remains under `UnattendedCeiling` and cannot obtain a human approval.
 
@@ -55,5 +61,5 @@ writes appear in both trees.
 
 No silent field removal, argument repurposing, approval broadening or destructive
 schema migration within the beta line. A necessary breaking change needs a versioned
-migration note, a before/after test and an explicit operator action. This is the
-candidate contract; it becomes a release promise only when the beta exit gates pass.
+migration note, a before/after test and an explicit operator action. This baseline
+becomes a release promise only when the beta exit gates pass.

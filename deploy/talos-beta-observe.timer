@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Talos beta health observation
+
+[Timer]
+OnCalendar=*-*-* 09:45:00
+Persistent=true
+Unit=talos-beta-observe.service
+
+[Install]
+WantedBy=timers.target

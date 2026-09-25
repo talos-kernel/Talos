@@ -9,7 +9,7 @@ exit criteria explicit instead of treating `beta` as a calendar decision.
 | Gate | State | Evidence |
 |---|---|---|
 | Deterministic kernel and approval boundary | green | 263/263 adversarial cases |
-| Regression suite | green | 2,900 collected tests; public run: 2,923 passed, 2 skipped |
+| Regression suite | green | 2,905 collected tests in current source; prior public run: 2,923 passed, 2 skipped |
 | Dependency security | green | OSV scan: no findings |
 | Public-repository hygiene | green | `scripts/check-public-hygiene.py` passed |
 | Signed release artifacts | green | Ed25519 archive signature and SHA-256 read back over HTTPS |
@@ -17,9 +17,9 @@ exit criteria explicit instead of treating `beta` as a calendar decision.
 | Clean install and signed upgrade | green in isolation | Published 0.19.23 installer and 0.19.22 → 0.19.23 updater passed on macOS and Pi5; schedule migration and rollback read back |
 | Production rollback | not executed | The live service was deliberately not rolled back; this remains an incident-only operation |
 | Cross-platform hosted CI | green on public source | Python 3.11 macOS and Ubuntu completed install, hygiene, pytest and red-team steps in the [public CI run](https://github.com/talos-kernel/Talos/actions/runs/36103848464); the private mirror remains billing-blocked |
-| Stable operator/API contract | candidate documented | [Beta contract](beta-contract.md); freeze and migration review remain before the beta tag |
-| Upgrade matrix across supported Python versions | local green | Python 3.11, 3.12 and 3.13 passed on macOS; 3.13 passed on Pi5; hosted CI remains blocked |
-| Long-running stability evidence | not yet complete | Seven consecutive days with daily `health`/`verify`, no critical regression or data loss |
+| Stable operator/API contract | baseline frozen, not yet released | [Beta contract](beta-contract.md); compatibility changes require review and migration notes |
+| Upgrade matrix across supported Python versions | local green | Python 3.11, 3.12 and 3.13 passed on macOS; 3.13 passed on Pi5; public 3.11 hosted CI is green; private mirror billing remains blocked |
+| Long-running stability evidence | in progress | Seven consecutive days with daily `health`/`verify`, no critical regression or data loss; [observation procedure](beta-observation.md) |
 
 ## Exit to beta
 
@@ -56,6 +56,8 @@ that account issue cannot be fixed in source code and should not be confused wit
 test failure. Local green results and public hosted results are recorded separately.
 
 Executed results for this baseline are in the [2026-09-25 evidence record](beta-evidence-2026-09-25.md).
+Release-candidate accounting is in the [RC ledger](beta-rc-ledger.md). A source
+preflight is not a counted RC or a published beta.
 
 Run `python scripts/beta-gate.py` from a prepared development environment for source
 tests, red-team cases, public hygiene, locked-dependency OSV, a disposable clean

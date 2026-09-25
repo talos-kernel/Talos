@@ -41,3 +41,25 @@ billing/spending gate before any test step; the public release-source jobs above
 green. Three consecutive beta release candidates have not been cut, and the seven-day
 operating window has not elapsed. The live Pi was not rolled back merely to rehearse
 recovery. A green local gate does not substitute for those missing proofs.
+
+## RC1 source preflight and observation start
+
+After freezing the [beta contract](beta-contract.md), the complete local
+`scripts/beta-gate.py` passed on the changed source: 2,905/2,905 source tests,
+263/263 adversarial cases, public hygiene and locked-dependency OSV (no findings).
+The broader `python3 -m pytest -q` discovery also passed 2,930/2,930 tests.
+The fresh published-alpha install read back version, suites, config mode 0600,
+command link and data. The isolated 0.19.22 → 0.19.23 signed upgrade verified
+SHA-256 and Ed25519, then read back migrated operator state/schedules and rollback.
+This is a preflight of existing alpha artifacts, **not a counted RC**.
+
+On the operating Pi, the separate read-only daily observer was installed without
+switching the Talos package or restarting its service. Its first 2026-09-25 sample
+read back `0.19.23-alpha`, active service, zero restarts, intact chain, successful
+explicit `verify` and anchor verification; 14 errors in the prior 24 hours remain
+visible as a count. The local observation directory is mode 0700 and JSONL/env
+files are mode 0600. Seven consecutive daily samples and human review are still
+required; one green sample is not stability proof.
+The 09:45 CEST timer also fired without manual intervention: systemd reported
+`Result=success`, `ExecMainStatus=0`, and the JSONL read-back had a 09:45:01
+timestamp with `ok=true`. This proves the scheduled path, not future daily runs.

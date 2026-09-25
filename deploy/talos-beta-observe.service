@@ -1,0 +1,9 @@
+[Unit]
+Description=Read-only Talos beta health observation
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/talos/beta-observe.env
+ExecStart=/usr/bin/python3 %h/.local/bin/talos-beta-observe.py
+UMask=0077
+NoNewPrivileges=true
