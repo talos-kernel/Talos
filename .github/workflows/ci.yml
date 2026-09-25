@@ -57,8 +57,38 @@ jobs:
       - name: Check public hygiene
         run: python scripts/check-public-hygiene.py
 
+      - name: Verify embedded signature-verifier pins
+        run: python scripts/sync-verifier-lock.py --check
+
       - name: Run pytest
         run: python -m pytest tests/ -q
 
       - name: Run adversarial suite
         run: python redteam.py
+
+      - name: Test desktop boundaries
+        if: runner.os == 'macOS'
+        run: python -m pytest macos/Tests -q
+
+      - name: Set up pinned app build tool
+        if: runner.os == 'macOS'
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: '0.11.12'
+
+      - name: Build and verify the macOS preview from source
+        if: runner.os == 'macOS'
+        run: |
+          uv python install cpython-3.13.12-macos-aarch64-none --no-bin
+          python macos/build_app.py --python-root "$(uv python dir)/cpython-3.13.12-macos-aarch64-none" --out "$RUNNER_TEMP/Talos.app"
+          codesign --verify --deep --strict "$RUNNER_TEMP/Talos.app"
+          ditto -c -k --keepParent "$RUNNER_TEMP/Talos.app" "$RUNNER_TEMP/Talos-macOS-preview.zip"
+
+      - name: Keep the verified preview (not notarized)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Talos-macOS-preview
+          path: ${{ runner.temp }}/Talos-macOS-preview.zip
+          retention-days: 7
+          if-no-files-found: error

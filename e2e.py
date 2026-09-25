@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -86,10 +87,12 @@ def sha(path: Path) -> str:
 
 def production_reasoner(meter: UsageMeter):
     """Build the exact route restored by the live service, without Telegram polling."""
-    config = load_config()
-    registry = safe_talos_registry(
-        HermesCatalogLoader(config.hermes_provider_catalog, config.hermes_models).load()
-    )
+    # Telegram is replaced by the local sink; a live bot token is neither needed
+    # nor appropriate for this isolated model/kernel exercise.
+    config = load_config(require_channel=False)
+    loader = HermesCatalogLoader(config.hermes_provider_catalog, config.hermes_models)
+    registry = safe_talos_registry(loader.load() if config.hermes_catalog_configured
+                                   else loader.load_if_present())
     fallback = ModelSelection(config.model_provider, config.model_name)
     selection = restore_selection(EventLog(config.eventlog_db), registry, fallback)
     if selection.provider == "claude-cli":
@@ -196,7 +199,7 @@ class Harness:
             standing=self.standing,
             usage=self.usage,
             channels=self.registry,
-            claude_bin="/usr/local/bin/claude",
+            claude_bin=shutil.which("claude") or "claude",
             reasoner_timeout_s=180,
             eventlog_db=self.db,
             snapshot_dir=root / "snap",
@@ -284,7 +287,10 @@ def main() -> int:
         h = Harness(root / "a")
         reply = h.say(f"Lies die Datei {probe} und gib den Inhalt wieder.")
         check("A  Read runs through without approval (real model)",
-              "Waechter" in reply and h.conductor.approvals.get(CHAT_OWNER) is None,
+              ("Waechter" in reply or "Wächter" in reply)
+              and any(t == "exec.result" and '"status": "done"' in payload
+                      and '"tool": "read_file"' in payload for _, t, payload in h.events())
+              and h.conductor.approvals.get(CHAT_OWNER) is None,
               reply.replace("\n", " ")[:120])
 
         # --- B: echtes Modell, Shell parkt -> ja fuehrt genau einmal aus ----------
@@ -303,6 +309,8 @@ def main() -> int:
         check("B4 'yes' runs it and returns an evaluated final answer",
               bool(after_yes.strip()) and "rc=0" not in after_yes
               and "TOOL_CALL:" not in after_yes
+              and any(t == "exec.result" and '"status": "done"' in payload
+                      for _, t, payload in h.events())
               and h.conductor.approvals.get(CHAT_OWNER) is None,
               after_yes.replace("\n", " ")[:120])
         again = h.say("yes")
@@ -450,7 +458,9 @@ def main() -> int:
               and "exec.intent" not in types,
               stop_reply.replace("\n", " ")[:120])
         check("N2 the cancelled run reports the cancellation instead of hallucinating",
-              any(text.strip().endswith("Cancelled.") for _, text in h.sent),
+              any(text.strip().endswith("Cancelled.")
+                  or text.strip() == "[Stopped by the operator before the next step.]"
+                  for _, text in h.sent),
               " | ".join(t.replace("\n", " ")[:60] for _, t in h.sent[-2:]))
 
         # --- O: /pending zeigt den Wortlaut, /approve ist dasselbe wie „ja" -------

@@ -142,3 +142,23 @@ def test_ci_installs_from_the_locks() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "--require-hashes -r requirements.lock -r requirements-dev.lock" in text
     assert "-r requirements.txt" not in text
+
+
+def test_verifier_lock_is_a_hashed_subset_of_audited_runtime() -> None:
+    lock = ROOT / "requirements-verifier.lock"
+    pins = _pins(lock)
+    assert set(pins) == {"cryptography", "cffi", "pycparser"}
+    runtime = _pins(RUNTIME[1])
+    assert all(pins[name] == runtime[name] for name in pins)
+    assert all(count > 0 for entries in pins.values() for _, count in entries)
+
+
+@pytest.mark.skipif(not INSTALLER.exists(), reason="installer is repository-only")
+def test_verifier_pins_are_embedded_before_archive_execution() -> None:
+    text = INSTALLER.read_text()
+    embedded = text.split("<<'VERIFIER_LOCK'\n", 1)[1].split("VERIFIER_LOCK\n", 1)[0]
+    assert embedded == (ROOT / "requirements-verifier.lock").read_text()
+    command = '--require-hashes --only-binary=:all: --no-deps -r "$TMP/verifier.lock"'
+    assert command in text
+    assert text.index(command) < text.index('tar -xzf')
+    assert '--quiet cryptography' not in text

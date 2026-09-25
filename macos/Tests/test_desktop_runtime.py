@@ -15,6 +15,8 @@ spec.loader.exec_module(desktop)
 
 @pytest.fixture
 def runtime(tmp_path, monkeypatch):
+    import desktop_accounts
+    monkeypatch.setattr(desktop_accounts, "discover", lambda: [])
     monkeypatch.delenv("TALOS_SANDBOX", raising=False)
     bundle = tmp_path / "Resources"
     backend = bundle / "backend"
@@ -124,6 +126,8 @@ def test_mutating_actions_require_attended_terminal(monkeypatch, input_tty, outp
 
 def test_quick_connection_only_enables_account_after_success(runtime, monkeypatch):
     import talos.reasoner
+    import desktop_accounts
+    monkeypatch.setattr(desktop_accounts, "discover", lambda: [])
     bundle, profile = runtime
     desktop.provision(bundle, profile)
     monkeypatch.setattr(desktop, "require_operator_terminal", lambda: None)

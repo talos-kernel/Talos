@@ -6,6 +6,23 @@ they make possible that was not possible before — or, more often, what they ta
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions are alpha: the kernel's rules are stable, the surface around them is not.
 
+## Unreleased — RC2 preparation
+
+### Security
+
+- Pin and hash-lock the installer's pre-signature verification dependencies, require
+  binary wheels and refuse dependency resolution outside that reviewed lock.
+
+### Changed
+
+- Build the macOS preview from tracked source with explicit app version metadata,
+  complete account-discovery helpers and per-file build provenance. Dirty builds
+  require an explicit local-preview flag. CI now tests and builds the desktop app.
+- Repair live E2E setup for a token-free test transport and optional provider catalog;
+  require real execution receipts and accept equivalent German umlaut spelling.
+- Separate the Talos project's origin from its interchangeable language-model provider
+  in the default identity. Personal attribution remains operator-owned configuration.
+
 ## [0.20.0-alpha.rc.1] — 2026-09-25
 
 ### Security

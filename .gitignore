@@ -20,6 +20,8 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
+macos/.build/
+macos/build/
 
 # Secrets live outside the repo (~/.secrets/talos-telegram.env, mode 600).
 # These patterns are a second line of defence, not the primary one.

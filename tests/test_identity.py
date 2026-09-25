@@ -10,7 +10,21 @@ from __future__ import annotations
 from pathlib import Path
 
 from talos.identity import DEFAULT_NAME, FALLBACK_PREAMBLE, MAX_SOUL_CHARS, agent_name, load_soul
-from talos.instructions import load_instruction_context
+from talos.instructions import assemble_system_prompt, load_instruction_context
+
+
+def test_shipped_origin_distinguishes_the_project_from_its_model(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    prompt = assemble_system_prompt(
+        tool_protocol="", plan_protocol="", soul_path=root / "SOUL.md",
+        agents_path=tmp_path / "absent-agents", user_path=tmp_path / "absent-user",
+    )
+    assert "https://github.com/talos-kernel/Talos" in prompt
+    assert "Talos contributors" in prompt.replace("\n", " ")
+    assert "A model provider did not develop Talos" in prompt
+    assert "answer about Talos first" in prompt
+    assert "configured alias is not proof of the resolved model" in prompt
+    assert "only when explicitly supplied in operator-owned" in prompt
 
 
 def _soul(tmp_path: Path, text: str) -> Path:
