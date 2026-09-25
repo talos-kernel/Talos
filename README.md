@@ -794,6 +794,10 @@ sitting — a gate you cannot read is not a gate.
 
 ## Roadmap
 
+The path out of alpha is documented in [Beta readiness](docs/beta-readiness.md): it
+separates verified security/release gates from the remaining API, compatibility and
+cross-platform operating evidence.
+
 1. `openat2()` with `RESOLVE_BENEATH` instead of realpath checks.
 2. **An adapter seam for tools.** Adding a channel is already just implementing a
    protocol; adding a *tool* still touches three places, one of them inside the kernel
