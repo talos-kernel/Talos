@@ -9,7 +9,7 @@ exit criteria explicit instead of treating `beta` as a calendar decision.
 | Gate | State | Evidence |
 |---|---|---|
 | Deterministic kernel and approval boundary | green | 263/263 adversarial cases |
-| Regression suite | green locally | 2,910 passed in RC1 source; candidate hosted CI is a separate pending gate |
+| Regression suite | green | RC1 hosted macOS/Ubuntu: 2,908 passed and 2 repository-specific skips each; [RC1 evidence](beta-evidence-rc1-2026-09-25.md) |
 | Dependency security | green | OSV scan: no findings |
 | Public-repository hygiene | green | `scripts/check-public-hygiene.py` passed |
 | Signed release artifacts | green | Ed25519 archive signature and SHA-256 read back over HTTPS |
@@ -17,7 +17,7 @@ exit criteria explicit instead of treating `beta` as a calendar decision.
 | Clean install and signed upgrade | green in isolation | Published 0.19.23 installer and 0.19.22 → 0.19.23 updater passed on macOS and Pi5; schedule migration and rollback read back |
 | Production rollback | not executed | The live service was deliberately not rolled back; this remains an incident-only operation |
 | Cross-platform hosted CI | green on public source | Python 3.11 macOS and Ubuntu completed install, hygiene, pytest and red-team steps in the [public CI run](https://github.com/talos-kernel/Talos/actions/runs/36103848464); the private mirror remains billing-blocked |
-| Stable operator/API contract | baseline frozen, not yet released | [Beta contract](beta-contract.md); compatibility changes require review and migration notes |
+| Stable operator/API contract | frozen, shipped in RC1 | [Beta contract](beta-contract.md); compatibility changes require review and migration notes |
 | Upgrade matrix across supported Python versions | local green | Python 3.11, 3.12 and 3.13 passed on macOS; 3.13 passed on Pi5; public 3.11 hosted CI is green; private mirror billing remains blocked |
 | Long-running stability evidence | in progress | Seven consecutive days with daily `health`/`verify`, no critical regression or data loss; [observation procedure](beta-observation.md) |
 

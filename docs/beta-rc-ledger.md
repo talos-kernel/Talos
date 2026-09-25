@@ -9,7 +9,7 @@ RCs must meet the gate without an unresolved critical/high finding.
 
 | Candidate | State | Evidence |
 |---|---|---|
-| RC1 | source preflight passed; **not counted** | 2,905 source tests, 263/263 adversarial cases, hygiene and OSV passed; published-alpha clean install and signed upgrade/rollback passed. Current 0.19.23-alpha baseline is not an RC artifact. |
+| RC1 — 0.20.0-alpha.rc.1 | **passed, 1 of 3** | Signed artifact at `c14d3c8`; local gate, hosted macOS/Ubuntu CI, OSV/hygiene, Mac/Pi install/upgrade/rollback and pre-launch audit passed. [Executed evidence](beta-evidence-rc1-2026-09-25.md). |
 | RC2 | not started | Requires a distinct versioned, signed artifact after RC1. |
 | RC3 | not started | Requires a distinct versioned, signed artifact after RC2. |
 
