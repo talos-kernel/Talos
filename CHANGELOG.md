@@ -20,6 +20,8 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
   rehearsals, and a daily data-minimal Pi observation collector.
 - Pre-publication rehearsals can use an explicit local archive base and supplied
   signed assets. They exercise the installer and updater in disposable installations.
+- Release archives retain the observation script required by their shipped tests;
+  repository-only maintenance scripts remain excluded.
 
 ### Compatibility
 

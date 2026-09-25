@@ -20,3 +20,9 @@ candidate as failed; do not silently erase it from the sequence.
 RC1 compatibility review: [dashboard Host/Origin boundary](dashboard-rc1-migration.md).
 This tightens a read boundary; private proxies preserving their Host header need
 an explicit operator environment setting. Tool grants and stored state are unchanged.
+
+RC1 pre-publication build `ccf1f6b` failed clean installation on both Mac and Pi:
+the archive excluded `scripts/beta-observe.py`, while its shipped regression tests
+imported that module. No release tag or asset was published. The installer stopped
+before configuration/startup. This build does not count toward the passing sequence;
+the corrected archive must repeat the complete artifact gate.
