@@ -796,7 +796,9 @@ sitting — a gate you cannot read is not a gate.
 
 The path out of alpha is documented in [Beta readiness](docs/beta-readiness.md): it
 separates verified security/release gates from the remaining API, compatibility and
-cross-platform operating evidence.
+cross-platform operating evidence. The proposed [beta contract](docs/beta-contract.md),
+[recovery runbook](docs/recovery.md) and local `python scripts/beta-gate.py` make those
+checks repeatable; hosted CI and long-running operation remain separate gates.
 
 1. `openat2()` with `RESOLVE_BENEATH` instead of realpath checks.
 2. **An adapter seam for tools.** Adding a channel is already just implementing a

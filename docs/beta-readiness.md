@@ -13,11 +13,13 @@ exit criteria explicit instead of treating `beta` as a calendar decision.
 | Dependency security | green | OSV scan: no findings |
 | Public-repository hygiene | green | `scripts/check-public-hygiene.py` passed |
 | Signed release artifacts | green | Ed25519 archive signature and SHA-256 read back over HTTPS |
-| Pi5 deployment and rollback | green | Backup before deploy, rsync read-back, service restart and version read-back |
-| Cross-platform hosted CI | blocked externally | GitHub account billing/spending limit prevents jobs from starting; no test step runs |
-| Stable operator/API contract | in progress | `/eval`, `/heartbeat`, permission grants and configuration are still evolving |
-| Upgrade matrix across supported Python versions | not yet evidenced | Current workflow executes Python 3.11 on Ubuntu and macOS when billing permits |
-| Long-running stability evidence | not yet complete | Requires a defined observation window with no critical regression |
+| Pi5 deployment | green | Backup before deploy, rsync read-back, service restart and version read-back |
+| Clean install and signed upgrade | green in isolation | Published 0.19.23 installer and 0.19.22 → 0.19.23 updater passed on macOS and Pi5; schedule migration and rollback read back |
+| Production rollback | not executed | The live service was deliberately not rolled back; this remains an incident-only operation |
+| Cross-platform hosted CI | green on public source | Python 3.11 macOS and Ubuntu completed install, hygiene, pytest and red-team steps in the [public CI run](https://github.com/talos-kernel/Talos/actions/runs/36103848464); the private mirror remains billing-blocked |
+| Stable operator/API contract | candidate documented | [Beta contract](beta-contract.md); freeze and migration review remain before the beta tag |
+| Upgrade matrix across supported Python versions | local green | Python 3.11, 3.12 and 3.13 passed on macOS; 3.13 passed on Pi5; hosted CI remains blocked |
+| Long-running stability evidence | not yet complete | Seven consecutive days with daily `health`/`verify`, no critical regression or data loss |
 
 ## Exit to beta
 
@@ -34,6 +36,9 @@ Talos can move to `0.20.0-beta.1` when all of these are true:
    check and dependency scan, with no unresolved critical or high-severity finding.
 5. The project has an explicit support matrix and a short recovery runbook for failed
    updates, broken model configuration and lost approval state.
+6. A seven-day observation window on the operating Pi has daily health and event-chain
+   checks, no critical security or data-loss regression, and no unexplained service
+   restart. This is separate from a one-hour test run or a successful deploy.
 
 ## Exit to 1.0
 
@@ -45,8 +50,18 @@ stored schedule requires an explicit migration or a major release.
 
 ## What can and cannot be done locally
 
-The test, red-team, hygiene, release-signing, deployment, migration and rollback work can
-be executed locally and on the Pi. GitHub Actions billing, payment-method repair and
-account spending limits require an account-owner action; they cannot be fixed in source
-code. Until that is resolved, local green results remain valid evidence but are not a
-substitute for the hosted cross-platform gate.
+The public repository's hosted CI provides the release-source platform gate. The private
+mirror's jobs are blocked by its account billing/spending setting before any step runs;
+that account issue cannot be fixed in source code and should not be confused with a
+test failure. Local green results and public hosted results are recorded separately.
+
+Executed results for this baseline are in the [2026-09-25 evidence record](beta-evidence-2026-09-25.md).
+
+Run `python scripts/beta-gate.py` from a prepared development environment for source
+tests, red-team cases, public hygiene, locked-dependency OSV, a disposable clean
+install and an isolated signed upgrade from the previous published alpha, including
+schedule migration and rollback.
+The upgrade rehearsal creates and removes only a temporary installation; it does not
+restart or change the operating Pi. Use `--without-upgrade` only for a partial source
+check, never as evidence that the whole gate passed. See the [support and command
+contract](beta-contract.md) and [recovery runbook](recovery.md).

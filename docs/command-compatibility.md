@@ -28,6 +28,7 @@ This describes this source branch, not an already-published release.
 | Memory | `/remember`, `/memory`, `/forget`; Talos' explicit fact store |
 | Skills, tools | `/skills`, `/tools`, `/reload-skills`; live discovery, no implicit installation |
 | Scheduled tasks / cron | `/every`, `/schedules`, `/unschedule`; interval and cron expressions |
+| Idle heartbeat | `/heartbeat <minutes> <task>`; `/heartbeat status|pause|resume|clear`; skipped while another run is active, with unattended permissions |
 | Automation templates | `/blueprint`, `/blueprints`, `/bp`; install/remove/enable/disable/status |
 | Debug information | `/debug`, `/log`; local response, no automatic public upload |
 
