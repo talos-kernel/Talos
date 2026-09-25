@@ -35,13 +35,16 @@ dem dieser Prozess bewusst keinen Draht hat.
 from __future__ import annotations
 
 import http.server
+import ipaddress
 import json
+import os
 import re
 import sqlite3
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from . import __version__
 from .config import DATA_DIR, EVENTLOG_DB, SCHEDULE_DB
@@ -978,10 +981,38 @@ PAGE = (
 
 # --- HTTP: feste Routen, kein Input in der Ausfuehrung ----------------------------------------
 
+def _authority(value: str) -> str:
+    """Exact authorities only: no wildcard, credentials, path or header whitespace."""
+    if not value or any(c.isspace() or ord(c) < 32 for c in value):
+        raise ValueError("invalid dashboard authority")
+    parsed = urlsplit("//" + value)
+    if parsed.username is not None or parsed.password is not None or parsed.path or parsed.query or parsed.fragment:
+        raise ValueError("invalid dashboard authority")
+    host = parsed.hostname or ""
+    if not re.fullmatch(r"[a-zA-Z0-9.:-]+", host):
+        raise ValueError("invalid dashboard authority")
+    host = host.lower().rstrip(".")
+    if ":" in host:
+        host = "[" + str(ipaddress.IPv6Address(host)) + "]"
+    port = parsed.port
+    if port == 0:
+        raise ValueError("invalid dashboard port")
+    return host + (f":{port}" if port is not None else "")
+
+
 class _Server(http.server.HTTPServer):
     def __init__(self, addr, handler, collector: Collector) -> None:
+        if addr[0] != "localhost" and not ipaddress.ip_address(addr[0]).is_loopback:
+            raise ValueError("dashboard must bind to loopback")
+        extra = frozenset(_authority(value.strip()) for value in
+                          os.environ.get("TALOS_DASHBOARD_ALLOWED_HOSTS", "").split(",") if value.strip())
         super().__init__(addr, handler)
         self.collector = collector
+        port = self.server_address[1]
+        local = {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"}
+        if port == 80:
+            local.update({"127.0.0.1", "localhost", "[::1]"})
+        self.allowed_hosts = frozenset(local) | extra
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -998,6 +1029,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
     }
 
     def do_GET(self) -> None:  # noqa: N802
+        # Loopback alone does not stop a browser from using a rebound DNS name.
+        # A tailnet proxy must be explicitly named by the operator, never inferred
+        # from client-controlled Forwarded/X-Forwarded-Host headers.
+        try:
+            hosts = self.headers.get_all("Host", [])
+            if len(hosts) != 1:
+                raise ValueError("missing or duplicate host")
+            host = _authority(hosts[0])
+            if host not in self.server.allowed_hosts:
+                raise ValueError("untrusted host")
+            origins = self.headers.get_all("Origin", [])
+            if len(origins) > 1:
+                raise ValueError("duplicate origin")
+            if origins:
+                origin = urlsplit(origins[0])
+                if (origin.scheme not in {"http", "https"} or origin.path or origin.query
+                        or origin.fragment or _authority(origin.netloc) != host):
+                    raise ValueError("foreign origin")
+        except ValueError:
+            self._send_json(403, {"error": "untrusted request origin"})
+            return
         pfad = self.path.split("?")[0].split("#")[0]
         if pfad == "/":
             self._send(200, "text/html; charset=utf-8", PAGE)
@@ -1031,6 +1083,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", typ)
         self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
         self.end_headers()
         self.wfile.write(payload)
 
@@ -1062,6 +1118,8 @@ USAGE = (
     f"  live view: running runs, open approvals, event log, schedules —\n"
     f"  observing, not intervening. Listens on {BIND}:{PORT} (loopback only);\n"
     f"  put a tailnet proxy in front (`tailscale serve`) to watch from away.\n"
+    "  Set TALOS_DASHBOARD_ALLOWED_HOSTS in the dashboard process environment to\n"
+    "  its exact proxy host[:port]; remote authentication remains the proxy's job.\n"
     f"  Approvals stay in the operator's chat — there is no endpoint for them.\n"
 )
 

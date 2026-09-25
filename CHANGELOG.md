@@ -6,6 +6,29 @@ they make possible that was not possible before — or, more often, what they ta
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions are alpha: the kernel's rules are stable, the surface around them is not.
 
+## [0.20.0-alpha.rc.1] — 2026-09-25
+
+### Security
+
+- The local read-only dashboard rejects foreign Host/Origin headers and non-loopback
+  binds. An exact operator-configured proxy authority preserves tailnet access;
+  forwarded headers cannot create trust. Responses disable caching and framing.
+
+### Added
+
+- A frozen beta contract, candidate ledger, clean-install and signed-upgrade/rollback
+  rehearsals, and a daily data-minimal Pi observation collector.
+- Pre-publication rehearsals can use an explicit local archive base and supplied
+  signed assets. They exercise the installer and updater in disposable installations.
+
+### Compatibility
+
+- This is the first candidate for the beta transition; it remains an opt-in alpha
+  prerelease while the seven-day observation and three-candidate gates are pending.
+- The permission kernel, existing command meanings and operator data format are
+  unchanged from 0.19.23-alpha. No service is started by installation or update.
+- The source contains 2,910 collected tests and 263 adversarial cases.
+
 ## [0.19.23-alpha] — 2026-09-24
 
 ### Added

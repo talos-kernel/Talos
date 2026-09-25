@@ -27,6 +27,9 @@ User=talos
 Group=talos
 WorkingDirectory=/opt/talos
 ExecStart=/usr/bin/python3 -m talos dashboard
+# For a tailnet proxy, add its exact public authority in a local unit override:
+# Environment=TALOS_DASHBOARD_ALLOWED_HOSTS=dashboard.example.com
+# The proxy must enforce access control. Wildcards are refused.
 Restart=on-failure
 RestartSec=2
 # Lesen ist seine ganze Arbeit — unter allen anderen Diensten.

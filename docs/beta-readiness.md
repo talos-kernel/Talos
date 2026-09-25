@@ -4,12 +4,12 @@ Talos is still labelled alpha because the deterministic permission kernel is sta
 while the operator-facing surface is still allowed to change. This document makes the
 exit criteria explicit instead of treating `beta` as a calendar decision.
 
-## Current baseline — 0.19.23-alpha
+## Published baseline — 0.19.23-alpha; candidate — 0.20.0-alpha.rc.1
 
 | Gate | State | Evidence |
 |---|---|---|
 | Deterministic kernel and approval boundary | green | 263/263 adversarial cases |
-| Regression suite | green | 2,905 collected tests in current source; prior public run: 2,923 passed, 2 skipped |
+| Regression suite | green locally | 2,910 passed in RC1 source; candidate hosted CI is a separate pending gate |
 | Dependency security | green | OSV scan: no findings |
 | Public-repository hygiene | green | `scripts/check-public-hygiene.py` passed |
 | Signed release artifacts | green | Ed25519 archive signature and SHA-256 read back over HTTPS |

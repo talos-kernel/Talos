@@ -1,9 +1,9 @@
 {
-  "version": "0.19.23-alpha",
-  "tests": 2905,
+  "version": "0.20.0-alpha.rc.1",
+  "tests": 2910,
   "redteam_faelle": 263,
   "kernel_zeilen": 985,
   "werkzeuge": 33,
   "gebaut_am": "2026-09-24T21:54:23Z",
-  "release_ref": "v0.19.23-alpha"
+  "release_ref": "v0.20.0-alpha.rc.1"
 }

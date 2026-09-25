@@ -16,3 +16,7 @@ RCs must meet the gate without an unresolved critical/high finding.
 Do not label any artifact `0.20.0-beta.1` or update the website's latest-version
 pointer until the release audit and beta exit gates are complete. Track a failed
 candidate as failed; do not silently erase it from the sequence.
+
+RC1 compatibility review: [dashboard Host/Origin boundary](dashboard-rc1-migration.md).
+This tightens a read boundary; private proxies preserving their Host header need
+an explicit operator environment setting. Tool grants and stored state are unchanged.

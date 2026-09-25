@@ -120,6 +120,9 @@ def _model_overrides(value: str) -> str:
 
 
 KEYS: tuple[Key, ...] = (
+    Key("TALOS_DASHBOARD_ALLOWED_HOSTS", POLICY,
+        "exact proxy host[:port] authorities for the read-only dashboard; set in its process environment",
+        validate=_one_line),
     Key("TALOS_CLEANUP_SENT_MEDIA", POLICY,
         "delete unchanged disposable workspace/outbox file copies only after a confirmed "
         "Telegram media upload; originals and failed uploads are retained", "0", _bool01),

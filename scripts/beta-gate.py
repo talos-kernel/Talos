@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from talos import __version__
 
 
 def run(label: str, argv: list[str]) -> bool:
@@ -26,8 +28,10 @@ def run(label: str, argv: list[str]) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--previous", default="0.19.22-alpha")
-    parser.add_argument("--current", default="0.19.23-alpha")
+    parser.add_argument("--previous", default="0.19.23-alpha")
+    parser.add_argument("--current", default=__version__)
+    parser.add_argument("--base", default="https://talos-agent.ch")
+    parser.add_argument("--assets-dir", type=Path)
     parser.add_argument("--without-upgrade", action="store_true",
                         help="Run source gates only; does not qualify as a complete beta gate")
     args = parser.parse_args()
@@ -48,15 +52,17 @@ def main() -> int:
     if args.without_upgrade:
         print("Source gates passed; signed upgrade/rollback was NOT run.")
         return 0
-    if shutil.which("gh") is None:
+    if args.assets_dir is None and shutil.which("gh") is None:
         print("FAILED: gh is required for published release assets", file=sys.stderr)
         return 1
     if not run("Clean install from published release",
-               [sys.executable, "scripts/beta-clean-install.py", "--current", args.current]):
+               [sys.executable, "scripts/beta-clean-install.py", "--current", args.current,
+                "--base", args.base]):
         return 1
     if not run("Signed upgrade, migration and rollback",
                [sys.executable, "scripts/beta-upgrade-rehearsal.py",
-                "--previous", args.previous, "--current", args.current]):
+                "--previous", args.previous, "--current", args.current,
+                *(["--assets-dir", str(args.assets_dir.resolve())] if args.assets_dir else [])]):
         return 1
     print("\nAll local beta gates passed. Hosted CI and observation gates remain separate.")
     return 0

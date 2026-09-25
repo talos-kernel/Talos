@@ -83,6 +83,76 @@ def _get(server, path: str, method: str = "GET") -> tuple[int, str, str]:
     return antwort.status, typ, body
 
 
+def test_foreign_host_and_origin_cannot_read_local_records(server):
+    authority = f"127.0.0.1:{server.server_address[1]}"
+    for headers in (
+        {"Host": "foreign.example"},
+        {"Host": authority, "Origin": "https://foreign.example"},
+        {"Host": authority, "Origin": "null"},
+        {"Host": "foreign.example", "X-Forwarded-Host": authority},
+        {"Host": "user@" + authority},
+    ):
+        conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+        conn.request("GET", "/api/events", headers=headers)
+        response = conn.getresponse()
+        assert response.status == 403
+        assert json.loads(response.read()) == {"error": "untrusted request origin"}
+        conn.close()
+    conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+    conn.request("GET", "/api/events", headers={"Origin": "http://" + authority})
+    response = conn.getresponse()
+    assert response.status == 200
+    response.read()
+    conn.close()
+
+
+def test_proxy_authority_requires_an_explicit_operator_setting(tmp_path, monkeypatch):
+    from talos.schema import KEYS, POLICY
+    assert next(k for k in KEYS if k.name == "TALOS_DASHBOARD_ALLOWED_HOSTS").kind == POLICY
+    monkeypatch.setenv("TALOS_DASHBOARD_ALLOWED_HOSTS", "dashboard.example.com")
+    server = dashboard.make_server(eventlog_db=tmp_path / "missing.db", port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+        conn.request("GET", "/api/events", headers={"Host": "dashboard.example.com",
+                                                   "Origin": "https://dashboard.example.com"})
+        response = conn.getresponse()
+        assert response.status == 200
+        response.read()
+        conn.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_dashboard_rejects_wildcard_or_url_authorities(monkeypatch):
+    for invalid in ("*", "https://dashboard.example.com", "user@dashboard.example.com",
+                    "dashboard.example.com/path", "dashboard.example.com:99999"):
+        monkeypatch.setenv("TALOS_DASHBOARD_ALLOWED_HOSTS", invalid)
+        with pytest.raises(ValueError):
+            dashboard.make_server(port=0)
+
+
+def test_dashboard_refuses_non_loopback_bind():
+    with pytest.raises(ValueError, match="loopback"):
+        dashboard.make_server(bind="0.0.0.0", port=0)
+
+
+def test_dashboard_responses_disable_caching_and_framing(server):
+    conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+    conn.request("GET", "/api/events")
+    response = conn.getresponse()
+    assert response.status == 200
+    assert response.getheader("Cache-Control") == "no-store"
+    assert response.getheader("X-Content-Type-Options") == "nosniff"
+    assert response.getheader("X-Frame-Options") == "DENY"
+    assert response.getheader("Content-Security-Policy") == "frame-ancestors 'none'"
+    response.read()
+    conn.close()
+
+
 # --- Routen und ihre Kernfelder ------------------------------------------------------------
 
 def test_status_route_reports_health_and_version(server, tmp_path: Path) -> None:
