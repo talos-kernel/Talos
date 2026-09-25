@@ -10,8 +10,18 @@ RCs must meet the gate without an unresolved critical/high finding.
 | Candidate | State | Evidence |
 |---|---|---|
 | RC1 — 0.20.0-alpha.rc.1 | **passed, 1 of 3** | Signed artifact at `c14d3c8`; local gate, hosted macOS/Ubuntu CI, OSV/hygiene, Mac/Pi install/upgrade/rollback and pre-launch audit passed. [Executed evidence](beta-evidence-rc1-2026-09-25.md). |
-| RC2 | not started | Requires a distinct versioned, signed artifact after RC1. |
+| RC2 | source preparation passed, **not counted** | App build/provenance, pinned installer verifier and live-model E2E checked at `a8f165f`; [hosted CI](https://github.com/talos-kernel/Talos/actions/runs/36137817309) passed. Still requires a distinct versioned, signed release artifact after RC1. |
 | RC3 | not started | Requires a distinct versioned, signed artifact after RC2. |
+
+RC2 preparation (2026-09-25): hosted Python 3.11 macOS/Ubuntu each passed 2,912
+tests with two repository-specific skips and 263 adversarial cases. macOS additionally
+passed 50 desktop tests and built the ad-hoc signed preview from clean public source.
+The 44-case real-model suite passed twice after harness fixes; earlier setup/CLI and
+text-assertion failures were retained in the audit. Locked Python/Swift OSV scans
+found no issues. The revised installer passed clean installation on Mac and ARM64
+Linux using the existing signed RC1 archive; poisoned verifier hashes were rejected.
+These are source/bootstrap checks, not a new signed RC. The app preview is not
+notarized; a fresh visual E2E of that preview remains pending.
 
 Do not label any artifact `0.20.0-beta.1` or update the website's latest-version
 pointer until the release audit and beta exit gates are complete. Track a failed
