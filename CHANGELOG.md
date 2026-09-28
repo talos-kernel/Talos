@@ -6,6 +6,16 @@ they make possible that was not possible before — or, more often, what they ta
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions are alpha: the kernel's rules are stable, the surface around them is not.
 
+## [0.20.0-alpha.rc.4] — 2026-09-28
+
+### Fixed
+
+- Preserve a bounded retry headroom when transient memory compression fails. The next
+  turn retries compression before older context is discarded, while the hard memory
+  bound remains enforced.
+- This candidate is not yet a qualified or deployed release; it must repeat the RC
+  gates before it can replace RC3.
+
 ## [0.20.0-alpha.rc.3] — 2026-09-25
 
 ### Qualification
