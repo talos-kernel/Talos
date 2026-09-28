@@ -13,8 +13,9 @@ Versions are alpha: the kernel's rules are stable, the surface around them is no
 - Preserve a bounded retry headroom when transient memory compression fails. The next
   turn retries compression before older context is discarded, while the hard memory
   bound remains enforced.
-- This candidate is not yet a qualified or deployed release; it must repeat the RC
-  gates before it can replace RC3.
+- RC4 qualification passed after the isolated signed-artifact, platform and real-model
+  gates were repeated. The seven-day operating observation remains open, and this
+  prerelease is not deployed to the production Pi.
 
 ## [0.20.0-alpha.rc.3] — 2026-09-25
 

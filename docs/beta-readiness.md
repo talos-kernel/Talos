@@ -9,16 +9,16 @@ exit criteria explicit instead of treating `beta` as a calendar decision.
 | Gate | State | Evidence |
 |---|---|---|
 | Deterministic kernel and approval boundary | green | 263/263 adversarial cases |
-| Regression suite | pending for RC4 | RC3 hosted macOS/Ubuntu: 2,912 passed and 2 repository-specific skips each; current local core 2,915; RC4 adds the compression-retry regression |
+| Regression suite | green for RC4 | RC4 local: 2,915 passed; public hosted macOS/Ubuntu CI run 36388585774 passed; RC4 adds the compression-retry regression |
 | Dependency security | green | OSV scan: no findings |
 | Public-repository hygiene | green | `scripts/check-public-hygiene.py` passed |
-| Signed release artifacts | pending for RC4 | RC3 artifact remains the last qualified release; RC4 must receive a new signed archive and HTTPS read-back |
+| Signed release artifacts | green for RC4 | RC4 archive SHA-256 `badd2224b2297e98cf7bb6ce664f8ba9c31984ccdf91424d92504128a51c72ff`; Ed25519 verification, tamper rejection and GitHub HTTPS read-back passed |
 | Pi5 deployment | previous alpha only | Production remains 0.19.23-alpha; candidates qualified in isolation, not deployed over the operating instance |
-| Clean install and signed upgrade | pending for RC4 | RC3 clean install, 0.19.23-alpha → RC3 and RC2 → RC3 passed on macOS and Pi5; RC4 must repeat the artifact gate |
+| Clean install and signed upgrade | green for RC4 | RC4 clean install, 0.19.23-alpha/RC3 upgrades, schedule migration, rollback and state read-back passed in isolation |
 | Candidate service restart | green in isolation | RC2 and RC3 launchd/systemd start/restart retained schedules and valid event chains; empty messenger fixture, no external sockets; fixture units unloaded |
 | Production rollback | not executed | The live service was deliberately not rolled back; this remains an incident-only operation |
 | Cross-platform hosted CI | green on public source | RC3 Python 3.11 macOS/Ubuntu passed; macOS additionally built and verified the preview in [public CI](https://github.com/talos-kernel/Talos/actions/runs/36141877494); the private mirror remains billing-blocked before any step |
-| Three distinct release candidates | RC1–RC3 green; RC4 pending | RC1, RC2 and RC3 each have a distinct signed archive and executed full gate; RC4 is the recommended candidate containing the memory-loss fix; [ledger](beta-rc-ledger.md) |
+| Release candidates | green, RC1–RC4 | RC1–RC3 qualified the original sequence; RC4 independently qualified the compression-retry fix; [ledger](beta-rc-ledger.md) |
 | Stable operator/API contract | frozen, shipped in RC1 | [Beta contract](beta-contract.md); compatibility changes require review and migration notes |
 | Upgrade matrix across supported Python versions | local green | Python 3.11, 3.12 and 3.13 passed on macOS; 3.13 passed on Pi5; public 3.11 hosted CI is green; private mirror billing remains blocked |
 | Long-running stability evidence | in progress | Three consecutive days recorded (25–27 September); four further consecutive days are required; [observation procedure](beta-observation.md) |
