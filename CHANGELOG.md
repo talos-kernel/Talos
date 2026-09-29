@@ -6,6 +6,19 @@ they make possible that was not possible before — or, more often, what they ta
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions are alpha: the kernel's rules are stable, the surface around them is not.
 
+## [0.20.0-alpha.rc.5] — 2026-09-29
+
+### Fixed
+
+- Reload SOUL identity and skill bodies after same-size edits even when filesystem
+  timestamps are unchanged. Content fingerprints replace timestamp-only cache keys;
+  deterministic regression tests cover both paths. Permission rules are unchanged.
+- Treat a bare `yes`/`ja` as conversation when no approval is pending. Explicit
+  commands and stale buttons still fail closed. Bind queued affirmative replies to
+  the request observed at ingress, never a future or replacement approval.
+
+This is an opt-in alpha candidate, not a beta declaration or automatic upgrade.
+
 ## [0.20.0-alpha.rc.4] — 2026-09-28
 
 ### Fixed

@@ -4,7 +4,7 @@
 hat drei Stellen, an denen sie falsch sein koennte:
 
 1. **Wann gemerkt wird.** Nur nach einer *zugestellten* echten Antwort. Nicht bei
-   Kommandos, nicht bei Freigabe-Runden, nicht bei ja/nein, und nicht, wenn die
+   Kommandos, nicht bei Freigabe-Runden, und nicht, wenn die
    Zustellung fehlschlug — ein Verlauf mit einer Antwort, die the operator nie gesehen hat,
    laesst jedes Folgegespraech ins Leere laufen.
 2. **Was der Reasoner zu sehen bekommt.** Der Verlauf ist als Kontext ausgezeichnet,
@@ -175,11 +175,15 @@ def test_kommandos_stehen_nicht_im_verlauf(tmp_path):
     assert memory.recall(CHAT) == ()
 
 
-def test_ein_einsames_ja_steht_nicht_im_verlauf(tmp_path):
-    conductor, _r, sent, memory = build(tmp_path)
-    conductor.handle(msg(1, "yes"))
-    assert sent and "No approval is pending" in sent[0][1]
-    assert memory.recall(CHAT) == ()
+def test_conversational_yes_uses_and_updates_memory(tmp_path):
+    conductor, reasoner, sent, memory = build(tmp_path)
+    memory.remember(CHAT, asked="Explain permissions", answered="Would you like an example?")
+    assert conductor.handle(msg(1, "ja")) is True
+    assert "Would you like an example?" in reasoner.prompts[0]
+    assert reasoner.prompts[0].endswith("ja")
+    assert sent[-1][1] == "echo(1)"
+    assert memory.recall(CHAT)[-2].text == "ja"
+    assert memory.recall(CHAT)[-1].text == "echo(1)"
 
 
 def test_abgewiesene_identitaet_hinterlaesst_keinen_verlauf(tmp_path):
@@ -190,7 +194,7 @@ def test_abgewiesene_identitaet_hinterlaesst_keinen_verlauf(tmp_path):
 
 
 def test_freigabe_runde_landet_nicht_im_verlauf(tmp_path):
-    """Der geparkte Lauf hat keine Antwort — und „ja"/„nein" sind ohne ihn bedeutungslos."""
+    """Approval decisions are control traffic, not conversational memory."""
     call = "TOOL_CALL: " + json.dumps(
         {"tool": "write_file", "args": {"path": f"{HOME}/.bashrc", "content": "x"}}
     )

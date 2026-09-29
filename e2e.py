@@ -313,8 +313,11 @@ def main() -> int:
                       for _, t, payload in h.events())
               and h.conductor.approvals.get(CHAT_OWNER) is None,
               after_yes.replace("\n", " ")[:120])
-        again = h.say("yes")
-        check("B5 second 'yes' runs into nothing", "no approval is pending" in again.lower())
+        effects_before = [e for e in h.events() if e[1] in {"approval.granted", "grant.issued", "exec.result"}]
+        again = h.say("/approve")
+        check("B5 explicit approval cannot replay a consumed request",
+              "no approval is pending" in again.lower()
+              and [e for e in h.events() if e[1] in {"approval.granted", "grant.issued", "exec.result"}] == effects_before)
 
         chain = [f"{a}/{t}" for a, t, _ in h.events()]
         check("B6 write-ahead audit chain is complete",
@@ -357,8 +360,12 @@ def main() -> int:
             CHAT_OWNER, ToolRequest("run_shell", OWNER, {"command": "echo spaet"}, ()), "p")
         now[0] = 1400.0
         expired = h.say("yes")
-        check("F  expired approval runs into nothing",
-              "no approval is pending" in expired.lower() and not any("rc=" in t for _, t in h.sent))
+        check("F  yes after expiry is conversation, never an expired grant",
+              expired == "(no model needed for this case)"
+              and h.reasoner.calls == 1
+              and h.conductor.approvals.get(CHAT_OWNER) is None
+              and not any(t in {"approval.granted", "grant.issued", "exec.result"}
+                          for _, t, _ in h.events()))
 
         # --- G: Tier C (~/.bashrc) parkt — Antwort ist bewusst 'no' -------------
         bashrc = home / ".bashrc"
