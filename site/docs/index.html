@@ -3,15 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>TALOS — Field Manual</title>
-<meta name="description" content="Install Talos, give it an identity, run it. Every command — and the ones it deliberately does not have.">
+<title>Talos AI Agent Docs — Install, Models &amp; Telegram</title>
+<meta name="description" content="Install the self-hosted Talos AI agent on macOS or Linux. Set up Ollama or Claude, terminal chat, Telegram and scoped approvals with the Talos field manual.">
 <link rel="icon" href="../brand/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="../brand/apple-touch-icon.png">
-<meta property="og:title" content="TALOS — Field Manual">
-<meta property="og:description" content="Install it, give it an identity, run it. Every command — and the ones it deliberately does not have.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Talos">
+<meta property="og:title" content="Talos AI Agent Docs — Install, Models &amp; Telegram">
+<meta property="og:description" content="The field manual: install Talos on macOS or Linux, choose Ollama or Claude, and set up terminal chat, Telegram and scoped approvals.">
 <meta property="og:image" content="https://talos-agent.ch/brand/og-logo.png">
 <meta property="og:url" content="https://talos-agent.ch/docs/">
 <link rel="canonical" href="https://talos-agent.ch/docs/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Talos AI Agent Docs — Install, Models &amp; Telegram">
+<meta name="twitter:description" content="Install Talos on macOS or Linux. Choose a model, set up Telegram and learn how scoped approvals work.">
+<meta name="twitter:image" content="https://talos-agent.ch/brand/og-logo.png">
 <meta name="theme-color" content="#17140F">
 <script>document.documentElement.classList.add('js')</script>
 <style>
@@ -240,10 +246,10 @@ html.js .rv.in{opacity:1; transform:none}
       <span>Classification · Public</span>
       <span>Subject · An agent you can hand a shell to</span>
     </div>
-    <h1>Setting it up</h1>
-    <p class="lede">Talos takes instructions over a chat channel, reasons with a language
+    <h1>Talos AI agent: the field manual</h1>
+    <p class="lede">Talos is a self-hosted AI agent for terminal and Telegram. It reasons with a language
     model, and runs tools: a real shell, a confined Claude worker, a browser on request.
-    None of the 29 tools runs until a deterministic kernel has ruled on the
+    No tool runs until a deterministic kernel has ruled on the
     action. <strong>The model proposes; it does not decide.</strong></p>
     <p class="lede">That one decision shapes the rest of this manual. It is why the
     command list is short, and why a few obvious conveniences are missing on purpose.</p>
@@ -343,7 +349,9 @@ python -m talos chat</pre>
   <section id="model" class="rv">
     <h2><span class="n">Section 03</span>Give it a mind</h2>
     <p>Talos does not ship a model. It talks to one — through an API key, or through a
-    CLI you already have installed and logged in.</p>
+    CLI you already have installed and logged in. Use local models with Ollama,
+    Claude through the Claude Code CLI, or a configured API provider. Self-hosting
+    Talos does not make a cloud model local; your provider's charges and terms still apply.</p>
 <pre>python -m talos models              <span class="c"># the catalogue</span>
 python -m talos models --refresh    <span class="c"># ask the providers directly</span>
 python -m talos setup model</pre>

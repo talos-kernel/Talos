@@ -2,7 +2,7 @@
   <img src="assets/talos-icon-256.png" alt="Talos icon" width="132">
 </p>
 
-<h1 align="center">TALOS</h1>
+<h1 align="center">TALOS — Self-hosted AI agent</h1>
 
 <p align="center">
   <em>An autonomous agent you can hand a shell to,<br>because it can prove what it will not do.</em>
@@ -34,9 +34,21 @@
 
 ---
 
-Talos runs on your own machine, takes instructions over a chat channel, thinks through a
-language model, and executes tools — but only after a deterministic security kernel has
-ruled on the action. **The model proposes. It never decides.**
+Talos is an **open-source, self-hosted AI agent for terminal and Telegram** on macOS
+and Linux, including Raspberry Pi. Use **Ollama** for local models, **Claude** through
+the Claude Code CLI, or a configured API provider. Talos searches, writes and runs
+tools — but only after a deterministic permission kernel has ruled on the action.
+**The model proposes. It never decides.**
+
+Choose **Allow once**, **Allow this task**, or an exact-action standing approval;
+you do not have to approve every step individually. Sandboxed shell execution and an
+append-only audit trail keep actions bounded and reviewable. Talos is MIT-licensed;
+model-provider and hosting costs depend on your setup. It is currently **alpha**.
+
+[Install Talos](#install) · [Run local models with Ollama](https://talos-agent.ch/docs/#model) ·
+[Set up Telegram](https://talos-agent.ch/docs/#channels) ·
+[Watch a recorded session](https://talos-agent.ch/console.html) ·
+[Install with Pinokio](https://github.com/talos-kernel/talos-pinokio)
 
 ```
    message ──▶ event log ──▶ reason ──▶ ╔══════════╗ ──▶ capability ──▶ execute

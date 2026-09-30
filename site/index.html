@@ -12,8 +12,8 @@
   zu optimieren waere verlorene Muehe. Was hier gesucht wird, ist die Eigenschaft:
   ein Agent, dessen Rechte an einem Gate haengen — danach ist der Titel gebaut.
 -->
-<title>Talos — an AI agent with a permission kernel</title>
-<meta name="description" content="An autonomous agent you can hand a shell to. Every tool call passes a gate that grants authority for exact arguments, once, for 30 seconds — and logs the verdict.">
+<title>Talos AI Agent — Self-hosted for Terminal &amp; Telegram</title>
+<meta name="description" content="Run Talos, an open-source AI agent for terminal and Telegram. Use Ollama or Claude with a deterministic permission kernel, scoped approvals and an audit trail.">
 <link rel="canonical" href="https://talos-agent.ch/">
 <meta name="theme-color" content="#f6f1e8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1c1712" media="(prefers-color-scheme: dark)">
@@ -21,29 +21,32 @@
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Talos">
-<meta property="og:title" content="Talos — an AI agent with a permission kernel">
-<meta property="og:description" content="Hand it a shell. Every tool call passes a gate that grants authority for exact arguments, once, for 30 seconds — and logs the verdict.">
+<meta property="og:title" content="Talos AI Agent — Self-hosted for Terminal &amp; Telegram">
+<meta property="og:description" content="An open-source AI agent for your own machine. Ollama or Claude, a deterministic permission kernel, scoped approvals and an audit trail.">
 <meta property="og:image" content="https://talos-agent.ch/brand/og-preview.jpg">
 <meta property="og:url" content="https://talos-agent.ch/">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Talos — an AI agent with a permission kernel">
-<meta name="twitter:description" content="Hand it a shell. Every tool call passes a gate that grants authority for exact arguments, once, for 30 seconds.">
+<meta name="twitter:title" content="Talos AI Agent — Self-hosted for Terminal &amp; Telegram">
+<meta name="twitter:description" content="An open-source AI agent for your own machine. Ollama or Claude, a deterministic permission kernel, scoped approvals and an audit trail.">
 <meta name="twitter:image" content="https://talos-agent.ch/brand/og-preview.jpg">
 
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
+  "@type": ["SoftwareApplication", "SoftwareSourceCode"],
+  "@id": "https://talos-agent.ch/#software",
   "name": "Talos",
+  "alternateName": "Talos AI Agent",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "macOS, Linux",
   "url": "https://talos-agent.ch/",
   "downloadUrl": "https://talos-agent.ch/install.sh",
   "codeRepository": "https://github.com/talos-kernel/talos",
+  "sameAs": ["https://github.com/talos-kernel/talos"],
   "programmingLanguage": "Python",
   "license": "https://opensource.org/licenses/MIT",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CHF" },
-  "description": "An autonomous agent you can hand a shell to, because it can prove every step it takes. Every tool call passes a deterministic policy gate that grants authority for exact arguments, once, for 30 seconds, and writes the verdict to an append-only log."
+  "description": "An open-source, self-hosted AI agent for terminal and Telegram on macOS and Linux. Use local models through Ollama or configured cloud providers such as Claude. Every tool call passes a deterministic permission kernel, with scoped human approvals and an append-only audit trail."
 }
 </script>
 
@@ -385,9 +388,9 @@ html.js .rv.in{opacity:1;transform:none}
 <header class="hero" id="top">
   <div class="wrap hero-grid">
     <div>
-      <p class="sys">held in your keep · open source · your machine</p>
+      <p class="sys">Talos AI agent · open source · self-hosted</p>
       <h1>The work is real.<br>The oath is yours.</h1>
-      <p class="lede">A sworn servant upon your own machine. It searches, writes and acts beneath a permission gate. Every deed leaves a record. <strong>The kernel has the final word, and the key remains in your hand.</strong></p>
+      <p class="lede">Your self-hosted AI agent for terminal and Telegram. A sworn servant that searches, writes and acts beneath a permission gate. <strong>The kernel has the final word, and the key remains in your hand.</strong></p>
       <div class="cta-row">
         <a class="btn" href="#mission">Witness the deed</a>
         <a class="btn ghost" href="#install">Raise the keep</a>
@@ -751,8 +754,16 @@ html.js .rv.in{opacity:1;transform:none}
         <p>Talos is MIT-licensed and free. You pay only the model provider you configure,
         and the installer starts nothing until you say so.</p></details>
       <details class="q rv"><summary>Which models does it run on?</summary>
-        <p>Claude through the Claude Code CLI by default, other providers by configuration.
-        The kernel does not care which model proposes: it judges the call, not the model.</p></details>
+        <p>Use local models through Ollama, Claude through the Claude Code CLI, or a
+        configured API provider. The kernel judges the call, not the model.
+        See the <a href="docs/#model">model setup guide</a>. Local inference uses your own
+        hardware; cloud models may carry provider charges.</p></details>
+      <details class="q rv"><summary>Where can I run Talos?</summary>
+        <p>On macOS or Linux, including a Raspberry Pi or your own server. Speak through
+        the terminal or Telegram; the agent runs on the machine you control.
+        Read the <a href="docs/#install">installation guide</a> and
+        <a href="docs/#channels">Telegram and channel setup</a>, or inspect the
+        <a href="https://github.com/talos-kernel/talos">Talos source on GitHub</a>.</p></details>
       <details class="q rv"><summary>Is my setup exposed as an example?</summary>
         <p>No. Your deployment is not a public example: operator identity, notes, credentials
         and runtime data live outside the source tree. Model requests go to the provider you
