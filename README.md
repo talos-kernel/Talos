@@ -175,6 +175,18 @@ Stated plainly, because a security claim without its limits is marketing:
 
 ## Install
 
+### Through Pinokio
+
+[Install with Pinokio](https://pinokio.co/apps/github-com-talos-kernel-talos-pinokio)
+on macOS or Linux. The separate launcher pins **0.20.0-alpha.rc.5**, an opt-in
+alpha candidate, not the website's default download. Bring your own model access;
+it does not upgrade an existing Talos installation.
+Read the [launcher requirements and setup instructions](https://github.com/talos-kernel/talos-pinokio#start)
+before installing. Enter API keys only through your operating system's terminal,
+not Pinokio's input-tracked terminal.
+
+### Manual installation
+
 Requires Python 3.11+ on Linux or macOS and a model connection: your own API key,
 or an installed, signed-in Claude or Hermes CLI. The setup wizard offers the
 connections available on your machine.
