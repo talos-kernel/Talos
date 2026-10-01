@@ -14,11 +14,16 @@ Exit 1 gilt einem einzigen kritischen Befund: einer gebrochenen Hash-Kette. Fehl
 Tagesfenster sind eine Warnung, kein Abbruch — ein Cron-Waechter, der wegen eines
 einzelnen Fehlschlags umfaellt, wird abgeschaltet statt gelesen (die Konvention steht
 in `doctor.py`).
+
+An unresolved polling failure is `degraded`, even beyond the daily error window.
+Only a successful poll of that same channel records recovery. Exit codes retain
+the existing integrity-only contract; observers must also inspect `status`.
 """
 from __future__ import annotations
 
 import datetime
 import json
+import re
 import sqlite3
 import sys
 import time
@@ -106,6 +111,35 @@ def _chain(db: Path) -> dict:
     }
 
 
+def _channels(db: Path) -> dict:
+    """Last proven polling transition per channel, not a service liveness claim.
+
+    Do not limit to 24 hours: an outage cannot heal just by getting old. Old
+    installations without recovery events remain unconfirmed until a new poll.
+    Error bodies and conversation identifiers never enter this summary.
+    """
+    states: dict = {}
+    conn = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True)
+    try:
+        for ts, kind, raw in conn.execute(
+            "SELECT ts, type, payload_json FROM events "
+            "WHERE type IN ('channel.error', 'channel.ready') ORDER BY id DESC"
+        ):
+            try:
+                payload = json.loads(raw)
+            except (ValueError, TypeError):
+                continue
+            name = payload.get("channel") if isinstance(payload, dict) else None
+            if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", name):
+                continue
+            if name not in states:
+                states[name] = {"status": "ready" if kind == "channel.ready" else "degraded",
+                                "ts": ts}
+    finally:
+        conn.close()
+    return states
+
+
 def _schedules(db: Path) -> dict:
     """Anstehende Zeitplaene — nur gezaehlt und der naechste Termin, kein Inhalt.
 
@@ -141,11 +175,12 @@ def collect(
     plan_db = Path(schedule_db) if schedule_db is not None else Path(SCHEDULE_DB)
     anker_datei = Path(anchors_path) if anchors_path is not None else ANCHORS_FILE
 
-    daten: dict = {"ts": moment, "event_log": None, "chain": None}
+    daten: dict = {"ts": moment, "event_log": None, "chain": None, "channels": {}}
     if db.is_file():
         try:
             daten["event_log"] = _log_stats(db, day_ago=moment - DAY_S)
             daten["chain"] = _chain(db)
+            daten["channels"] = _channels(db.resolve())
         except sqlite3.Error:
             # Eine Datei, die keine Datenbank ist, ist ein Befund — kein Traceback.
             daten["event_log"] = {"unreadable": True}
@@ -161,7 +196,8 @@ def collect(
         else None
     )
     daten["status"] = (
-        "critical" if daten["chain"] and not daten["chain"]["chain_ok"] else "ok"
+        "critical" if daten["chain"] and not daten["chain"]["chain_ok"] else
+        "degraded" if any(state["status"] == "degraded" for state in daten["channels"].values()) else "ok"
     )
     return daten
 
@@ -189,6 +225,10 @@ def render(daten: dict) -> str:
             zeilen.append(f"  errors     {log['errors_24h']} in the last 24h{detail}")
         else:
             zeilen.append("  errors     none in the last 24h")
+    for name, state in sorted(daten.get("channels", {}).items()):
+        detail = ("last poll transition successful" if state["status"] == "ready"
+                  else "recovery not yet confirmed")
+        zeilen.append(f"  channel    {name}: {detail} · {_zeit(state['ts'])}")
     kette = daten.get("chain")
     if kette is not None:
         if kette["chain_ok"]:

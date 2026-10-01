@@ -100,6 +100,20 @@ def test_the_dev_lock_agrees_with_the_runtime_lock_on_shared_pins() -> None:
         assert {v for v, _ in runtime[name]} == {v for v, _ in dev[name]}, name
 
 
+def test_urllib3_declared_floor_excludes_known_vulnerable_versions() -> None:
+    """Unpinned installs must retain the proxy/streaming security fixes too."""
+    requirement = next((r for r in _declared(RUNTIME[0])
+                        if _canonical(r.name) == "urllib3"), None)
+    assert requirement is not None, "urllib3 needs an explicit security floor"
+    assert not requirement.specifier.contains(Version("2.7.0"))
+    assert requirement.specifier.contains(Version("2.8.0"))
+
+
+def test_urllib3_lock_includes_proxy_and_streaming_security_fixes() -> None:
+    assert all(version >= Version("2.8.0")
+               for version, _ in _pins(RUNTIME[1])["urllib3"])
+
+
 @pytest.mark.parametrize("lock", [RUNTIME[1], DEV[1]], ids=["runtime", "dev"])
 def test_the_lock_carries_no_machine_path(lock: Path) -> None:
     """Der Kopf zitiert die Kommandozeile — erzeugt mit relativen Pfaden, oder gar nicht."""
@@ -142,3 +156,23 @@ def test_ci_installs_from_the_locks() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "--require-hashes -r requirements.lock -r requirements-dev.lock" in text
     assert "-r requirements.txt" not in text
+
+
+def test_verifier_lock_is_a_hashed_subset_of_audited_runtime() -> None:
+    lock = ROOT / "requirements-verifier.lock"
+    pins = _pins(lock)
+    assert set(pins) == {"cryptography", "cffi", "pycparser"}
+    runtime = _pins(RUNTIME[1])
+    assert all(pins[name] == runtime[name] for name in pins)
+    assert all(count > 0 for entries in pins.values() for _, count in entries)
+
+
+@pytest.mark.skipif(not INSTALLER.exists(), reason="installer is repository-only")
+def test_verifier_pins_are_embedded_before_archive_execution() -> None:
+    text = INSTALLER.read_text()
+    embedded = text.split("<<'VERIFIER_LOCK'\n", 1)[1].split("VERIFIER_LOCK\n", 1)[0]
+    assert embedded == (ROOT / "requirements-verifier.lock").read_text()
+    command = '--require-hashes --only-binary=:all: --no-deps -r "$TMP/verifier.lock"'
+    assert command in text
+    assert text.index(command) < text.index('tar -xzf')
+    assert '--quiet cryptography' not in text

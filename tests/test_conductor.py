@@ -214,12 +214,64 @@ def test_duplicate_update_is_skipped(tmp_path):
     assert len(sent) == 1
 
 
-def test_lone_yes_without_pending_executes_nothing(tmp_path):
+def test_lone_yes_without_pending_is_conversation(tmp_path):
     conductor, reasoner, sent = make(tmp_path)
-    ok = conductor.handle(msg(3, OWNER, "yes"))
-    assert ok is True
-    assert reasoner.calls == 0  # „ja" darf nie an den Reasoner gehen
-    assert "no approval is pending" in sent[-1][1].lower()
+    for index, text in enumerate(("ja", "yes", " JA! ", "Yes."), start=1):
+        update = msg(index, OWNER, text)
+        assert conductor.is_inline(update) is False
+        assert conductor.handle(update) is True
+        assert reasoner.calls == index
+        assert "no approval is pending" not in sent[-1][1].lower()
+    assert not conductor.log.recent(50, types=("approval.granted", "grant.issued"))
+
+
+def test_orphaned_explicit_approvals_do_not_become_conversation(tmp_path):
+    reasoner = FakeReasoner()
+    conductor, sent = _build(tmp_path, reasoner, commands=ApproveCommands())
+    for index, text in enumerate(("/approve", "always", "immer", "allow this task")):
+        assert conductor.handle(msg(index, OWNER, text)) is True
+        assert "no approval is pending" in sent[-1][1].lower()
+    assert reasoner.calls == 0
+    assert not conductor.log.recent(50, types=("approval.granted", "grant.issued"))
+
+
+def test_conversational_yes_cannot_approve_its_own_tool_request(tmp_path):
+    target = tmp_path / "marker"
+    reasoner = ScriptedReasoner(
+        _tool_call("run_shell", {"command": f"printf checked > '{target}'"}, [])
+    )
+    conductor, sent = _build(tmp_path, reasoner)
+    assert conductor.handle(msg(1, OWNER, "ja")) is True
+    assert conductor.approvals.get(CHAT_OWNER) is not None
+    assert "Tool: run_shell" in sent[-1][1]
+    assert not target.exists()
+    assert not conductor.log.recent(50, types=("approval.granted", "grant.issued"))
+
+    # A yes queued before a different task parks must not approve that future request.
+    race = tmp_path / "queued"
+    race.mkdir()
+    queued, _sent = _build(race, FakeReasoner())
+    early_yes = msg(2, OWNER, "ja")
+    assert queued.is_inline(early_yes) is False
+    pending = queued.approvals.park(
+        CHAT_OWNER,
+        ToolRequest("run_shell", OWNER, {"command": f"printf checked > '{target}'"}),
+        "future approval",
+    )
+    assert queued.handle(early_yes) is True
+    assert not target.exists()
+    assert queued.approvals.get(CHAT_OWNER) is pending
+    assert not queued.log.recent(50, types=("approval.granted", "grant.issued"))
+
+    # Nor may a queued yes switch from the request it saw to a replacement.
+    bound_yes = msg(3, OWNER, "ja")
+    assert queued.is_inline(bound_yes) is False
+    replacement = queued.approvals.park(CHAT_OWNER, pending.req, "replacement")
+    assert queued.is_inline(bound_yes) is False  # Re-routing cannot refresh its consent.
+    assert queued.handle(bound_yes) is True
+    assert queued.approvals.get(CHAT_OWNER) is replacement
+    assert not target.exists()
+    assert not queued.log.recent(50, types=("approval.granted", "grant.issued"))
 
 
 # --- Freigabe-Runde -------------------------------------------------------------
@@ -239,7 +291,7 @@ def test_needs_human_parks_and_shows_kernel_facts(tmp_path):
 
 def test_pending_decisions_are_worker_routed_while_stop_stays_inline(tmp_path):
     conductor, _reasoner, _sent = make(tmp_path)
-    assert conductor.is_inline(msg(30, OWNER, "yes")) is True
+    assert conductor.is_inline(msg(30, OWNER, "yes")) is False
     conductor.approvals.park(
         CHAT_OWNER,
         ToolRequest("run_shell", OWNER, {"command": "true"}),
@@ -250,7 +302,7 @@ def test_pending_decisions_are_worker_routed_while_stop_stays_inline(tmp_path):
     assert conductor.is_inline(msg(33, OWNER, "/stop")) is True
 
 
-def test_yes_executes_pending_once_then_second_yes_is_noop(tmp_path):
+def test_yes_executes_pending_once_then_second_yes_is_conversation(tmp_path):
     reasoner = ScriptedReasoner(
         _tool_call("run_shell", {"command": "echo hi"}, []),
         "**Status**\n\n- Ausgabe: hi",
@@ -259,16 +311,21 @@ def test_yes_executes_pending_once_then_second_yes_is_noop(tmp_path):
     conductor.handle(msg(1, OWNER, "sag hi"))
     assert reasoner.calls == 1
 
-    assert conductor.handle(msg(2, OWNER, "yes")) is True
+    confirmation = msg(2, OWNER, "yes")
+    assert conductor.is_inline(confirmation) is False
+    assert conductor.handle(confirmation) is True
     assert reasoner.calls == 2                     # zweiter Lauf präsentiert nur das Ergebnis
     assert conductor.approvals.get(CHAT_OWNER) is None    # one-shot: geleert
     assert "hi" in sent[-1][1]                      # echo-Ausgabe geliefert
     assert "rc=0" not in sent[-1][1]
     assert "TOOL_CALL" not in sent[-1][1]
 
-    # zweites „ja" läuft ins Leere — nichts mehr geparkt
+    # A second yes is conversation, never a replay of the consumed approval.
+    grants = conductor.log.recent(50, types=("approval.granted", "grant.issued", "exec.result"))
     assert conductor.handle(msg(3, OWNER, "yes")) is True
-    assert "no approval is pending" in sent[-1][1].lower()
+    assert reasoner.calls == 3
+    assert "no approval is pending" not in sent[-1][1].lower()
+    assert conductor.log.recent(50, types=("approval.granted", "grant.issued", "exec.result")) == grants
 
 
 def test_approved_effect_serializes_next_reasoning_turn(tmp_path):
@@ -378,8 +435,7 @@ def test_approved_vpn_probe_is_interpreted_instead_of_dumped(tmp_path):
             _tool_call(
                 "run_shell",
                 {
-                    "command": (
-                    )
+                    "command": "printf 'Tunnel/Proxy: no additional VPN tunnel'"
                 },
                 [],
             ),
@@ -452,17 +508,20 @@ def test_yes_aborts_when_target_changed_since_asking(tmp_path):
     assert "changed" in sent[-1][1].lower()
 
 
-def test_yes_after_ttl_expiry_is_noop(tmp_path):
+def test_yes_after_ttl_expiry_cannot_execute_expired_request(tmp_path):
     now = [1000.0]
     reasoner = ScriptedReasoner(_tool_call("run_shell", {"command": "echo hi"}, []))
     conductor, sent = _build(tmp_path, reasoner, clock=lambda: now[0], ttl_s=300)
     conductor.handle(msg(1, OWNER, "sag hi"))
     assert conductor.approvals.get(CHAT_OWNER) is not None
 
+    effects_before = conductor.log.recent(50, types=("approval.granted", "grant.issued", "exec.result"))
     now[0] = 1400.0  # über die TTL hinaus
     assert conductor.handle(msg(2, OWNER, "yes")) is True
-    assert "no approval is pending" in sent[-1][1].lower()
-    assert not any("rc=0" in text for _, text in sent)  # nichts ausgeführt
+    assert reasoner.calls == 2
+    assert "no approval is pending" not in sent[-1][1].lower()
+    assert conductor.approvals.get(CHAT_OWNER) is None
+    assert conductor.log.recent(50, types=("approval.granted", "grant.issued", "exec.result")) == effects_before
 
 
 def test_stranger_yes_cannot_resolve_alis_pending(tmp_path):
@@ -663,6 +722,28 @@ def test_approval_button_is_bound_to_exact_pending_request(tmp_path):
         conversation=CHAT_OWNER,
         pending=second,
     ) is None
+
+    # An expired button never falls through to the conversational yes path.
+    now = [100.0]
+    structured = []
+    reasoner = FakeReasoner()
+    picker = ApprovalPicker(clock=lambda: now[0])
+    conductor, _sent = _build(
+        tmp_path, reasoner, clock=lambda: now[0], ttl_s=60,
+        approval_picker=picker,
+        send_structured=lambda _conversation, message: structured.append(message),
+    )
+    pending = conductor.approvals.park(
+        CHAT_OWNER, ToolRequest("run_shell", OWNER, {"command": "printf stale"}), "approve"
+    )
+    card = picker.open(pending.prompt, pending, principal=OWNER, conversation=CHAT_OWNER)
+    now[0] = 200.0
+    callback = Inbound(OWNER, CHAT_OWNER, "", "telegram:update:expired",
+                       CallbackQuery("expired-query", card.keyboard[0][0].data, 77))
+    assert conductor.handle(callback) is True
+    assert "This approval no longer applies" in structured[-1].text
+    assert reasoner.calls == 0
+    assert not conductor.log.recent(50, types=("approval.granted", "grant.issued", "exec.result"))
 
 
 def test_atomic_claim_rejects_old_pending_and_preserves_newer_request(tmp_path):

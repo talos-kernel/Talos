@@ -44,6 +44,7 @@ den Prompt, die Ablehnungsgruende in die Maschinenkonsole (`/skills`), und die b
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import stat
@@ -461,24 +462,23 @@ def _catalog_text(lines: tuple[str, ...], kept: int, max_chars: int) -> str:
     return "\n".join(shown)
 
 
-# Der einzige globale Zustand des Moduls. Gehaengt an den Dateizeitstempel, nicht an die
-# Prozesslaufzeit — genau wie in `identity.py`: ein bearbeiteter Skill wirkt sofort, ein
-# unveraenderter kostet einen `stat` statt eines Lesevorgangs.
-_BODY_CACHE: dict[str, tuple[tuple[int, int], str]] = {}
+# Timestamp and size are not content identity: rapid same-size edits can collide.
+# Revalidate readability and the size/type limits before reusing a parsed body.
+_BODY_CACHE: dict[str, tuple[bytes, str]] = {}
 
 
 def _body_from_disk(path: Path) -> str | None:
-    """Body aus dem Cache, wenn die Datei sich nicht geruehrt hat. Fehlschlag -> `None`."""
+    """Load current bounded content; unreadable or invalid files yield None."""
     try:
-        stamp = path.stat()
-    except OSError:
+        text = _read_capped(path)
+    except SkillError:
         return None
-    key = (stamp.st_mtime_ns, stamp.st_size)
+    key = hashlib.sha256(text.encode("utf-8")).digest()
     hit = _BODY_CACHE.get(str(path))
     if hit is not None and hit[0] == key:
         return hit[1]
     try:
-        _, body = _split_frontmatter(_read_capped(path))
+        _, body = _split_frontmatter(text)
     except SkillError:
         return None
     _BODY_CACHE[str(path)] = (key, body.strip())

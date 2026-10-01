@@ -11,13 +11,18 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from talos import __version__
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--current", default="0.19.23-alpha")
+    parser.add_argument("--current", default=__version__)
+    parser.add_argument("--base", default="https://talos-agent.ch",
+                        help="explicit artifact base, including file:// for a pre-publication rehearsal")
+    parser.add_argument("--installer", type=Path, default=ROOT / "site" / "install.sh")
     args = parser.parse_args()
-    installer = ROOT / "site" / "install.sh"
+    installer = args.installer.resolve()
     if f'VERSION="{args.current}"' not in installer.read_text():
         parser.error("requested version does not match the shipped installer")
     with tempfile.TemporaryDirectory(prefix="talos-beta-install-") as temporary:
@@ -28,7 +33,7 @@ def main() -> int:
                        ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "SSL_CERT_FILE",
                         "REQUESTS_CA_BUNDLE")
                        if key in os.environ}
-        environment.update({"TALOS_BASE": "https://talos-agent.ch",
+        environment.update({"TALOS_BASE": args.base,
                             "TALOS_PREFIX": str(prefix), "TALOS_BIN_DIR": str(bin_dir),
                             "PIP_NO_INPUT": "1", "PIP_DISABLE_PIP_VERSION_CHECK": "1",
                             "PYTHONNOUSERSITE": "1", "NO_COLOR": "1"})

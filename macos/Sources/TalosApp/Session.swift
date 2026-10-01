@@ -11,6 +11,18 @@ struct RuntimeStatus: Decodable {
     var hermes_available = false
     var telegram_configured = false
     var workspace = ""
+    var accounts: [CLIAccount] = []
+}
+
+struct CLIAccount: Decodable, Identifiable {
+    var id: String
+    var label: String
+    var installed: Bool
+    var status: String
+    var status_label: String
+    var detail: String
+    var action: String
+    var action_label: String
 }
 
 struct SavedTurn: Decodable, Identifiable {

@@ -2402,7 +2402,8 @@ _bgc(
     "framed as data — otherwise an injected line becomes a permanent instruction",
 )
 
-# Und der Fall, der still bleibt: der Verdichter faellt aus und der Verlauf waechst weiter.
+# Und der Fall, der still bleibt: ein einzelner Verdichterausfall darf den Verlauf
+# erhalten, aber wiederholte Ausfaelle duerfen ihn nicht unbegrenzt wachsen lassen.
 def _kaputt(_v):
     raise RuntimeError("weg")
 
@@ -2411,9 +2412,9 @@ _gewachsen = _Memory(max_turns=KEEP_HEAD + KEEP_TAIL + 2, max_chars=10_000, summ
 for _i in range(60):
     _gewachsen.remember("c1", asked=f"f{_i}", answered=f"a{_i}")
 _bgc(
-    "A broken summariser lets the context grow without limit",
-    len(_gewachsen.recall("c1")) <= KEEP_HEAD + KEEP_TAIL + 2,
-    "falls back to discarding; the limit is not a comfort feature",
+    "A broken summariser has bounded retry headroom",
+    len(_gewachsen.recall("c1")) <= KEEP_HEAD + KEEP_TAIL + 2 + 6,
+    "preserves one transient failure, then enforces a hard bound",
 )
 
 failures += bgc_failures

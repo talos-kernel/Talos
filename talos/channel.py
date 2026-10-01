@@ -203,6 +203,7 @@ class ChannelRegistry:
         channels: tuple[Channel, ...] = (),
         *,
         on_error: "ErrorSink | None" = None,
+        on_ready: Callable[[str], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -211,6 +212,8 @@ class ChannelRegistry:
             raise ValueError(f"Kanalnamen nicht eindeutig: {names}")
         self._channels = {c.name: c for c in channels}
         self._on_error = on_error
+        self._on_ready = on_ready
+        self._ready: set[str] = set()
         self._clock, self._sleep = clock, sleep
         self._poll_failures: dict[str, tuple[int, float]] = {}
 
@@ -246,16 +249,30 @@ class ChannelRegistry:
             count, retry_at = self._poll_failures.get(name, (0, 0.0))
             if self._clock() < retry_at:
                 continue
-            if self._on_error is None:
-                collected.extend(channel.poll())
-                continue
             try:
                 collected.extend(channel.poll())
-                self._poll_failures.pop(name, None)
             except Exception as error:
+                self._ready.discard(name)
+                if self._on_error is None:
+                    raise
                 count = min(count + 1, 6)
                 self._poll_failures[name] = (count, self._clock() + min(30, 2 ** (count - 1)))
                 self._on_error(name, error)
+            else:
+                self._poll_failures.pop(name, None)
+                # Empty successful polls also prove recovery. Record only state
+                # transitions, including startup, never every idle long-poll.
+                if name not in self._ready:
+                    if self._on_ready is not None:
+                        try:
+                            self._on_ready(name)
+                        except Exception:
+                            # The adapter has advanced its offset. A failed
+                            # observation must not discard received commands.
+                            # Leave readiness unconfirmed and retry the record
+                            # after the next successful poll.
+                            continue
+                    self._ready.add(name)
         if not collected and self._poll_failures:
             # poll_all catches failures, so the outer exception sleep never ran.
             # Tick at most once a second while idle; healthy channels remain polled

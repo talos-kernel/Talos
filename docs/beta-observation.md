@@ -20,3 +20,13 @@ or data-loss regression occurred. `errors_24h` is diagnostic, not an automatic
 failure threshold; investigate a rise without recording raw private text in the
 release evidence. A failed day resets the seven-day window after diagnosis and fix.
 The collector provides evidence; it cannot by itself certify beta readiness.
+
+An unresolved `channel.error` makes health `degraded`, even when the error is older
+than 24 hours. Only `channel.ready` from a successful poll of the same channel
+clears that state; a generated answer is not recovery evidence. Degraded health
+makes the observation `ok=false`. The health CLI retains exit 1 for broken event
+chains, so integrations must inspect its JSON `status`, not just the exit code.
+Existing logs without recovery events remain unconfirmed until the upgraded
+service polls successfully. Historical samples are not rewritten or retroactively
+certified by this new check. A removed channel's unresolved history also remains
+visible; investigate it rather than silently treating removal as recovery.

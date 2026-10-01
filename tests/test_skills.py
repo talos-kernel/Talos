@@ -445,6 +445,21 @@ def test_a_body_whose_file_vanished_yields_none(tmp_path: Path) -> None:
     assert catalog.body("ghost") is None
 
 
+def test_same_size_skill_edit_with_preserved_timestamp_is_reloaded(tmp_path: Path) -> None:
+    import os
+
+    root = tmp_path / "skills"
+    folder = _write_skill(root, "edited", frontmatter="name: edited\ndescription: Same.", body="AAA\n")
+    path = folder / "SKILL.md"
+    stamp = path.stat()
+    catalog = discover_skills(root)
+    assert catalog.body("edited") == "AAA"
+    path.write_text(path.read_text(encoding="utf-8").replace("AAA", "BBB"), encoding="utf-8")
+    os.utime(path, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    assert (path.stat().st_mtime_ns, path.stat().st_size) == (stamp.st_mtime_ns, stamp.st_size)
+    assert catalog.body("edited") == "BBB"
+
+
 # ---------------------------------------------------------------- Katalog
 
 

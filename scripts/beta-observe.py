@@ -50,7 +50,7 @@ def collect(root: Path, *, runner=subprocess.run, now: dt.datetime | None = None
             anchor = data.get("anchor") or {}
             schedules = data.get("schedules") or {}
             sample.update(
-                health_status=data.get("status") if data.get("status") in ("ok", "critical") else "unavailable",
+                health_status=data.get("status") if data.get("status") in ("ok", "degraded", "critical") else "unavailable",
                 chain_ok=chain.get("chain_ok") is True,
                 chain_broken_id=chain.get("chain_broken_id") if isinstance(chain.get("chain_broken_id"), int) else None,
                 events_total=log.get("events_total") if isinstance(log.get("events_total"), int) else None,

@@ -200,6 +200,9 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
             Event("poll", "ingress", "channel.error",
                   {"channel": name, "error": _ohne_token(str(error))})
         ),
+        on_ready=lambda name: log.append(
+            Event("poll", "ingress", "channel.ready", {"channel": name})
+        ),
     )
     # Der Zaehler haengt am aktiven Reasoner, nicht am Kommando: gezaehlt wird, was wirklich lief.
     # Der Katalog ist injizierbar, die Auswahl exakt validiert und im Event-Log restauriert.

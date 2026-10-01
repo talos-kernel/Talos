@@ -15,7 +15,7 @@ module = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(module)
 
 
-def _runner(*, broken=False, restarts=0, anchor_ok=True):
+def _runner(*, broken=False, restarts=0, anchor_ok=True, health_status="ok"):
     calls = []
 
     def run(argv, **kwargs):
@@ -24,7 +24,7 @@ def _runner(*, broken=False, restarts=0, anchor_ok=True):
         assert kwargs["timeout"] == 60
         if "health" in argv:
             return subprocess.CompletedProcess(argv, 0, json.dumps({
-                "status": "ok", "newest_error": "SECRET_PRIVATE_MESSAGE",
+                "status": health_status, "newest_error": "SECRET_PRIVATE_MESSAGE",
                 "event_log": {"events_total": 200, "errors_24h": 2, "runs_24h": 3,
                               "newest_error": "SECRET_PRIVATE_MESSAGE"},
                 "chain": {"chain_ok": True, "chain_broken_id": None, "chained": 180},
@@ -80,3 +80,11 @@ def test_output_symlink_is_rejected(tmp_path):
     with pytest.raises(OSError):
         module.append_record(link, {"ok": True})
     assert real.read_text() == "untouched"
+
+
+def test_unrecovered_channel_blocks_observation_without_leaking_details(tmp_path):
+    run, _ = _runner(health_status="degraded")
+    sample = module.collect(tmp_path, runner=run)
+    assert sample["ok"] is False
+    assert sample["health_status"] == "degraded"
+    assert "SECRET_PRIVATE_MESSAGE" not in json.dumps(sample)

@@ -13,4 +13,7 @@ assets/  export-ignore
 # Wartungswerkzeug des Betreuers. Wer Talos installiert, hat dafuer keine Verwendung —
 # und `sync-public.sh` trug die GitHub-Kennung des Betreuers ausgeschrieben in jede
 # Auslieferung. Gefunden beim Scan des FERTIGEN Tarballs, nicht des Arbeitsbaums.
-scripts/ export-ignore
+scripts/* export-ignore
+# The read-only observer is operator tooling and is exercised by shipped tests.
+# Keep the directory traversable so this exception reaches the archive.
+scripts/beta-observe.py -export-ignore

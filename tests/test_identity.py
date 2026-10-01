@@ -7,10 +7,25 @@ fehlende Datei den Agenten nicht stumm schaltet.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from talos.identity import DEFAULT_NAME, FALLBACK_PREAMBLE, MAX_SOUL_CHARS, agent_name, load_soul
-from talos.instructions import load_instruction_context
+from talos.instructions import assemble_system_prompt, load_instruction_context
+
+
+def test_shipped_origin_distinguishes_the_project_from_its_model(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    prompt = assemble_system_prompt(
+        tool_protocol="", plan_protocol="", soul_path=root / "SOUL.md",
+        agents_path=tmp_path / "absent-agents", user_path=tmp_path / "absent-user",
+    )
+    assert "https://github.com/talos-kernel/Talos" in prompt
+    assert "Talos contributors" in prompt.replace("\n", " ")
+    assert "A model provider did not develop Talos" in prompt
+    assert "answer about Talos first" in prompt
+    assert "configured alias is not proof of the resolved model" in prompt
+    assert "only when explicitly supplied in operator-owned" in prompt
 
 
 def _soul(tmp_path: Path, text: str) -> Path:
@@ -48,6 +63,17 @@ def test_renaming_takes_effect_without_a_restart(tmp_path: Path) -> None:
 def test_shouting_heading_becomes_a_title(tmp_path: Path) -> None:
     """Die Ueberschrift darf schreien; die Kopfzeile im Chat soll es nicht."""
     assert agent_name(_soul(tmp_path, "# TALOS\n\nYou guard.\n")) == "Talos"
+
+
+def test_same_size_soul_edit_with_preserved_timestamp_is_reloaded(tmp_path: Path) -> None:
+    soul = _soul(tmp_path, "# TALOS\n\nYou guard.\n")
+    stamp = soul.stat()
+    assert agent_name(soul) == "Talos"
+    _soul(tmp_path, "# ARGUS\n\nYou watch.\n")
+    os.utime(soul, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    assert (soul.stat().st_mtime_ns, soul.stat().st_size) == (stamp.st_mtime_ns, stamp.st_size)
+    assert agent_name(soul) == "Argus"
+    assert "You watch." in load_soul(soul)
 
 
 def test_mixed_case_names_survive_untouched(tmp_path: Path) -> None:

@@ -6,6 +6,92 @@ they make possible that was not possible before — or, more often, what they ta
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions are alpha: the kernel's rules are stable, the surface around them is not.
 
+## [0.20.0-alpha.rc.6] — Unreleased
+
+### Fixed
+
+- Require urllib3 2.8.0 or newer for proxy TLS isolation and bounded chunked
+  response parsing. Regenerate hashed dependency locks without unrelated upgrades.
+- Keep unresolved channel polling failures visible as degraded health until that
+  same channel has a successful poll. Record startup/recovery transitions without
+  hiding errors, flooding idle logs, changing retry delays or replaying actions.
+  The beta observer rejects degraded health; permissions and exit codes are unchanged.
+
+## [0.20.0-alpha.rc.5] — 2026-09-29
+
+### Fixed
+
+- Reload SOUL identity and skill bodies after same-size edits even when filesystem
+  timestamps are unchanged. Content fingerprints replace timestamp-only cache keys;
+  deterministic regression tests cover both paths. Permission rules are unchanged.
+- Treat a bare `yes`/`ja` as a conversational follow-up when no approval is pending,
+  preserving conversation context and worker routing. Explicit approval commands and
+  stale buttons still fail closed; newly proposed effects require normal kernel approval.
+- Bind queued affirmative replies to the pending request seen at ingress, so an early
+  reply cannot approve a future or replacement request while waiting for the worker.
+
+## [0.20.0-alpha.rc.4] — 2026-09-28
+
+### Fixed
+
+- Preserve a bounded retry headroom when transient memory compression fails. The next
+  turn retries compression before older context is discarded, while the hard memory
+  bound remains enforced.
+- RC4 qualification passed after the isolated signed-artifact, platform and real-model
+  gates were repeated. The seven-day operating observation remains open, and this
+  prerelease is not deployed to the production Pi.
+
+## [0.20.0-alpha.rc.3] — 2026-09-25
+
+### Qualification
+
+- A distinct stabilization candidate after RC2, with no runtime feature or permission
+  changes. Repeat the signed clean-install, previous-alpha/RC2 upgrade, state migration,
+  rollback, isolated service restart, real-model and cross-platform hosted gates.
+- Record RC2's completed qualification; the seven-day observation gate remains separate.
+
+## [0.20.0-alpha.rc.2] — 2026-09-25
+
+### Security
+
+- Pin and hash-lock the installer's pre-signature verification dependencies, require
+  binary wheels and refuse dependency resolution outside that reviewed lock.
+
+### Changed
+
+- Build the macOS preview from tracked source with explicit app version metadata,
+  complete account-discovery helpers and per-file build provenance. Dirty builds
+  require an explicit local-preview flag. CI now tests and builds the desktop app.
+- Repair live E2E setup for a token-free test transport and optional provider catalog;
+  require real execution receipts and accept equivalent German umlaut spelling.
+- Separate the Talos project's origin from its interchangeable language-model provider
+  in the default identity. Personal attribution remains operator-owned configuration.
+
+## [0.20.0-alpha.rc.1] — 2026-09-25
+
+### Security
+
+- The local read-only dashboard rejects foreign Host/Origin headers and non-loopback
+  binds. An exact operator-configured proxy authority preserves tailnet access;
+  forwarded headers cannot create trust. Responses disable caching and framing.
+
+### Added
+
+- A frozen beta contract, candidate ledger, clean-install and signed-upgrade/rollback
+  rehearsals, and a daily data-minimal Pi observation collector.
+- Pre-publication rehearsals can use an explicit local archive base and supplied
+  signed assets. They exercise the installer and updater in disposable installations.
+- Release archives retain the observation script required by their shipped tests;
+  repository-only maintenance scripts remain excluded.
+
+### Compatibility
+
+- This is the first candidate for the beta transition; it remains an opt-in alpha
+  prerelease while the seven-day observation and three-candidate gates are pending.
+- The permission kernel, existing command meanings and operator data format are
+  unchanged from 0.19.23-alpha. No service is started by installation or update.
+- The source contains 2,910 collected tests and 263 adversarial cases.
+
 ## [0.19.23-alpha] — 2026-09-24
 
 ### Added

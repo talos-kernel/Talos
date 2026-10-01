@@ -11,7 +11,14 @@ wieder hinaus.
 """
 from __future__ import annotations
 
-from talos.memory import KEEP_HEAD, KEEP_TAIL, SUMMARY_SPEAKER, Memory, render
+from talos.memory import (
+    COMPRESSION_RETRY_HEADROOM_TURNS,
+    KEEP_HEAD,
+    KEEP_TAIL,
+    SUMMARY_SPEAKER,
+    Memory,
+    render,
+)
 
 
 def _fuellen(memory: Memory, paare: int, conversation: str = "chat-1") -> None:
@@ -90,26 +97,46 @@ def test_the_summariser_sees_only_the_middle() -> None:
 
 
 # --- ⚠️ Die Grenze ist kein Komfort ------------------------------------------------------
-def test_a_broken_summariser_does_not_let_the_context_grow() -> None:
-    """⚠️ Der eigentliche Test dieser Datei.
-
-    Faellt der Verdichter aus, wird geworfen wie eh und je. Umgekehrt waere es fatal: ein
-    Verlauf, der nach einem Fehlschlag weiterwaechst, macht aus einer Kostenfrage ein Leck
-    und aus einer Latenzfrage einen Ausfall.
-    """
+def test_a_broken_summariser_preserves_one_retry_window() -> None:
+    """A transient timeout must not erase the middle before the next retry."""
     def kaputt(_verlauf: str) -> str:
         raise RuntimeError("Modell weg")
 
-    memory = _gedaechtnis(summarize=kaputt)
+    events = []
+    memory = _gedaechtnis(summarize=kaputt, on_event=events.append)
+    _fuellen(memory, 10)
+    assert [t.text for t in memory.recall("chat-1")] == [
+        value for i in range(10) for value in (f"frage {i}", f"antwort {i}")
+    ]
+    assert events[-1]["compression_retry_deferred"] is True
+
     _fuellen(memory, 40)
-    assert len(memory.recall("chat-1")) <= KEEP_HEAD + KEEP_TAIL + 2
+    assert len(memory.recall("chat-1")) <= KEEP_HEAD + KEEP_TAIL + 2 + COMPRESSION_RETRY_HEADROOM_TURNS
 
 
-def test_an_empty_summary_does_not_let_the_context_grow() -> None:
-    """Ein Modell, das nichts sagt, ist kein Freibrief — es ist nur kein Verdichter."""
+def test_a_failed_compression_is_retried_before_turns_are_dropped() -> None:
+    attempts = []
+
+    def once(_verlauf: str) -> str:
+        attempts.append(True)
+        if len(attempts) == 1:
+            raise RuntimeError("transient timeout")
+        return "recovered context"
+
+    memory = _gedaechtnis(summarize=once)
+    _fuellen(memory, 10)
+    assert len(memory.recall("chat-1")) == 20
+    _fuellen(memory, 1)
+    turns = memory.recall("chat-1")
+    assert attempts == [True, True]
+    assert any(t.speaker == SUMMARY_SPEAKER and t.text == "recovered context" for t in turns)
+
+
+def test_an_empty_summary_also_gets_a_bounded_retry_window() -> None:
+    """An empty model response is retryable, but never permits unbounded growth."""
     memory = _gedaechtnis(summarize=lambda _v: "   ")
     _fuellen(memory, 40)
-    assert len(memory.recall("chat-1")) <= KEEP_HEAD + KEEP_TAIL + 2
+    assert len(memory.recall("chat-1")) <= KEEP_HEAD + KEEP_TAIL + 2 + COMPRESSION_RETRY_HEADROOM_TURNS
 
 
 def test_a_runaway_summary_is_clipped() -> None:

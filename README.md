@@ -19,10 +19,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2905).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2933).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-2905-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-2933-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-263%2F263-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-985%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-33%20gated-8a4318.svg" alt="Tools">
@@ -187,18 +187,6 @@ Stated plainly, because a security claim without its limits is marketing:
 
 ## Install
 
-### Through Pinokio
-
-[Install with Pinokio](https://pinokio.co/apps/github-com-talos-kernel-talos-pinokio)
-on macOS or Linux. The separate launcher pins **0.20.0-alpha.rc.5**, an opt-in
-alpha candidate, not the website's default download. Bring your own model access;
-it does not upgrade an existing Talos installation.
-Read the [launcher requirements and setup instructions](https://github.com/talos-kernel/talos-pinokio#start)
-before installing. Enter API keys only through your operating system's terminal,
-not Pinokio's input-tracked terminal.
-
-### Manual installation
-
 Requires Python 3.11+ on Linux or macOS and a model connection: your own API key,
 or an installed, signed-in Claude or Hermes CLI. The setup wizard offers the
 connections available on your machine.
@@ -272,6 +260,10 @@ chain. If every permitted route fails, the task ends with an explicit error and 
 its context. A short promise to act gets one bounded follow-up; completed tool actions
 are never replayed. Failed channel polling backs off from 1 to 30 seconds and resets
 when the channel recovers, while messages received from healthy channels continue.
+`talos health` marks a channel `degraded` until a successful poll confirms recovery;
+error counts remain in the log. Startup and recovery each record one `channel.ready`
+transition, including empty successful polls, not an event for every idle poll.
+This is polling evidence, not proof that a process is still alive or every reply arrived.
 
 Cancellation follows the provider actually doing the work, including an active fallback.
 Model switching stays busy until that call finishes. Background tasks retain the same
@@ -305,7 +297,7 @@ come from `stdin` instead of `getUpdates`.
 ```
 $ talos chat
 
-  ◉  Talos / 0.19.23-alpha
+  ◉  Talos / 0.20.0-alpha.rc.6
      Your terminal. Your rules.
   ──────────────────────────────────────────────────────────────────────────
   model      claude-cli/claude-opus-4-1

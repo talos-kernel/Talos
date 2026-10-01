@@ -1,4 +1,5 @@
 requests>=2.34.2
+urllib3>=2.8.0       # Proxy TLS and chunked-stream security fixes (three GHSA advisories).
 ddgs>=9.0          # schluessellose Websuche (MIT) — siehe web.DuckDuckGoSearch
 faster-whisper>=1.0   # lokales Hoeren (MIT) — siehe talos/hearing.py
 cryptography>=50.0.1  # Ed25519 fuer die Release-Signatur (updater.py). Bewusst eine

@@ -77,6 +77,12 @@ INTERRUPTED = (
 KEEP_HEAD = 4        # zwei Paare
 KEEP_TAIL = 12       # sechs Paare
 MAX_SUMMARY_CHARS = 1_200
+# A failed model call must not destroy the middle of the conversation before the
+# next call gets a chance to retry. The headroom is deliberately small and bounded:
+# one transient timeout may leave a few extra turns, but repeated failures still
+# cannot turn the active prompt into an unbounded archive.
+COMPRESSION_RETRY_HEADROOM_TURNS = 6
+COMPRESSION_RETRY_HEADROOM_CHARS = MAX_TURN_CHARS * 3
 # ⚠️ Als Sprecher ausgewiesen, nicht als „You" oder „Agent" getarnt. Eine Zusammenfassung,
 # die aussieht wie ein woertlicher Zug, ist eine Behauptung ueber etwas, das so nie gesagt
 # wurde — und das Modell koennte sie zitieren, als waere sie ein Zitat.
@@ -184,21 +190,33 @@ class Memory:
         return len(turns) > self._max_turns or sum(t.size for t in turns) > self._max_chars
 
     def _trim(self, turns: list[Turn]) -> None:
-        """Haelt beide Grenzen — verdichtet, wenn es einen Verdichter gibt, sonst wirft es weg.
+        """Haelt beide Grenzen — mit einem begrenzten Retry-Fenster bei Verdichterfehlern.
 
         Paarweise, damit nie eine Antwort ohne ihre Frage stehenbleibt: der Rest waere ein
         Verlauf, in dem der Agent scheinbar unaufgefordert redet.
 
-        ⚠️ **Die Grenze haelt in JEDEM Fall.** Der Verdichter ist Komfort und darf
-        ausfallen — dann wird geworfen wie eh und je. Umgekehrt waere es fatal: ein
-        gescheiterter Verdichter, nach dem der Verlauf einfach weiterwaechst, macht aus
-        einer Kostenfrage ein Leck (was vor Wochen gesagt wurde, ginge wieder hinaus) und
-        aus einer Latenzfrage einen Ausfall. Deshalb steht das Wegwerfen unten und nicht
-        im `else`.
+        Ein Verdichter-Timeout darf den Kontext nicht unmittelbar vernichten: genau das
+        kostete bei einem Pi-Ausfall sechs Turns. Nach einem Fehlschlag bleibt deshalb
+        ein kleines, explizit begrenztes Retry-Fenster erhalten. Beim naechsten Turn wird
+        erneut verdichtet; bleibt der Anbieter kaputt, greift danach die harte Grenze.
         """
         stand = None
         if self._summarize is not None and self._over(turns):
             stand = self._compress(turns)
+        retry_deferred = (
+            stand in ("failed", "empty")
+            and self._max_turns > 0
+            and self._max_chars > 0
+            and len(turns) <= self._max_turns + COMPRESSION_RETRY_HEADROOM_TURNS
+            and sum(t.size for t in turns) <= self._max_chars + COMPRESSION_RETRY_HEADROOM_CHARS
+        )
+        if retry_deferred:
+            return {
+                "dropped_turns": 0,
+                "compressed": False,
+                "compress_failed": True,
+                "compression_retry_deferred": True,
+            }
         geworfen = 0
         while turns and self._over(turns):
             del turns[:2]
@@ -212,6 +230,7 @@ class Memory:
             # Dann faellt die Mitte ersatzlos weg, und genau das sieht von aussen aus
             # wie ein Agent, der den Faden verliert.
             "compress_failed": stand in ("failed", "empty"),
+            "compression_retry_deferred": False,
         }
 
     def _compress(self, turns: list[Turn]) -> None:
@@ -262,7 +281,7 @@ class Memory:
         # Nichts. Wer spaeter fragt „warum kennt er Detail X nicht mehr", soll hier
         # sehen, wann es zusammengefasst wurde.
         if not any((befund.get("dropped_turns"), befund.get("compressed"),
-                    befund.get("compress_failed"))):
+                    befund.get("compress_failed"), befund.get("compression_retry_deferred"))):
             return
         try:
             self._on_event({"conversation": conversation, **befund})

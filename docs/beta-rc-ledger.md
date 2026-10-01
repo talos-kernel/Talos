@@ -9,10 +9,36 @@ RCs must meet the gate without an unresolved critical/high finding.
 
 | Candidate | State | Evidence |
 |---|---|---|
-| RC1 | source preflight passed; **not counted** | 2,905 source tests, 263/263 adversarial cases, hygiene and OSV passed; published-alpha clean install and signed upgrade/rollback passed. Current 0.19.23-alpha baseline is not an RC artifact. |
-| RC2 | not started | Requires a distinct versioned, signed artifact after RC1. |
-| RC3 | not started | Requires a distinct versioned, signed artifact after RC2. |
+| RC1 — 0.20.0-alpha.rc.1 | **passed, 1 of 3** | Signed artifact at `c14d3c8`; local gate, hosted macOS/Ubuntu CI, OSV/hygiene, Mac/Pi install/upgrade/rollback and pre-launch audit passed. [Executed evidence](beta-evidence-rc1-2026-09-25.md). |
+| RC2 — 0.20.0-alpha.rc.2 | **passed, 2 of 3** | Distinct signed artifact at `d972ea2`; Mac/ARM64 Linux clean install, previous-alpha/RC1 upgrades and rollback, isolated service restart, 44 real-model cases and [hosted CI](https://github.com/talos-kernel/Talos/actions/runs/36140983150) passed. [Executed evidence](beta-evidence-rc2-2026-09-25.md). |
+| RC3 — 0.20.0-alpha.rc.3 | **passed, 3 of 3** | Distinct signed stabilization artifact at `0786d5a`; no runtime feature or permission change from RC2. Full Mac/Pi, live-model and [hosted CI](https://github.com/talos-kernel/Talos/actions/runs/36141877494) gates repeated and passed. [Executed evidence](beta-evidence-rc3-2026-09-25.md). |
+| RC4 — 0.20.0-alpha.rc.4 | **passed, additional qualified candidate** | Contains the bounded compression-retry fix from the context-loss incident. Public CI `36388585774`, signed artifact/platform gates and 44/44 real-model E2E passed. [Executed evidence](beta-evidence-rc4-2026-09-28.md). |
+
+The three-candidate gate is complete. This does not complete the separate seven-day
+operating observation window or promote any installation/default download to beta.
+
+Historical RC2 preparation (2026-09-25): hosted Python 3.11 macOS/Ubuntu each passed 2,912
+tests with two repository-specific skips and 263 adversarial cases. macOS additionally
+passed 50 desktop tests and built the ad-hoc signed preview from clean public source.
+The 44-case real-model suite passed twice after harness fixes; earlier setup/CLI and
+text-assertion failures were retained in the audit. Locked Python/Swift OSV scans
+found no issues. The revised installer passed clean installation on Mac and ARM64
+Linux using the existing signed RC1 archive; poisoned verifier hashes were rejected.
+These are source/bootstrap checks, not a new signed RC. The app preview is not
+notarized. A fresh visual E2E of the 0.3.3 preview passed: account status, attended
+chat, project/model-origin separation and persisted history were checked. This
+desktop verification does not replace the distinct RC2 signed-archive gate.
 
 Do not label any artifact `0.20.0-beta.1` or update the website's latest-version
 pointer until the release audit and beta exit gates are complete. Track a failed
 candidate as failed; do not silently erase it from the sequence.
+
+RC1 compatibility review: [dashboard Host/Origin boundary](dashboard-rc1-migration.md).
+This tightens a read boundary; private proxies preserving their Host header need
+an explicit operator environment setting. Tool grants and stored state are unchanged.
+
+RC1 pre-publication build `ccf1f6b` failed clean installation on both Mac and Pi:
+the archive excluded `scripts/beta-observe.py`, while its shipped regression tests
+imported that module. No release tag or asset was published. The installer stopped
+before configuration/startup. This build does not count toward the passing sequence;
+the corrected archive must repeat the complete artifact gate.

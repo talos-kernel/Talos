@@ -19,15 +19,39 @@ struct ConnectionsView: View {
                         session.start(session.status.configured ? "model" : "chat")
                     }.buttonStyle(.bordered)
                 }
-                card("Codex", icon: "curlybraces", detail: "Use your existing OpenAI OAuth login through an isolated Hermes connection. No API key is copied into Talos.") {
-                    Button("Connect Codex") { session.start("codex") }.buttonStyle(.bordered)
-                        .disabled(!session.status.hermes_available)
+                HStack {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Found on this Mac").font(.system(size: 19, weight: .medium))
+                        Text("Existing CLI accounts are detected automatically. No credentials are imported by this check.")
+                            .font(.system(size: 12)).foregroundStyle(Palette.muted)
+                    }
+                    Spacer()
+                    Button { session.refresh() } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+                        .buttonStyle(.bordered).accessibilityLabel("Refresh CLI accounts")
+                }
+                ForEach(session.status.accounts) { account in
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text(account.label).font(.system(size: 16, weight: .medium))
+                            Spacer()
+                            Label(account.status_label, systemImage: account.status == "signed_in" ? "checkmark.circle.fill"
+                                  : account.status == "login_found" ? "key.fill" : "circle.dotted")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(account.status == "signed_in" || account.status == "login_found"
+                                                 ? Palette.bronze : Palette.muted)
+                        }
+                        Text(account.detail).font(.system(size: 12)).foregroundStyle(Palette.muted).lineSpacing(3)
+                        if !account.action.isEmpty {
+                            Button(account.action_label) { session.start(account.action) }
+                                .buttonStyle(.bordered).disabled(session.busy || !session.loaded)
+                        }
+                    }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Palette.panel, in: RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Palette.line))
                 }
                 card("Ollama · on this Mac", icon: "externaldrive", detail: "Choose from the models installed in your local Ollama. No API key or cloud connection needed.") {
                     Button("Connect Ollama") { session.start("ollama") }.buttonStyle(.bordered)
                 }
-                Text("Antigravity is currently a separate worker, not a selectable main model.")
-                    .font(.system(size: 12)).foregroundStyle(Palette.muted)
                 card("Telegram", icon: "paperplane", detail: "Use an existing bot that is not running elsewhere, or create a new one. One running agent per bot; a remote agent keeps its current connection.") {
                     Button(session.status.telegram_configured ? "Edit Telegram setup" : "Set up Telegram") {
                         session.start("telegram")

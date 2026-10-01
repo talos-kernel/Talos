@@ -85,9 +85,8 @@ def clean_environment(profile: Path, source: Path, packages: Path) -> dict[str, 
                 "PYTHONPATH": os.pathsep.join((str(source), str(packages))),
                 "PYTHONUNBUFFERED": "1", "PYTHONNOUSERSITE": "1", "PYTHONDONTWRITEBYTECODE": "1",
                 "TERM": "xterm-256color", "COLORTERM": "truecolor"})
-    paths = [str(Path.home() / ".local/bin"), "/opt/homebrew/bin", "/usr/local/bin",
-             "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
-    env["PATH"] = os.pathsep.join(dict.fromkeys(paths + env.get("PATH", "").split(os.pathsep)))
+    from desktop_accounts import cli_path
+    env["PATH"] = cli_path(Path.home(), env.get("PATH", ""))
     return env
 
 
@@ -145,6 +144,7 @@ def provision(bundle: Path, profile: Path = PROFILE) -> Path:
 def status(profile: Path = PROFILE) -> dict:
     # This is configuration presence, not a promise that a provider is online.
     from talos.configcli import read_file
+    from desktop_accounts import discover
 
     values = read_file(profile / "talos.env")
     identity = f"cli:{os.getuid()}"
@@ -155,7 +155,7 @@ def status(profile: Path = PROFILE) -> dict:
             "claude_available": bool(shutil.which("claude")),
             "hermes_available": bool(shutil.which("hermes")),
             "telegram_configured": bool(values.get("TELEGRAM_BOT_TOKEN")),
-            "workspace": str(profile / "workspace")}
+            "workspace": str(profile / "workspace"), "accounts": discover()}
 
 
 def quick_claude(profile: Path = PROFILE) -> None:

@@ -32,6 +32,7 @@ from pathlib import Path
 import threading
 import time
 from typing import Callable, Iterator, Protocol
+from weakref import WeakKeyDictionary
 
 from .agent_loop import AgentStatus, parse_tool_call, run_agent, tool_history_entry
 from .approval import ApprovalPicker, ApprovalStore, Pending, is_affirmative, is_always, is_negative
@@ -248,13 +249,16 @@ class Conductor:
     )
     task_approvals: TaskApprovals = field(default_factory=TaskApprovals, compare=False, repr=False)
     working_displays: WorkingDisplays = field(default_factory=WorkingDisplays, compare=False, repr=False)
+    # Bind bare yes replies to the pending request seen before worker queuing.
+    # Weak keys disappear for redirected/refused updates, so routing retains no backlog.
+    _yes_routes: WeakKeyDictionary = field(default_factory=WeakKeyDictionary, compare=False, repr=False)
+    _yes_routes_lock: threading.RLock = field(default_factory=threading.RLock, compare=False, repr=False)
 
     def is_inline(self, update: Inbound) -> bool:
         """True = sofort im Poll-Thread beantworten, statt in die Warteschlange zu legen.
 
-        Kommandos und bedeutungslose blanke ja/nein-Antworten bleiben sofort. Echte
-        Freigaben laufen dagegen im Worker: Callback-Ack geschieht dort vor der Wirkung,
-        waehrend der Poll-Thread fuer `/stop` frei bleibt.
+        Commands and orphaned approval controls stay immediate. Both actual approvals
+        and conversational yes replies run on the worker so polling and `/stop` stay live.
         """
         if update.callback is not None:
             # Die Antwort auf eine Rückfrage MUSS sofort bleiben. Der Worker hat genau
@@ -277,11 +281,15 @@ class Conductor:
             if name in {"model", "models"} and len(rest.split()) == 2:
                 return False
             return True
-        if self.approvals.get(update.conversation) is not None:
+        pending = self.approvals.get(update.conversation)
+        if is_affirmative(update.text):
+            with self._yes_routes_lock:
+                self._yes_routes.setdefault(update, pending.approval_id if pending is not None else "")
+        if pending is not None:
             return False
         if self._looks_like_answer(update):
             return True
-        return (is_affirmative(update.text) or is_always(update.text)
+        return (is_always(update.text)
                 or is_task_approval(update.text) or is_negative(update.text))
 
     def _looks_like_answer(self, update: Inbound) -> bool:
@@ -476,16 +484,24 @@ class Conductor:
             return self._answer_by_text(update, run_id, text)
 
         pending = self.approvals.get(update.conversation)
+        with self._yes_routes_lock:
+            routed_approval = self._yes_routes.pop(update, None)
         if pending is not None:
             if trust is not Trust.FULL:
                 self.log.append(Event(run_id, "policy", "control.rejected",
                                       {"name": "approval", "channel": update.channel}))
                 return self._reply(update, run_id, _no_control(update.channel, trust))
+            if routed_approval is not None and routed_approval != pending.approval_id:
+                self.log.append(Event(run_id, "conductor", "approval.changed_since_ingress", {}))
+                return self._reply(update, run_id,
+                                   "A new approval is pending. Please review it and confirm again.")
             return self._resolve_approval(update, run_id, pending, text)
 
-        # Kein offener Vorgang: ein einsames „ja"/„nein" ist bedeutungslos (abgelaufen oder nie
-        # gefragt) — und darf niemals als Aufgabe an den Reasoner gehen.
-        if is_affirmative(text) or is_always(text) or is_task_approval(text) or is_negative(text):
+        # Without a pending request, a bare yes is conversation, not authorization.
+        # Explicit controls (including /approve forwarded as yes) must still fail closed.
+        # Any tool proposed by the conversational turn goes through the normal kernel.
+        if (is_always(text) or is_task_approval(text) or is_negative(text)
+                or (is_command(update.text) and is_affirmative(text))):
             self.log.append(Event(run_id, "conductor", "approval.none", {}))
             return self._reply(update, run_id, "No approval is pending (it may have expired). Nothing ran.")
 
