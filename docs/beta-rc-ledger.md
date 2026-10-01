@@ -13,9 +13,12 @@ RCs must meet the gate without an unresolved critical/high finding.
 | RC2 — 0.20.0-alpha.rc.2 | **passed, 2 of 3** | Distinct signed artifact at `d972ea2`; Mac/ARM64 Linux clean install, previous-alpha/RC1 upgrades and rollback, isolated service restart, 44 real-model cases and [hosted CI](https://github.com/talos-kernel/Talos/actions/runs/36140983150) passed. [Executed evidence](beta-evidence-rc2-2026-09-25.md). |
 | RC3 — 0.20.0-alpha.rc.3 | **passed, 3 of 3** | Distinct signed stabilization artifact at `0786d5a`; no runtime feature or permission change from RC2. Full Mac/Pi, live-model and [hosted CI](https://github.com/talos-kernel/Talos/actions/runs/36141877494) gates repeated and passed. [Executed evidence](beta-evidence-rc3-2026-09-25.md). |
 | RC4 — 0.20.0-alpha.rc.4 | **passed, additional qualified candidate** | Contains the bounded compression-retry fix from the context-loss incident. Public CI `36388585774`, signed artifact/platform gates and 44/44 real-model E2E passed. [Executed evidence](beta-evidence-rc4-2026-09-28.md). |
+| RC5 — 0.20.0-alpha.rc.5 | **passed, additional qualified candidate** | Public CI `36542819388`, signed artifact `2cbeca79f26ae3fda45f94b0608ff97f3d7e677201f9e1e8683e7d99ebb614a6`, Mac/ARM64 Linux install/upgrade/rollback and 44/44 real-model cases passed on September 29. Historical dependency result only; RC6 supersedes the vulnerable urllib3 pin. |
+| RC6 — 0.20.0-alpha.rc.6 | **passed, additional qualified candidate** | Public commit `d543e02`, hosted CI `36842049693`, exact signed archive, Mac/ARM64 Linux platform gates and 44/44 real-model cases passed on October 1. Zero findings in current lock scans. Qualified artifact, not a separate published RC6 release. [Executed evidence](beta-evidence-2026-10-01.md). |
 
-The three-candidate gate is complete. This does not complete the separate seven-day
-operating observation window or promote any installation/default download to beta.
+The three-candidate gate is complete. The separate seven-day operating observation
+was reviewed on October 1 with disclosed incidents and planned restarts. This ledger
+does not itself promote an installation or replace final signed-beta artifact checks.
 
 Historical RC2 preparation (2026-09-25): hosted Python 3.11 macOS/Ubuntu each passed 2,912
 tests with two repository-specific skips and 263 adversarial cases. macOS additionally

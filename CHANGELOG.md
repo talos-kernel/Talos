@@ -4,9 +4,24 @@ Notable changes per release. Security changes come first in each section and say
 they make possible that was not possible before — or, more often, what they take away.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Versions are alpha: the kernel's rules are stable, the surface around them is not.
+The 0.20.0 beta line follows the frozen operator contract; earlier alpha releases
+remain historical snapshots. Beta does not mean error-free operation.
 
-## [0.20.0-alpha.rc.6] — Unreleased
+## [0.20.0-beta.1] — 2026-10-01
+
+### Beta contract
+
+- Freeze the documented command, approval, configuration, schedule and signed-update
+  semantics. Compatibility changes need explicit review and migration notes.
+- Promote the RC6 runtime without widening permissions or changing model routing.
+  Keep source CI, exact signed-artifact qualification and operating observation as
+  separate evidence. Publication does not upgrade or restart existing installations.
+- Complete the September 25–October 1 operating review with disclosed transient
+  channel errors, a prompt-compression incident and two explained maintenance restarts.
+  Underlying delivered exchanges remained in the durable transcript; derived active
+  summary text was not archived verbatim. This was not uninterrupted, error-free uptime.
+- Build the optional macOS preview as app 0.3.3 build 7 with this beta core. It remains
+  an ad-hoc signed, non-notarized preview, not an automatically installed app update.
 
 ### Fixed
 

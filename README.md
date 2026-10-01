@@ -28,7 +28,7 @@
   <img src="https://img.shields.io/badge/tools-33%20gated-8a4318.svg" alt="Tools">
   <img src="https://img.shields.io/badge/default%20identities-0-c62828.svg" alt="Default identities">
   <img src="https://img.shields.io/badge/python-3.11%2B-1565c0.svg" alt="Python">
-  <a href="https://github.com/talos-kernel/talos/releases"><img src="https://img.shields.io/github/v/release/talos-kernel/talos?color=1565c0" alt="Latest release"></a>
+  <a href="https://github.com/talos-kernel/talos/releases"><img src="https://img.shields.io/github/v/release/talos-kernel/talos?include_prereleases&amp;color=1565c0" alt="Latest release, including beta"></a>
   <img src="https://img.shields.io/badge/licence-MIT-616161.svg" alt="MIT">
 </p>
 
@@ -43,7 +43,9 @@ tools — but only after a deterministic permission kernel has ruled on the acti
 Choose **Allow once**, **Allow this task**, or an exact-action standing approval;
 you do not have to approve every step individually. Sandboxed shell execution and an
 append-only audit trail keep actions bounded and reviewable. Talos is MIT-licensed;
-model-provider and hosting costs depend on your setup. It is currently **alpha**.
+model-provider and hosting costs depend on your setup. It is now **beta**: the
+[operator contract](docs/beta-contract.md) is frozen; beta is not a claim of error-free
+operation or a substitute for reviewing permissions and keeping backups.
 
 [Install Talos](#install) · [Run local models with Ollama](https://talos-agent.ch/docs/#model) ·
 [Set up Telegram](https://talos-agent.ch/docs/#channels) ·
@@ -297,7 +299,7 @@ come from `stdin` instead of `getUpdates`.
 ```
 $ talos chat
 
-  ◉  Talos / 0.20.0-alpha.rc.6
+  ◉  Talos / 0.20.0-beta.1
      Your terminal. Your rules.
   ──────────────────────────────────────────────────────────────────────────
   model      claude-cli/claude-opus-4-1
@@ -780,7 +782,7 @@ by `decide()` and cannot approve an action.
 
 ## Architecture
 
-Small modules on purpose. The gate path (`policy.py`, 919 lines) has to be readable in one
+Small modules on purpose. The gate path (`policy.py`, 985 lines) has to be readable in one
 sitting — a gate you cannot read is not a gate.
 
 | Module | Role |
@@ -810,11 +812,12 @@ sitting — a gate you cannot read is not a gate.
 
 ## Roadmap
 
-The path out of alpha is documented in [Beta readiness](docs/beta-readiness.md): it
-separates verified security/release gates from the remaining API, compatibility and
-cross-platform operating evidence. The proposed [beta contract](docs/beta-contract.md),
-[recovery runbook](docs/recovery.md) and local `python scripts/beta-gate.py` make those
-checks repeatable; hosted CI and long-running operation remain separate gates.
+The [beta release evidence](docs/beta-readiness.md) separates source tests, signed
+artifact checks and the seven-day operating observation. The frozen
+[beta contract](docs/beta-contract.md), [recovery runbook](docs/recovery.md) and
+local `python scripts/beta-gate.py` make these checks repeatable. The path to 1.0
+requires evidence from the beta line and a verified upgrade from a previous beta;
+it is not a calendar promise.
 
 1. `openat2()` with `RESOLVE_BENEATH` instead of realpath checks.
 2. **An adapter seam for tools.** Adding a channel is already just implementing a

@@ -34,7 +34,7 @@ without either.
 | Fix or a stated reason not to | within 90 days for anything we accept |
 | Credit | offered by name or handle, or omitted — your choice |
 
-This is a one-maintainer alpha project. Those are the targets we intend to meet, not a
+This is a one-maintainer beta project. Those are the targets we intend to meet, not a
 contractual guarantee, and if a date is going to slip you will be told rather than left
 waiting.
 
@@ -45,8 +45,9 @@ waiting.
 | Latest published release | ✅ |
 | Anything older | ❌ |
 
-Versions are alpha: the kernel's rules are stable, the surface around them is not. There
-is no backporting. `talos update` moves an installation to the published version after
+The beta line follows the [frozen operator contract](docs/beta-contract.md). Security
+boundaries may tighten; changed command, approval or state semantics need an explicit
+compatibility note. There is no backporting. `talos update` moves an installation to the published version after
 proving both suites in a new tree beside the old one, and it is the intended path.
 
 ## Scope

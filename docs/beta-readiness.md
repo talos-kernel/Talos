@@ -1,16 +1,32 @@
 # Beta readiness
 
-Talos is still labelled alpha because the deterministic permission kernel is stable,
-while the operator-facing surface is still allowed to change. This document makes the
-exit criteria explicit instead of treating `beta` as a calendar decision.
+Talos' beta line freezes the operator-facing contract after separate source,
+signed-artifact and operating-observation gates. Beta is not a claim that the model,
+network or service never fails. This document records the criteria instead of
+treating the label as a calendar decision.
 
-## Local candidate — 0.20.0-alpha.rc.6 (not published)
+## Beta promotion — 0.20.0-beta.1
 
-RC6 combines the channel recovery health check with urllib3 2.8.0 security fixes.
-Its changed locks, complete source and exact artifact require fresh qualification;
-earlier RC results below do not certify RC6. No beta release or production upgrade
-is implied. Seven daily observer records exist for September 25–October 1, but
-incident and restart review remains separate from the collector's successful samples.
+The RC6 runtime baseline passed fresh qualification on October 1, including its
+urllib3 2.8.0 locks and channel-recovery health checks. The seven-day observation
+review is complete for September 25–October 1, with the compression incident and
+planned restarts explicitly reviewed. See the [executed evidence](beta-evidence-2026-10-01.md).
+
+| Gate | Current evidence |
+|---|---|
+| Source regression and adversarial tests | 2,933 collected tests; public Python 3.11 macOS/Ubuntu CI each passed 2,931 with two explicit environment/repository skips; 263/263 adversarial cases |
+| Desktop boundary and build | 50 tests; clean-source preview built and signature-verified in macOS CI; not notarized |
+| Dependencies and public hygiene | Explicit hashed Python/Swift lock scans: zero OSV findings; no new credential finding |
+| Exact RC6 signed artifact | Mac and ARM64 Linux clean install, previous-alpha/RC5 upgrade, migration, rollback and isolated service restart passed; 44/44 real-model cases |
+| Compatibility | [Frozen contract](beta-contract.md), [support matrix](beta-contract.md#supported-platforms) and [recovery runbook](recovery.md) |
+| Operating observation | Seven consecutive daily samples, valid nondecreasing event chains; reviewed prompt-memory incident with durable source transcript retained; two explained maintenance restarts |
+
+Beta promotion changes version/documentation metadata, not the qualified runtime
+or permission semantics. The final beta archive must independently pass signature,
+installation, upgrade, rollback, service and E2E checks before publication. Its
+immutable asset checksums and source reference are recorded with the
+[beta release](https://github.com/talos-kernel/Talos/releases/tag/v0.20.0-beta.1).
+Publishing a release does not upgrade or restart an existing installation.
 
 ## Historical baseline — 0.19.23-alpha; candidate — 0.20.0-alpha.rc.4
 

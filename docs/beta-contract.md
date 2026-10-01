@@ -1,10 +1,10 @@
 # Frozen beta contract baseline
 
-This is the frozen operator-facing baseline for the `0.20.0-beta` release-candidate
-line, based on public source commit `8376890` and running `0.19.23-alpha`. It does
-not retroactively freeze the alpha line or claim a beta release. Before the first
-beta tag, every item needs a corresponding test and migration note where a prior
-alpha behaved differently. Any change to this baseline requires an explicit
+This is the frozen operator-facing contract for the `0.20.0-beta` line. Its baseline
+was established from public source commit `8376890` during the alpha observation;
+it does not retroactively freeze earlier alpha releases. Each compatibility boundary
+is backed by tests, with migration notes where a prior alpha behaved differently.
+Any change to this baseline requires an explicit
 compatibility review and entry in the [RC ledger](beta-rc-ledger.md).
 
 ## Supported platforms
@@ -12,7 +12,7 @@ compatibility review and entry in the [RC ledger](beta-rc-ledger.md).
 | Surface | Beta target | Limit |
 |---|---|---|
 | Host | Linux and macOS | Windows is not a tested host. |
-| Python | 3.11–3.13 for the beta target | Hosted CI must run 3.11 on both systems; a newer interpreter needs explicit evidence before it is promised. |
+| Python | 3.11–3.13 | Hosted CI runs 3.11 on both systems; a newer interpreter needs explicit evidence before it is promised. |
 | CPU | x86-64 and ARM64 | The Pi5 is the ARM64 Linux operating sample. |
 | Entry points | Terminal and Telegram | Mail is optional and needs its own configuration. |
 | Model connection | Configured API or signed-in supported CLI | No model account, API credit or subscription is bundled. |
@@ -62,4 +62,5 @@ writes appear in both trees.
 No silent field removal, argument repurposing, approval broadening or destructive
 schema migration within the beta line. A necessary breaking change needs a versioned
 migration note, a before/after test and an explicit operator action. This baseline
-becomes a release promise only when the beta exit gates pass.
+is the release promise of the published beta line, not a promise that models or
+external services never fail. Release evidence remains separate from this contract.
