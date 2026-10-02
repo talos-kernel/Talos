@@ -1,9 +1,9 @@
 {
-  "version": "0.20.0-beta.1",
-  "tests": 2933,
+  "version": "0.20.0-beta.2",
+  "tests": 2935,
   "redteam_faelle": 263,
   "kernel_zeilen": 985,
   "werkzeuge": 33,
-  "gebaut_am": "2026-10-01T09:38:06Z",
-  "release_ref": "v0.20.0-beta.1"
+  "gebaut_am": "2026-10-02T07:16:58Z",
+  "release_ref": "v0.20.0-beta.2"
 }

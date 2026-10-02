@@ -5,12 +5,8 @@ faster-whisper>=1.0   # lokales Hoeren (MIT) — siehe talos/hearing.py
 cryptography>=50.0.1  # Ed25519 fuer die Release-Signatur (updater.py). Bewusst eine
                      # gepflegte Bibliothek statt eigener Krypto: das Update ist die
                      # eine Stelle, an der ein Fehler fremden Code ausfuehrt.
-pypdf>=6.16.1        # PDFs lesen (BSD) — siehe talos/documents.py. Nur fuer PDF:
-                     # docx/xlsx/pptx sind ZIP+XML und werden mit der
-                     # Standardbibliothek gelesen, ohne weitere Abhaengigkeit.
-                     # Untergrenze 6.16.1: alles darunter traegt PYSEC-2026-3910
-                     # bis -3913 (CVSS 4.8-6.9). Eine NEUE Abhaengigkeit wird
-                     # nicht mit bekannten Luecken eingefuehrt.
+pypdf>=6.19.0        # PDF parsing; excludes PYSEC-2026-4157, -4159 and -4160
+                     # (CVSS 8.7). Office documents use standard-library ZIP/XML.
 idna>=3.15           # transitiv ueber requests. Untergrenze 3.15: alles darunter
                      # traegt PYSEC-2026-215 (CVSS 6.9). Dieselbe Regel wie bei pypdf:
                      # keine Installation mit bekannter Luecke, auch nicht transitiv.

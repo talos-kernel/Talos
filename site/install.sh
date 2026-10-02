@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-VERSION="0.20.0-beta.1"
+VERSION="0.20.0-beta.2"
 BASE="${TALOS_BASE:-https://talos-agent.ch}"
 TARBALL="${BASE}/dist/talos-${VERSION}.tar.gz"
 PREFIX="${TALOS_PREFIX:-$HOME/talos}"

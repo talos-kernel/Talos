@@ -7,6 +7,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The 0.20.0 beta line follows the frozen operator contract; earlier alpha releases
 remain historical snapshots. Beta does not mean error-free operation.
 
+## [0.20.0-beta.2] — 2026-10-02
+
+### Security
+
+- Require pypdf 6.19.0 or newer and ship its hashed pin, addressing
+  PYSEC-2026-4157, PYSEC-2026-4159 and PYSEC-2026-4160 (CVSS 8.7).
+  These dependency advisories were published after the Beta.1 release.
+  Add regression checks for both the declared minimum and the installed lock.
+- Keep the frozen Beta operator contract, permission kernel and model routing
+  unchanged. Publication does not upgrade or restart existing installations.
+
 ## [0.20.0-beta.1] — 2026-10-01
 
 ### Beta contract
