@@ -90,6 +90,17 @@ def assert_no_local_paths(root: Path, paths: tuple[Path, ...]) -> None:
         raise SystemExit("Local build paths remain in app bundle: " + ", ".join(leaked[:10]))
 
 
+def controlled_build_paths(source_root: Path, python_root: Path, staging_root: Path) -> tuple[Path, ...]:
+    """Return exact paths created or selected by this build.
+
+    Scanning the whole home directory is ambiguous on hosted runners: third-party
+    wheels can carry their own `/Users/runner/...` provenance even when Talos never
+    referenced that path. The exact repository, interpreter and staging roots cover
+    every path Talos injects while keeping that independent provenance distinguishable.
+    """
+    return tuple(path.resolve() for path in (source_root, python_root, staging_root))
+
+
 def build(python_root: Path, destination: Path, identity: str = "-", *, allow_dirty: bool = False) -> Path:
     metadata = app_version()
     provenance = source_record(allow_dirty)
@@ -179,7 +190,7 @@ def build(python_root: Path, destination: Path, identity: str = "-", *, allow_di
         run("/usr/bin/strip", "-S", "-x", str(binary))
         run("/usr/bin/install_name_tool", "-id", "@rpath/libpython3.13.dylib",
             str(resources / "python/lib/libpython3.13.dylib"))
-        assert_no_local_paths(app, (Path.home(), ROOT, python_root, Path(tmp)))
+        assert_no_local_paths(app, controlled_build_paths(ROOT, python_root, Path(tmp)))
         # Sign nested Mach-O objects before sealing the outer bundle. No --deep
         # signing and no embedded developer identity/configuration in source.
         magic = {b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"}

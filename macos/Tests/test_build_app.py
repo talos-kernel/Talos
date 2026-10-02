@@ -80,3 +80,13 @@ def test_bundle_hygiene_finds_paths_across_chunks(tmp_path):
     payload.write_bytes(b'x' * (1024 * 1024 - 3) + str(private).encode())
     with pytest.raises(SystemExit, match='payload'):
         build_app.assert_no_local_paths(root, (private,))
+
+
+def test_bundle_hygiene_uses_exact_controlled_roots_not_the_whole_runner_home(tmp_path):
+    runner_home = tmp_path / 'runner'
+    source_root = runner_home / 'work/talos'
+    python_root = runner_home / 'toolcache/python'
+    staging_root = runner_home / 'work/_temp/talos-bundle'
+    roots = build_app.controlled_build_paths(source_root, python_root, staging_root)
+    assert roots == tuple(path.resolve() for path in (source_root, python_root, staging_root))
+    assert runner_home.resolve() not in roots
