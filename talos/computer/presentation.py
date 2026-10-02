@@ -21,8 +21,10 @@ def entry():
     if not origin or not keyfile or not os.environ.get("TALOS_COMPUTER_SOCKET"):
         return StructuredMessage("✦ Computer is not set up yet.\n\nRun talos computer setup to get started.")
     parsed = urlsplit(origin)
-    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
-        return StructuredMessage("✦ The Computer link needs a valid HTTPS configuration.")
+    local = parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "::1"}
+    remote = parsed.scheme == "https" and bool(parsed.hostname)
+    if not (local or remote) or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        return StructuredMessage("✦ The Computer link needs HTTPS or an exact loopback configuration.")
     try:
         token = Path(keyfile).read_text().strip()
         if not token or len(token) > 128 or not all(c.isalnum() or c in "-_" for c in token):

@@ -2,6 +2,7 @@ const $ = id => document.getElementById(id);
 let state, rfb, lastScreen = 0, busy = false, timer, screenURL, jobsSignature = "";
 let desktopConnected=false, desktopEpoch=0, connectingDesktop=false, controlChanging=false, keysyms;
 let keyboardOpen=false, symbols=false;
+let snapshotInputQueue=Promise.resolve();
 const modifiers=new Set();
 const labels = {queued:"Queued",running:"Running",verified:"Checks passed",needs_review:"Needs review",failed:"Failed",interrupted:"Interrupted"};
 const controlLabels = {agent:"Talos has control",human:"You have control",paused:"Computer paused",stopped:"Computer stopped"};
@@ -10,7 +11,8 @@ function notice(message) { $("notice").textContent=message; show("notice",true);
 
 const specialKeys={Escape:0xff1b,Tab:0xff09,Backspace:0xff08,Enter:0xff0d,Left:0xff51,Up:0xff52,Right:0xff53,Down:0xff54};
 const modifierKeys={Shift:[0xffe1,"ShiftLeft"],Ctrl:[0xffe3,"ControlLeft"],Alt:[0xffe9,"AltLeft"]};
-function canType(){return state?.desktop!==false&&state?.control==="human"&&state?.vm==="running"&&desktopConnected&&rfb&&!controlChanging&&!document.hidden;}
+function snapshotViewer(){return state?.viewer==="snapshot";}
+function canType(){return state?.desktop!==false&&state?.control==="human"&&state?.vm==="running"&&(snapshotViewer()||(desktopConnected&&rfb))&&!controlChanging&&!document.hidden;}
 function closeKeyboard(){
  keyboardOpen=false;modifiers.clear();$("keyboard-text").value="";$("keyboard-text").blur();
  $("keyboard").classList.remove("composing");
@@ -39,6 +41,36 @@ function sendKey(keysym){
  }
  return true;
 }
+function sendSnapshot(input){
+ if(!canType()||!snapshotViewer())return Promise.resolve(false);
+ const deliver=async()=>{
+  if(!canType()||!snapshotViewer())return false;
+  try{await api("/api/input",input);lastScreen=0;await updateScreen();return true;}
+  catch(error){notice(error.message);return false;}
+ };
+ const result=snapshotInputQueue.then(deliver,deliver);
+ snapshotInputQueue=result.then(()=>undefined,()=>undefined);
+ return result;
+}
+function sendCharacter(value){
+ if(snapshotViewer()){
+  const plain=value.toLowerCase();
+  if(modifiers.has("Ctrl")&&["a","c","l","v"].includes(plain)){
+   modifiers.clear();renderKeys();return sendSnapshot({op:"key",keys:"ctrl+"+plain});
+  }
+  modifiers.clear();renderKeys();return sendSnapshot({op:"type",text:value});
+ }
+ return sendKey(keysyms.lookup(value.codePointAt(0)));
+}
+function sendSpecial(name){
+ if(!snapshotViewer())return sendKey(specialKeys[name]);
+ const mapped={Enter:"Return",Backspace:"BackSpace",Escape:"Escape",Tab:"Tab",Left:"Left",Up:"Up",Right:"Right",Down:"Down"};
+ let key=mapped[name];
+ if(modifiers.has("Ctrl")&&["a","c","l","v"].includes(name))key="ctrl+"+name;
+ if(modifiers.has("Alt")&&name==="Tab")key="alt+Tab";
+ modifiers.clear();renderKeys();
+ return key?sendSnapshot({op:"key",keys:key}):false;
+}
 function renderKeys(){
  const grid=$("keyboard-keys");grid.replaceChildren();
  const rows=symbols?["1234567890","@#€_&-+()/",".,?!'\":;%="]:["qwertyuiop","asdfghjkl","zxcvbnm"];
@@ -47,22 +79,21 @@ function renderKeys(){
   for(const letter of letters){
    const value=modifiers.has("Shift")?letter.toUpperCase():letter;
    const key=node("button",value,"letter-key");key.type="button";key.setAttribute("aria-label","Type "+value);
-   key.onclick=()=>{if(canType())sendKey(keysyms.lookup(value.codePointAt(0)));};row.append(key);
+   key.onclick=()=>{if(canType())sendCharacter(value);};row.append(key);
   }
   grid.append(row);
  }
  for(const button of document.querySelectorAll("[data-modifier]"))button.setAttribute("aria-pressed",String(modifiers.has(button.dataset.modifier)));
  $("keyboard-symbols").textContent=symbols?"ABC":"123";
 }
-function sendText(){
+async function sendText(){
  const input=$("keyboard-text"),text=input.value;
  if(!canType()||!text)return;
  const chars=Array.from(text);
  if(chars.length>1024){notice("Send up to 1,024 characters at a time.");return;}
  modifiers.clear();
- for(const character of chars){
-  if(!sendKey(keysyms.lookup(character.codePointAt(0))))return;
- }
+ if(snapshotViewer()){if(!await sendSnapshot({op:"type",text}))return;}
+ else for(const character of chars){if(!sendKey(keysyms.lookup(character.codePointAt(0))))return;}
  input.value="";input.blur();$("keyboard").classList.remove("composing");
  $("keyboard-help").textContent="Text sent. Enter was not pressed.";
 }
@@ -75,8 +106,8 @@ $("keyboard-toggle").onclick=()=>{
 };
 $("keyboard-close").onclick=()=>{closeKeyboard();$("keyboard-toggle").focus();};
 $("keyboard-symbols").onclick=()=>{symbols=!symbols;renderKeys();};
-$("keyboard-space").onclick=()=>sendKey(0x20);
-for(const button of document.querySelectorAll("[data-key]"))button.onclick=()=>sendKey(specialKeys[button.dataset.key]);
+$("keyboard-space").onclick=()=>sendCharacter(" ");
+for(const button of document.querySelectorAll("[data-key]"))button.onclick=()=>sendSpecial(button.dataset.key);
 for(const button of document.querySelectorAll("[data-modifier]"))button.onclick=()=>{
  if(!canType())return;
  const name=button.dataset.modifier;if(modifiers.has(name))modifiers.delete(name);else modifiers.add(name);renderKeys();
@@ -115,6 +146,36 @@ function setExpanded(value) {
 $("screen-zoom").value=zoomValues.has(preference("talos.computer.zoom"))?preference("talos.computer.zoom"):"fit";
 $("screen-zoom").onchange=()=>{preference("talos.computer.zoom",$("screen-zoom").value);applyZoom();};
 $("capture").addEventListener("load",applyZoom);
+function capturePoint(event){
+ const image=$("capture"),box=image.getBoundingClientRect();
+ const width=image.naturalWidth||1440,height=image.naturalHeight||900;
+ const scale=Math.min(box.width/width,box.height/height);
+ const left=box.left+(box.width-width*scale)/2,top=box.top+(box.height-height*scale)/2;
+ const x=Math.floor((event.clientX-left)/scale),y=Math.floor((event.clientY-top)/scale);
+ return x>=0&&x<width&&y>=0&&y<height?{x,y}:null;
+}
+$("capture").addEventListener("click",event=>{
+ if(!canType()||!snapshotViewer())return;
+ const point=capturePoint(event);if(point){$("capture").focus();sendSnapshot({op:"click",...point,button:1});}
+});
+$("capture").addEventListener("contextmenu",event=>{
+ if(!canType()||!snapshotViewer())return;
+ const point=capturePoint(event);if(point){event.preventDefault();$("capture").focus();sendSnapshot({op:"click",...point,button:3});}
+});
+$("capture").addEventListener("wheel",event=>{
+ if(!canType()||!snapshotViewer())return;
+ event.preventDefault();sendSnapshot({op:"scroll",direction:event.deltaY<0?"up":"down",amount:Math.min(10,Math.max(1,Math.ceil(Math.abs(event.deltaY)/100)))});
+},{passive:false});
+$("capture").addEventListener("keydown",event=>{
+ if(!canType()||!snapshotViewer())return;
+ const special={Enter:"Return",Backspace:"BackSpace",Escape:"Escape",Tab:"Tab",ArrowLeft:"Left",ArrowUp:"Up",ArrowRight:"Right",ArrowDown:"Down"};
+ const lower=event.key.toLowerCase();let input;
+ if(event.ctrlKey&&["a","c","l","v"].includes(lower))input={op:"key",keys:"ctrl+"+lower};
+ else if(event.altKey&&event.key==="Tab")input={op:"key",keys:"alt+Tab"};
+ else if(special[event.key])input={op:"key",keys:special[event.key]};
+ else if(event.key.length===1&&!event.metaKey&&!event.ctrlKey&&!event.altKey)input={op:"type",text:event.key};
+ if(input){event.preventDefault();sendSnapshot(input);}
+});
 $("expand").onclick=()=>setExpanded(!expanded);
 $("fullscreen").onclick=async()=>{
  try {
@@ -165,17 +226,24 @@ function renderJobs(jobs) {
  if(!state.routines?.length)$("routines").append(node("p","Save a checked job as a private routine.","empty"));
 }
 async function updateScreen(){
- if(state.desktop===false||state.control==="human"||state.vm!=="running")return;
+ if(state.desktop===false||(state.control==="human"&&!snapshotViewer())||state.vm!=="running")return;
  if(Date.now()-lastScreen<3500||document.hidden)return;
  lastScreen=Date.now();
  const response=await fetch("/api/screen",{signal:AbortSignal.timeout(16000)});
- if(!response.ok)return;
+ if(!response.ok||response.status===204)return;
  const blob=await response.blob(), next=URL.createObjectURL(blob);
  $("capture").src=next;if(screenURL)URL.revokeObjectURL(screenURL);screenURL=next;
  show("capture",true);show("empty-screen",false);
  $("screen-time").textContent=state.vm==="running"?"Live · "+new Date().toLocaleTimeString("en-GB"):"Last frame · paused";
 }
+async function connectSnapshot(){
+ const previous=rfb;rfb=null;if(previous)previous.disconnect();
+ desktopConnected=true;connectingDesktop=false;
+ show("vnc",false);show("capture",true);show("empty-screen",false);
+ await updateScreen();syncKeyboard();
+}
 async function connectDesktop(){
+ if(snapshotViewer())return connectSnapshot();
  if(rfb||connectingDesktop)return;
  connectingDesktop=true;const epoch=desktopEpoch;
  try{
@@ -197,6 +265,11 @@ async function refresh(){
   if(controlChanging||epoch!==desktopEpoch)return;
   state=next;
   show("login",false);show("workspace",true);
+  const omarchy=state.backend==="omarchy";
+  $("intro-copy").textContent=omarchy
+   ?"An offline visual desktop with pause and human takeover. No network adapter, host files, clipboard or credentials."
+   :"Code, project files and a clear record of every job. An optional desktop when your work needs one.";
+  show("bottom-grid",!omarchy);
   $("connection").textContent="Connected";
   $("control-state").textContent=controlLabels[state.control]||state.control;
   $("screen-note").textContent=state.vm==="running"?"":"· paused";

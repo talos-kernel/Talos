@@ -403,7 +403,7 @@ html.js .rv.in{opacity:1;transform:none}
         <span class="t-why" id="tickWhy">clean — runs sandboxed, logged before it runs</span>
       </div>
       <div class="meter-row">
-        <span><b>2935</b>unit tests</span>
+        <span><b>2995</b>unit tests</span>
         <span><b>263/263</b>adversarial</span>
         <span><b>985</b>lines · gate</span>
         <span><b>30s</b>token life</span>
@@ -689,7 +689,7 @@ html.js .rv.in{opacity:1;transform:none}
     <p class="sub rv">None of this asks for belief. The installer runs both suites in front
     of you. Every number on this page is a number the suite reproduces.</p>
     <div class="stats">
-      <div class="stat rv"><div class="n cnt" data-n="2935">0</div><div class="l">unit tests, run by the installer in front of you</div></div>
+      <div class="stat rv"><div class="n cnt" data-n="2995">0</div><div class="l">unit tests, run by the installer in front of you</div></div>
       <div class="stat rv"><div class="n cnt" data-n="263">0</div><div class="l">adversarial cases trying to pass the kernel</div></div>
       <div class="stat rv"><div class="n cnt" data-n="44">0</div><div class="l">end-to-end cases against a real model</div></div>
       <div class="stat rv"><div class="n cnt" data-n="985">0</div><div class="l">lines in the file that decides every verdict</div></div>
@@ -764,6 +764,13 @@ html.js .rv.in{opacity:1;transform:none}
         Read the <a href="docs/#install">installation guide</a> and
         <a href="docs/#channels">Telegram and channel setup</a>, or inspect the
         <a href="https://github.com/talos-kernel/talos">Talos source on GitHub</a>.</p></details>
+      <details class="q rv"><summary>Does Talos have a local computer?</summary>
+        <p>On Apple silicon macOS, the beta Mac app can open a separately installed
+        Omarchy Computer. It is an offline, visual-only VM with no virtual network
+        adapter, host folders, clipboard bridge or host credentials. A valid local
+        Omarchy installation replaces the remote Computer controls in the Mac app;
+        Macs without it can still connect to the separate ARM64 Linux backend. The
+        ordinary one-line installer does not create the Omarchy VM.</p></details>
       <details class="q rv"><summary>Is my setup exposed as an example?</summary>
         <p>No. Your deployment is not a public example: operator identity, notes, credentials
         and runtime data live outside the source tree. Model requests go to the provider you
@@ -801,7 +808,7 @@ html.js .rv.in{opacity:1;transform:none}
   <div class="wrap">
     <p class="sec-tag rv">raise the keep</p>
     <h2 class="rv">The command remains yours</h2>
-    <p class="sub rv">Beta 0.20.0-beta.2. Tested on Python 3.11–3.13, Linux and macOS, including Raspberry Pi.
+    <p class="sub rv">Beta 0.20.0-beta.3. Tested on Python 3.11–3.13, Linux and macOS, including Raspberry Pi.
     Bring your own model: a supported CLI, configured API provider or local Ollama.
     The installer proves every claim in front of you, then <strong>starts nothing.</strong></p>
     <div class="term rv">

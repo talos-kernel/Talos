@@ -26,6 +26,14 @@ ALLOWED_ENDPOINT_FIXTURE_HOSTS = {
     # sondern die feste Verdrahtung der Sandbox.
     "talos/computer/guest.py": frozenset({"10.0.2.100"}),
     "talos/computer/browser.py": frozenset({"127.0.0.1"}),
+    # The macOS Omarchy backend is deliberately fixed to loopback. These exact
+    # source/tests prove that non-loopback, wrong-port and HTTP(S)-shape variants
+    # are refused; none is an operator endpoint.
+    "macos/omarchy_install.py": frozenset({"127.0.0.1"}),
+    "macos/Tests/test_omarchy_install.py": frozenset({"127.0.0.1"}),
+    "macos/Tests/TalosAppTests/LocalComputerLinkTests.swift": frozenset({
+        "127.0.0.1", "::1", "localhost",
+    }),
     # Zwei E2E-Faelle starten einen echten ThreadingHTTPServer auf loopback und biegen
     # `telegram._BASE` darauf um — der Beweis, dass die Zustellung wirklich ueber HTTP
     # geht, statt gegen eine Attrappe. Die Adresse ist das Fixture, kein Endpunkt.
@@ -39,6 +47,8 @@ ALLOWED_ENDPOINT_FIXTURE_HOSTS = {
     # pruefen. Die Adresse ist das Fixture.
     "tests/computer_browser_e2e.py": frozenset({"127.0.0.1", "localhost"}),
     "tests/computer_browser_guard_e2e.py": frozenset({"127.0.0.1"}),
+    "tests/omarchy_installed_e2e.py": frozenset({"127.0.0.1"}),
+    "tests/omarchy_workbench_e2e.py": frozenset({"127.0.0.1"}),
     "tests/test_background_telegram_e2e.py": frozenset({"127.0.0.1"}),
     "tests/test_computer.py": frozenset({"127.0.0.1"}),
     "tests/test_ephemeral_telegram.py": frozenset({"127.0.0.1"}),
@@ -54,6 +64,8 @@ ALLOWED_ENDPOINT_FIXTURE_HOSTS = {
     # Die Fixtures der eigenen Anbieter zeigen auf einen lokalen Proxy — genau der
     # Fall, fuer den es sie gibt (ein OAuth-Proxy vor einem Abo laeuft auf loopback).
     "tests/test_custom_providers.py": frozenset({"127.0.0.1"}),
+    "tests/test_omarchy_service.py": frozenset({"127.0.0.1"}),
+    "tests/test_computer_cli.py": frozenset({"127.0.0.1", "localhost"}),
     "tests/test_fallback.py": frozenset({"localhost"}),
     "tests/test_first_run.py": frozenset({"localhost"}),
     "tests/test_model_overrides.py": frozenset({"localhost"}),

@@ -4,7 +4,9 @@ import hashlib
 import hmac
 import json
 from http.cookies import SimpleCookie
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import mimetypes
+import os
 from pathlib import Path
 import secrets
 import socket
@@ -41,12 +43,14 @@ COOKIE = "talos_computer"
 ASSETS = Path(__file__).with_name("web")
 NOVNC = Path("/usr/share/novnc")
 CAPTURES = Path("/var/lib/talos-computer-captures")
+CONTROL_SOCKET = Path("/run/talos-computer-api/control.sock")
+LOGIN_DB = Path("/var/lib/talos-computer-web/login.db")
 
 
 def rpc(kind, args):
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
         sock.settimeout(15)
-        sock.connect("/run/talos-computer-api/control.sock")
+        sock.connect(str(CONTROL_SOCKET))
         sock.sendall(json.dumps({"kind": kind, "args": args}).encode() + b"\n")
         raw = sock.makefile("rb").readline(1000000)
     result = json.loads(raw)
@@ -100,7 +104,7 @@ class Auth:
                 raise auth_plugins.AuthenticationError(response_code=409)
 
 
-class Handler(_ProxyBase):
+class RequestMixin:
     def log_message(self, *_):
         pass
 
@@ -148,7 +152,12 @@ class Handler(_ProxyBase):
             if path == "/api/screen":
                 state = rpc("read", {"op": "status"})
                 if state["vm"] == "running":
-                    image = Path(rpc("read", {"op": "preview"})["image_path"])
+                    try:
+                        image = Path(rpc("read", {"op": "preview"})["image_path"])
+                    except ValueError as error:
+                        if str(error) == "QMP framebuffer must be 1440x900 RGB":
+                            return self.respond(204, b"", "image/png")
+                        raise
                 else:
                     image = max((*CAPTURES.glob("preview-*.png"), *CAPTURES.glob("screen-*.png")),
                                 key=lambda p: p.stat().st_mtime, default=None)
@@ -187,7 +196,7 @@ class Handler(_ProxyBase):
         if path == "/api/login":
             # Same-machine proxy addresses are deliberately not treated as identities.
             now = time.time()
-            if not login_allowed("/var/lib/talos-computer-web/login.db", now):
+            if not login_allowed(LOGIN_DB, now):
                 return self.respond(429, {"error": "Bitte warte eine Minute."})
             token = args.get("token")
             if set(args) != {"token"} or not isinstance(token, str) or not hmac.compare_digest(token, CONFIG["view_secret"]):
@@ -197,6 +206,13 @@ class Handler(_ProxyBase):
                                 cookie=f"{COOKIE}={cookie}; Path=/; Max-Age=28800; Secure; HttpOnly; SameSite=Strict")
         if not self.authenticated():
             return self.respond(401, {"error": "Anmeldung erforderlich."})
+        if path == "/api/input":
+            try:
+                return self.respond(200, rpc("human", {"op": "input", "input": args}))
+            except ValueError as error:
+                return self.respond(409, {"error": str(error)})
+            except (OSError, TimeoutError):
+                return self.respond(503, {"error": "Computer gerade nicht erreichbar."})
         if path != "/api/control":
             return self.respond(404, {"error": "not found"})
         try:
@@ -213,14 +229,29 @@ class Handler(_ProxyBase):
     do_PATCH = do_PUT
 
 
+class Handler(RequestMixin, _ProxyBase):
+    pass
+
+
+class SnapshotHandler(RequestMixin, BaseHTTPRequestHandler):
+    pass
+
+
 def main():
-    global CONFIG
+    global CONFIG, CAPTURES, CONTROL_SOCKET, LOGIN_DB
+    config_path = Path(os.environ.get("TALOS_COMPUTER_CONFIG", "/etc/talos-computer.json"))
+    CONFIG = json.loads(config_path.read_text())
+    CAPTURES = Path(CONFIG.get("captures", str(CAPTURES)))
+    CONTROL_SOCKET = Path(CONFIG.get("control_socket", str(CONTROL_SOCKET)))
+    LOGIN_DB = Path(CONFIG.get("web_state", str(LOGIN_DB))) / "login.db"
+    if CONFIG.get("viewer") == "snapshot":
+        ThreadingHTTPServer(("127.0.0.1", 8830), SnapshotHandler).serve_forever()
+        return
     if websocketproxy is None:
         raise SystemExit(
             "websockify is not installed. The workbench proxy runs on the Computer "
             "host, where deploy/computer-setup.py installs it."
         )
-    CONFIG = json.loads(Path("/etc/talos-computer.json").read_text())
     server = websocketproxy.WebSocketProxy(
         RequestHandlerClass=Handler, listen_host="127.0.0.1", listen_port=8830,
         unix_target="/run/talos-computer-api/vnc.sock", auth_plugin=Auth(),

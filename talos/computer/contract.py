@@ -56,7 +56,8 @@ def validate_browser(args):
             relative_path(args.get("path"))
     return allowed
 KEYS = {"Return", "Tab", "Escape", "BackSpace", "Delete", "Up", "Down", "Left", "Right",
-        "Home", "End", "Page_Up", "Page_Down", "ctrl+l", "ctrl+a", "ctrl+c", "ctrl+v", "alt+Tab"}
+        "Home", "End", "Page_Up", "Page_Down", "ctrl+l", "ctrl+a", "ctrl+c", "ctrl+v",
+        "alt+Tab", "super+Return", "super+Space"}
 
 
 def slug(value, label="name"):

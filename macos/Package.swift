@@ -7,6 +7,7 @@ let package = Package(
     dependencies: [.package(url: "https://github.com/migueldeicaza/SwiftTerm", exact: "1.19.0")],
     targets: [
         .executableTarget(name: "TalosApp", dependencies: ["SwiftTerm"],
-                          swiftSettings: [.swiftLanguageMode(.v5)])
+                          swiftSettings: [.swiftLanguageMode(.v5)]),
+        .testTarget(name: "TalosAppTests", dependencies: ["TalosApp"])
     ]
 )

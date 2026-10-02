@@ -315,6 +315,27 @@ TOOL_PROTOCOL = (
     "within the same authorized scope; never repeat a failed call unchanged or bypass a denial."
 )
 
+OMARCHY_TOOL_PROTOCOL = (
+    "\n\nConfigured Computer backend: Omarchy offline visual desktop. "
+    "For this backend, computer_status supports only status, screenshot and job. "
+    "computer_run supports only click, type, key, scroll, pause, resume and stop. "
+    "Do not request Computer exec, browser, files, routines or open operations: they "
+    "do not exist on this backend. Work through the visible desktop, read each durable "
+    "job receipt and inspect a fresh screenshot after the job reaches a terminal state."
+)
+
+
+def configured_tool_protocol() -> str:
+    """Return the tool contract for the operator-selected Computer backend.
+
+    The manifest and kernel remain the authority. This narrower prompt prevents the
+    model from proposing Linux-only Computer operations to a visual-only backend; it
+    does not grant or execute anything.
+    """
+    if os.environ.get("TALOS_COMPUTER_BACKEND") == "omarchy":
+        return TOOL_PROTOCOL + OMARCHY_TOOL_PROTOCOL
+    return TOOL_PROTOCOL
+
 # Die Ankuendigung steht am ENDE, nicht mitten im Protokoll — und ihre Laenge ist ein
 # gemessener Kompromiss, kein Geschmack. Die Messreihen im Einzelnen:
 #
@@ -561,7 +582,7 @@ class ClaudeCliReasoner:
     def reason_strict(self, prompt: str, on_text: OnText | None = None,
                       *, timeout_s: float | None = None) -> str:
         system = instructions.assemble_system_prompt(
-            tool_protocol=TOOL_PROTOCOL,
+            tool_protocol=configured_tool_protocol(),
             plan_protocol=PLAN_PROTOCOL,
             skills=self._skills_text(prompt),
         )
@@ -915,7 +936,7 @@ class HermesCliReasoner:
 
     def argv_for(self, prompt: str) -> list[str]:
         system = instructions.assemble_system_prompt(
-            tool_protocol=TOOL_PROTOCOL,
+            tool_protocol=configured_tool_protocol(),
             plan_protocol=PLAN_PROTOCOL,
             skills=self._skills_text(prompt),
             final_protocol=HERMES_FINAL_CHANNEL_PROTOCOL,

@@ -55,6 +55,41 @@ def run(*args: str, **kwargs) -> None:
     subprocess.run(args, check=True, **kwargs)
 
 
+def scrub_python_paths(python_bundle: Path, packages: Path, source_root: Path) -> None:
+    """Remove build-machine entry points and normalize CPython's stale prefix."""
+    shutil.rmtree(packages / "bin", ignore_errors=True)
+    configs = list((python_bundle / "lib/python3.13").glob("_sysconfigdata_*.py"))
+    if len(configs) != 1:
+        raise SystemExit("Expected one CPython sysconfig data file in the bundle.")
+    text = configs[0].read_text(encoding="utf-8")
+    source = str(source_root)
+    if source not in text:
+        raise SystemExit("CPython sysconfig prefix changed; review path normalization.")
+    configs[0].write_text(text.replace(source, "/opt/talos/python"), encoding="utf-8")
+
+
+def _contains(path: Path, needle: bytes) -> bool:
+    overlap = b""
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            value = overlap + chunk
+            if needle in value:
+                return True
+            overlap = value[-max(0, len(needle) - 1):]
+    return False
+
+
+def assert_no_local_paths(root: Path, paths: tuple[Path, ...]) -> None:
+    needles = tuple(dict.fromkeys(str(path.resolve()).encode() for path in paths))
+    leaked = []
+    for candidate in root.rglob("*"):
+        if candidate.is_file() and not candidate.is_symlink():
+            if any(_contains(candidate, needle) for needle in needles):
+                leaked.append(str(candidate.relative_to(root)))
+    if leaked:
+        raise SystemExit("Local build paths remain in app bundle: " + ", ".join(leaked[:10]))
+
+
 def build(python_root: Path, destination: Path, identity: str = "-", *, allow_dirty: bool = False) -> Path:
     metadata = app_version()
     provenance = source_record(allow_dirty)
@@ -97,6 +132,7 @@ def build(python_root: Path, destination: Path, identity: str = "-", *, allow_di
         packages = resources / "packages"
         run("uv", "pip", "install", "--python", str(python), "--target", str(packages),
             "--require-hashes", "-r", str(ROOT / "requirements.lock"))
+        scrub_python_paths(resources / "python", packages, python_root)
         backend = resources / "backend"
         backend.mkdir()
         tracked = subprocess.check_output(["git", "ls-files", "-z", "talos", "blueprints", "SOUL.md"],
@@ -140,6 +176,10 @@ def build(python_root: Path, destination: Path, identity: str = "-", *, allow_di
                 "LSMinimumSystemVersion": "14.0", "NSHighResolutionCapable": True,
                 "LSApplicationCategoryType": "public.app-category.productivity"}
         (contents / "Info.plist").write_bytes(plistlib.dumps(info))
+        run("/usr/bin/strip", "-S", "-x", str(binary))
+        run("/usr/bin/install_name_tool", "-id", "@rpath/libpython3.13.dylib",
+            str(resources / "python/lib/libpython3.13.dylib"))
+        assert_no_local_paths(app, (Path.home(), ROOT, python_root, Path(tmp)))
         # Sign nested Mach-O objects before sealing the outer bundle. No --deep
         # signing and no embedded developer identity/configuration in source.
         magic = {b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"}

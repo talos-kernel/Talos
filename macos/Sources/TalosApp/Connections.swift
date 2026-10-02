@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import SwiftUI
 
 struct ConnectionsView: View {
@@ -84,34 +85,96 @@ struct ConnectionsView: View {
     }
 }
 
+enum LocalComputerLink {
+    static let relativePath = "Library/Application Support/Talos/computer.url"
+
+    static func validate(_ text: String) -> URL? {
+        guard let parts = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+              parts.scheme?.lowercased() == "http",
+              ["127.0.0.1", "::1", "[::1]"].contains(parts.host ?? ""),
+              parts.port == 8830,
+              parts.user == nil, parts.password == nil, parts.query == nil,
+              parts.path.isEmpty || parts.path == "/",
+              let fragment = parts.fragment, fragment.hasPrefix("token="),
+              !fragment.dropFirst(6).isEmpty,
+              fragment.dropFirst(6).count <= 128,
+              fragment.dropFirst(6).allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }),
+              let url = parts.url else { return nil }
+        return url
+    }
+
+    static func load(from file: URL? = nil) -> URL? {
+        let path = file ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(relativePath)
+        var metadata = stat()
+        guard lstat(path.path, &metadata) == 0,
+              (metadata.st_mode & S_IFMT) == S_IFREG,
+              metadata.st_uid == getuid(),
+              (metadata.st_mode & 0o077) == 0,
+              let data = try? Data(contentsOf: path), data.count <= 2048,
+              let text = String(data: data, encoding: .utf8) else { return nil }
+        return validate(text)
+    }
+}
+
+enum ComputerViewBackend: Equatable {
+    case omarchy(URL)
+    case remote
+
+    static func select(localURL: URL?) -> Self {
+        localURL.map(Self.omarchy) ?? .remote
+    }
+}
+
 struct ComputerView: View {
     @AppStorage("computerURL") private var savedURL = ""
     @State private var address = ""
     @State private var error = ""
     @State private var showGuide = false
+    @State private var localURL: URL?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             Image(systemName: "desktopcomputer").font(.system(size: 40, weight: .light)).foregroundStyle(Palette.bronze)
             Text("Room to do more.").font(.system(size: 34, weight: .medium, design: .rounded)).tracking(-0.9)
-            Text("Open an existing Talos Computer for persistent projects, files and jobs. It can run headless; a graphical desktop is optional.")
+            Text(localURL == nil
+                 ? "Connect a private Linux Computer, or install the offline Omarchy desktop on this Mac."
+                 : "Use the offline Omarchy desktop installed on this Mac.")
                 .foregroundStyle(Palette.muted).font(.system(size: 15)).lineSpacing(6)
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Your private Computer link").font(.system(size: 12, weight: .medium))
-                EntryField(placeholder: "https://your-computer.example", text: $address, onSubmit: openComputer)
-                    .frame(height: 30)
-                Button("Open Computer", action: openComputer).buttonStyle(BronzeButtonStyle()).controlSize(.large)
-                if !error.isEmpty { Text(error).font(.system(size: 12)).foregroundStyle(Palette.bronze) }
-            }.padding(24).background(Palette.panel, in: RoundedRectangle(cornerRadius: 14))
-            Text("Already using Talos on another machine? Its /computer command gives you the private link. Sign-in tokens in that link are opened once and are not saved here.")
-                .font(.system(size: 12)).foregroundStyle(Palette.muted).lineSpacing(4)
-            Button("Computer setup guide") { showGuide = true }
-                .buttonStyle(.plain).font(.system(size: 13)).foregroundStyle(Palette.bronze)
-            Text("Computer hosting currently requires an ARM64 Linux machine. This Mac app connects to it.")
-                .font(.system(size: 11)).foregroundStyle(Palette.muted)
+            switch ComputerViewBackend.select(localURL: localURL) {
+            case let .omarchy(localURL):
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Omarchy Computer · this Mac", systemImage: "shield.lefthalf.filled")
+                        .font(.system(size: 16, weight: .medium)).foregroundStyle(Palette.bronze)
+                    Text("An offline visual desktop with human takeover. It has no network adapter and shares no Mac files, clipboard or credentials.")
+                        .font(.system(size: 13)).foregroundStyle(Palette.muted).lineSpacing(4)
+                    Button("Open Omarchy Computer") { NSWorkspace.shared.open(localURL) }
+                        .buttonStyle(BronzeButtonStyle()).controlSize(.large)
+                }.padding(24).background(Palette.panel, in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Palette.line))
+                Text("Omarchy is the active Computer on this Mac. Remote Computer URLs are not shown or used while this private local link remains valid.")
+                    .font(.system(size: 11)).foregroundStyle(Palette.muted).lineSpacing(4)
+            case .remote:
+                Text("The local Omarchy Computer is not installed or its private link failed validation.")
+                    .font(.system(size: 12)).foregroundStyle(Palette.muted)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Talos Computer").font(.system(size: 12, weight: .medium))
+                    EntryField(placeholder: "https://your-computer.example", text: $address, onSubmit: openComputer)
+                        .frame(height: 30)
+                    Button("Open Linux Computer", action: openComputer).buttonStyle(.bordered).controlSize(.large)
+                    if !error.isEmpty { Text(error).font(.system(size: 12)).foregroundStyle(Palette.bronze) }
+                }.padding(24).background(Palette.panel, in: RoundedRectangle(cornerRadius: 14))
+                Text("Already using Talos on another machine? Its /computer command gives you the private link. Sign-in tokens in that link are opened once and are not saved here.")
+                    .font(.system(size: 12)).foregroundStyle(Palette.muted).lineSpacing(4)
+                Button("Computer setup guide") { showGuide = true }
+                    .buttonStyle(.plain).font(.system(size: 13)).foregroundStyle(Palette.bronze)
+            }
             Spacer(minLength: 0)
         }.padding(55).frame(maxWidth: 760, maxHeight: .infinity, alignment: .topLeading)
-            .onAppear { address = savedURL }
+            .onAppear {
+                address = savedURL
+                localURL = LocalComputerLink.load()
+            }
             .sheet(isPresented: $showGuide) {
                 VStack(alignment: .leading, spacing: 15) {
                     Text("Computer setup").font(.title2)

@@ -18,6 +18,15 @@ def test_private_link_requires_valid_https_and_configured_key(tmp_path,monkeypat
     monkeypatch.setenv("TALOS_COMPUTER_VIEW_URL","https://example.test")
     assert entry().markdown and "#token=test-only-access-value" in entry().text
 
+def test_private_link_allows_only_exact_loopback_cleartext(tmp_path,monkeypatch):
+    key=tmp_path/"view.key";key.write_text("test-only-local-access-value")
+    monkeypatch.setenv("TALOS_COMPUTER_SOCKET","/run/example/control.sock")
+    monkeypatch.setenv("TALOS_COMPUTER_VIEW_KEY_FILE",str(key))
+    monkeypatch.setenv("TALOS_COMPUTER_VIEW_URL","http://127.0.0.1:8830")
+    assert "#token=test-only-local-access-value" in entry().text
+    monkeypatch.setenv("TALOS_COMPUTER_VIEW_URL","http://localhost:8830")
+    assert "test-only-local" not in entry().text
+
 def test_status_does_not_print_access_key(tmp_path,monkeypatch):
     key=tmp_path/"view.key";key.write_text("keep-this-private")
     monkeypatch.setenv("TALOS_COMPUTER_VIEW_KEY_FILE",str(key))

@@ -112,6 +112,25 @@ def test_environment_separates_existing_agent_and_keeps_sandbox(runtime, monkeyp
     assert not profile.exists()
 
 
+def test_environment_loads_only_private_computer_capabilities(runtime, monkeypatch):
+    bundle, profile = runtime
+    desktop.provision(bundle, profile)
+    config = profile / "talos.env"
+    config.write_text(
+        "TALOS_COMPUTER_BACKEND=omarchy\n"
+        "TALOS_COMPUTER_SOCKET=/Library/Application Support/TalosOmarchy/run/control.sock\n"
+        "UNREVIEWED_VARIABLE=must-not-import\n"
+    )
+    config.chmod(0o600)
+    env = desktop.clean_environment(profile, bundle / "backend", bundle / "packages")
+    assert env["TALOS_COMPUTER_BACKEND"] == "omarchy"
+    assert env["TALOS_COMPUTER_SOCKET"].endswith("/run/control.sock")
+    assert "UNREVIEWED_VARIABLE" not in env
+    config.chmod(0o644)
+    with pytest.raises(RuntimeError, match="private and operator-owned"):
+        desktop.clean_environment(profile, bundle / "backend", bundle / "packages")
+
+
 @pytest.mark.parametrize("input_tty,output_tty,sandbox", [(False, True, False), (True, False, False), (True, True, True)])
 def test_mutating_actions_require_attended_terminal(monkeypatch, input_tty, output_tty, sandbox):
     monkeypatch.setattr(desktop.sys, "stdin", SimpleNamespace(isatty=lambda: input_tty))

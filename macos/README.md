@@ -45,10 +45,12 @@ model changes only after validation succeeds. `/commands` remain available.
   Telegram**. It runs while that session stays open. Do not reuse a bot token
   already being polled by another machine. Chat and Telegram sessions are
   mutually exclusive in this preview.
-- **Computer**: opens an existing private HTTPS Computer link. Headless hosting
-  and an optional desktop currently run on a separate ARM64 Linux KVM host.
-  This app does not provision a Mac VM. Link query/fragment tokens are not saved
-  in the app's preferences.
+- **Computer**: uses a separately installed local Omarchy Computer whose private
+  loopback link is validated from the operator-owned 0600 profile. It is an offline,
+  visual-only VM with no host folders, clipboard or credentials. While that local
+  link is valid, remote Computer controls are hidden and unused. Without Omarchy, a
+  private HTTPS ARM64 Linux Computer can be connected instead. Link query/fragment
+  tokens are opened once and are not saved in app preferences.
 
 ## Your files
 
@@ -58,7 +60,10 @@ runtime code is versioned separately; app updates preserve these files.
 No other Talos profile or Telegram credentials are imported. The UI is native
 SwiftUI; chat and guided setup use the existing Talos CLI inside a visible PTY.
 Kernel permissions and approval handling are the same as `talos chat`.
-Closing the app ends its session. It installs no background service or listener.
+Closing the app ends its session. The app itself installs no background service or
+listener. The separate, explicit Omarchy installer creates three loopback/local-only
+services under a hidden non-admin account; the ordinary app build does not provision
+that VM.
 
 ## Building the preview
 

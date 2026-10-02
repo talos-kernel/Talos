@@ -254,7 +254,7 @@ html.js .rv.in{opacity:1; transform:none}
     <p class="lede">That one decision shapes the rest of this manual. It is why the
     command list is short, and why a few obvious conveniences are missing on purpose.</p>
     <div class="spec-row">
-      <div class="spec"><b>2935</b>unit tests</div>
+      <div class="spec"><b>2995</b>unit tests</div>
       <div class="spec"><b>263/263</b>adversarial</div>
       <div class="spec"><b>985</b>gate lines</div>
       <div class="spec"><b>33</b>gated tools</div>
@@ -304,6 +304,11 @@ python -m pytest tests/ -q</pre>
     <code>bubblewrap</code> on Linux; macOS uses the built-in <code>sandbox-exec</code>.
     Where there is no isolation, the shell <strong>refuses</strong> rather than running
     unprotected.</p>
+    <p>On Apple silicon, the Mac app can also open a separately installed local
+    Omarchy Computer. It is an offline, visual-only VM: no virtual network adapter,
+    host folders, clipboard bridge or host credentials. The one-line installer does
+    not create that VM; the explicit beta installer and its limits are documented in
+    the <a href="https://github.com/talos-kernel/talos/blob/main/docs/omarchy-experiment.md">Omarchy boundary</a>.</p>
   </section>
 
   <section id="identity" class="rv">
@@ -410,7 +415,7 @@ python -m talos help setup</pre>
   <section id="session" class="rv">
     <h2><span class="n">Section 05</span>The terminal session</h2>
 <pre>$ talos chat
-Talos 0.20.0-beta.2  ·  anthropic-api/claude-opus-4-8  ·  autonomy 3
+Talos 0.20.0-beta.3  ·  anthropic-api/claude-opus-4-8  ·  autonomy 3
 speaking as cli:1000  ·  approvals possible — you are at a terminal
 /help for commands, `exit` to leave
 

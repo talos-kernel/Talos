@@ -19,10 +19,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2935).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (2995).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-2935-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-2995-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-263%2F263-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-985%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-33%20gated-8a4318.svg" alt="Tools">
@@ -299,7 +299,7 @@ come from `stdin` instead of `getUpdates`.
 ```
 $ talos chat
 
-  ◉  Talos / 0.20.0-beta.2
+  ◉  Talos / 0.20.0-beta.3
      Your terminal. Your rules.
   ──────────────────────────────────────────────────────────────────────────
   model      claude-cli/claude-opus-4-1
@@ -752,6 +752,22 @@ included, not only in the suite.
 
 There is no image generation. That is a decision, not a gap: an agent that can produce
 photographs is a different conversation than one that can only look at them.
+
+## Computers
+
+The macOS app can prefer a separately installed local **Omarchy Computer**: an
+offline, visual-only desktop behind Talos's normal kernel, capability and receipt
+path. It runs as a hidden non-admin service account with no virtual network adapter,
+host folders, clipboard bridge or host credentials. Talos can inspect screenshots
+and propose bounded click, type, key and scroll actions; unsupported shell, browser,
+file and routine operations fail instead of falling through to the Mac.
+
+The existing ARM64 Linux/KVM Computer remains available for structured projects,
+terminal commands, browser automation, files and routines. The Omarchy installer is
+currently an explicit macOS beta/developer workflow that consumes a reviewed signed
+app and a pre-provisioned guest disk; the ordinary one-line installer does not create
+the VM. See [the Computer guide](docs/computer.md) and
+[the Omarchy boundary](docs/omarchy-experiment.md).
 
 ## Commands
 

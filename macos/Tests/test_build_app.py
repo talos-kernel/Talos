@@ -55,3 +55,28 @@ def test_missing_helper_is_not_silently_omitted(source):
     subprocess.run(['git', 'rm', '-q', 'macos/desktop_accounts.py'], cwd=source, check=True)
     with pytest.raises(ValueError, match='missing tracked'):
         build_app.source_record(allow_dirty=True)
+
+
+def test_python_bundle_paths_are_normalized(tmp_path):
+    source_root = tmp_path / 'private-python'
+    bundle = tmp_path / 'bundle'
+    config = bundle / 'lib/python3.13/_sysconfigdata_test.py'
+    config.parent.mkdir(parents=True)
+    config.write_text("PREFIX = " + repr(str(source_root)) + "\n")
+    packages = tmp_path / 'packages'
+    (packages / 'bin').mkdir(parents=True)
+    (packages / 'bin/tool').write_text('#!' + str(source_root / 'bin/python3') + '\n')
+    build_app.scrub_python_paths(bundle, packages, source_root)
+    assert not (packages / 'bin').exists()
+    assert str(source_root) not in config.read_text()
+    assert '/opt/talos/python' in config.read_text()
+
+
+def test_bundle_hygiene_finds_paths_across_chunks(tmp_path):
+    root = tmp_path / 'app'
+    root.mkdir()
+    private = tmp_path / 'operator-home'
+    payload = root / 'payload'
+    payload.write_bytes(b'x' * (1024 * 1024 - 3) + str(private).encode())
+    with pytest.raises(SystemExit, match='payload'):
+        build_app.assert_no_local_paths(root, (private,))

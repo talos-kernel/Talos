@@ -1,5 +1,23 @@
 # Talos Computer (experimental)
 
+Talos supports two deliberately different Computer installations. The Mac app
+selects exactly one: a valid local Omarchy link replaces the remote URL controls;
+without Omarchy, the app can connect to a remote Linux Computer.
+
+- **Local Omarchy on Apple silicon macOS:** an offline, visual-only desktop. When
+  separately installed, the Mac app uses its private loopback link as the Computer
+  and hides the remote field. It supports screenshots,
+  click, type, bounded keys, scroll and explicit pause/takeover; it does not expose a
+  shell, browser protocol, guest files or routines. See the
+  [Omarchy boundary and installer](omarchy-experiment.md).
+- **Remote ARM64 Linux/KVM:** the full project, shell, semantic-browser, file and
+  routine backend documented below.
+
+Neither backend bypasses the Talos kernel. Unsupported Omarchy operations fail
+explicitly and never fall through to the Mac or to a remote backend.
+
+## Linux/KVM backend
+
 An optional, persistent Linux computer for one operator. Headless by default, with an opt-in desktop. The model proposes an action;
 the normal Talos kernel asks for that exact action before the backend executes it
 inside an ARM64 KVM virtual machine.

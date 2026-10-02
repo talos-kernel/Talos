@@ -6,7 +6,32 @@ war ausgerechnet die Sitzungssignatur und die Login-Bremse ueberall ungeprueft. 
 Import in `talos/computer/web.py` ist jetzt traege — nur der Proxy braucht ihn —, also
 laufen sie hier ohne Ausnahme.
 """
+from io import BytesIO
+import json
+
 import pytest
+
+
+class Headers(dict):
+    def get(self, name, default=None):
+        return super().get(name, default)
+
+
+def post_handler(web, *, path="/api/input", body=None, origin=None,
+                 authenticated=True):
+    raw = json.dumps(body if body is not None else {}).encode()
+    handler = object.__new__(web.SnapshotHandler)
+    handler.path = path
+    handler.headers = Headers({
+        "Origin": origin if origin is not None else web.CONFIG["origin"],
+        "Content-Type": "application/json",
+        "Content-Length": str(len(raw)),
+    })
+    handler.rfile = BytesIO(raw)
+    handler.authenticated = lambda: authenticated
+    response = []
+    handler.respond = lambda *args, **kwargs: response.append((args, kwargs))
+    return handler, response
 
 def test_signed_session_rejects_tampering_wrong_secret_and_expiry():
     from talos.computer.web import COOKIE,make_cookie,valid_cookie
@@ -46,3 +71,82 @@ def test_dashboard_reads_preview_without_consuming_agent_capture_pool(tmp_path, 
     handler.do_GET()
     assert response == [(200, b'preview fixture', 'image/png')]
     assert calls == [('read', {'op':'status'})] + ([('read', {'op':'preview'})] if running else [])
+
+
+def test_boot_frame_without_final_geometry_is_not_reported_as_server_failure(monkeypatch):
+    from talos.computer import web
+    def rpc(_kind, args):
+        if args == {"op": "status"}:
+            return {"vm": "running"}
+        raise ValueError("QMP framebuffer must be 1440x900 RGB")
+    monkeypatch.setattr(web, "rpc", rpc)
+    handler = object.__new__(web.SnapshotHandler)
+    handler.path = "/api/screen"
+    handler.authenticated = lambda: True
+    response = []
+    handler.respond = lambda *args: response.append(args)
+    handler.do_GET()
+    assert response == [(204, b"", "image/png")]
+
+
+def test_snapshot_input_requires_origin_session_and_human_rpc(monkeypatch):
+    from talos.computer import web
+    monkeypatch.setattr(web, "CONFIG", {"origin": "https://computer.example.test",
+                                        "view_secret": "s" * 32})
+    calls = []
+    monkeypatch.setattr(web, "rpc", lambda kind, args: calls.append((kind, args)) or {
+        "input": "delivered", "control": "human"})
+
+    handler, response = post_handler(web, body={"op": "click", "x": 4, "y": 8})
+    handler.do_POST()
+    assert response == [((200, {"input": "delivered", "control": "human"}), {})]
+    assert calls == [("human", {"op": "input", "input": {
+        "op": "click", "x": 4, "y": 8}})]
+
+    handler, response = post_handler(web, body={"op": "click", "x": 4, "y": 8},
+                                     origin="https://evil.example")
+    handler.do_POST()
+    assert response == [((403, {"error": "origin refused"}), {})]
+    assert len(calls) == 1
+
+    handler, response = post_handler(web, body={"op": "click", "x": 4, "y": 8},
+                                     authenticated=False)
+    handler.do_POST()
+    assert response == [((401, {"error": "Anmeldung erforderlich."}), {})]
+    assert len(calls) == 1
+
+
+def test_snapshot_input_rejects_oversized_or_non_object_body(monkeypatch):
+    from talos.computer import web
+    monkeypatch.setattr(web, "CONFIG", {"origin": "https://computer.example.test",
+                                        "view_secret": "s" * 32})
+    monkeypatch.setattr(web, "rpc", lambda *_: pytest.fail("invalid input reached RPC"))
+
+    handler, response = post_handler(web, body=["not", "an", "object"])
+    handler.do_POST()
+    assert response == [((400, {"error": "invalid request"}), {})]
+
+    handler, response = post_handler(web, body={"op": "type", "text": "x"})
+    handler.headers["Content-Length"] = "2001"
+    handler.do_POST()
+    assert response == [((413, {"error": "request too large"}), {})]
+
+
+def test_snapshot_frontend_serializes_input_and_is_valid_javascript():
+    from pathlib import Path
+    import shutil
+    import subprocess
+
+    source = Path(__file__).parents[1] / "talos" / "computer" / "web" / "app.js"
+    text = source.read_text()
+    assert "snapshotInputQueue=result.then" in text
+    assert 'api("/api/input",input)' in text
+    assert "response.status===204" in text
+    assert "snapshotViewer()||(desktopConnected&&rfb)" in text
+    assert 'state.backend==="omarchy"' in text
+    assert "No network adapter, host files, clipboard or credentials." in text
+    html = source.with_name("index.html").read_text()
+    assert 'id="intro-copy"' in html and 'id="bottom-grid"' in html
+    if node := shutil.which("node"):
+        subprocess.run([node, "--check", str(source)], check=True,
+                       capture_output=True, text=True)

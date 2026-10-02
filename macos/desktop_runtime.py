@@ -20,6 +20,12 @@ sys.dont_write_bytecode = True
 
 PROFILE = Path.home() / "Library" / "Application Support" / "Talos"
 QUICK_MODEL = "claude-fable-5-1"
+COMPUTER_RUNTIME_KEYS = frozenset({
+    "TALOS_COMPUTER_BACKEND", "TALOS_COMPUTER_DESKTOP",
+    "TALOS_COMPUTER_OWNER_SHA256", "TALOS_COMPUTER_ROOT",
+    "TALOS_COMPUTER_SOCKET", "TALOS_COMPUTER_VIEW_KEY_FILE",
+    "TALOS_COMPUTER_VIEW_URL",
+})
 
 
 def backend_digest(backend: Path) -> str:
@@ -85,6 +91,17 @@ def clean_environment(profile: Path, source: Path, packages: Path) -> dict[str, 
                 "PYTHONPATH": os.pathsep.join((str(source), str(packages))),
                 "PYTHONUNBUFFERED": "1", "PYTHONNOUSERSITE": "1", "PYTHONDONTWRITEBYTECODE": "1",
                 "TERM": "xterm-256color", "COLORTERM": "truecolor"})
+    config = profile / "talos.env"
+    if config.exists():
+        private_path(config)
+        properties = config.stat()
+        if properties.st_uid != os.getuid() or properties.st_mode & 0o077:
+            raise RuntimeError("The Talos configuration must be private and operator-owned.")
+        for line in config.read_text(encoding="utf-8").splitlines():
+            key, separator, value = line.partition("=")
+            key = key.strip()
+            if separator and key in COMPUTER_RUNTIME_KEYS:
+                env[key] = value.strip()
     from desktop_accounts import cli_path
     env["PATH"] = cli_path(Path.home(), env.get("PATH", ""))
     return env

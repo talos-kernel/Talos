@@ -7,6 +7,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The 0.20.0 beta line follows the frozen operator contract; earlier alpha releases
 remain historical snapshots. Beta does not mean error-free operation.
 
+## [0.20.0-beta.3] — 2026-10-02
+
+### Security
+
+- Add an explicit Apple-silicon Omarchy Computer installer with a hidden non-admin,
+  no-login service identity, no virtual NIC, host share or clipboard bridge, and
+  operator-inaccessible raw disk/QMP transport. The authenticated workbench binds
+  only to loopback and removes its one-use fragment token from browser history.
+- Accept the local Computer link in the Mac app only from an operator-owned regular
+  file with mode 0600 and an exact loopback origin. Import only the exact Computer
+  capability keys into the desktop runtime; never persist the local access token in
+  app preferences.
+- Verify source app signatures before installation, verify copied QEMU before an
+  atomic immutable-runtime switch, and fail closed on a partial or weakened service
+  identity. Publication does not change or restart an existing Pi installation.
+
+### Added
+
+- Add the offline, visual-only Omarchy backend: screenshot, status, bounded click,
+  type, key, scroll, pause, resume, stop and explicit human takeover. Shell, browser
+  protocol, guest files and routines fail instead of falling through to the Mac.
+- Add App 0.3.4 build 8 with a primary local Omarchy card and the existing remote
+  Linux Computer as the explicit full-featured fallback.
+- Add installed browser/OCR and API-restart E2E gates. The visual gate requires two
+  consecutive terminal commands whose typed marker and resulting output are both
+  visible, plus clean browser health, token removal, mobile layout and final pause.
+
+### Fixed
+
+- Use explicit bounded key-down/key-up events, with a short printable-key hold and a
+  separate special-key hold, preventing observed repeating letters and swallowed
+  Return events without replaying uncertain input.
+- Hide Linux-only project and routine panels in the Omarchy workbench and describe
+  the offline visual boundary directly.
+- Strip local build paths and generated console entry points from signed Mac app
+  bundles; the builder now refuses any remaining home, repository, Python-root or
+  temporary build path before signing.
+
 ## [0.20.0-beta.2] — 2026-10-02
 
 ### Security
