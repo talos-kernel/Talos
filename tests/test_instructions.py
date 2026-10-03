@@ -184,6 +184,7 @@ def test_cli_and_api_use_the_same_system_prompt_assembly(monkeypatch, tmp_path: 
     assert "CLI-SKILLS" in calls[0][0]
     assert "CLAUDE-SKILLS" in calls[1][0]
     assert "API-SKILLS" in calls[2][0]
+    assert all("final answer channel" in final_protocol for _skills, final_protocol in calls)
 
 def test_protocol_carries_the_scope_rule() -> None:
     """Gemessen am 20.09.2026: ein Lauf verkleinerte den Auftrag still (drei Schritte
@@ -199,6 +200,6 @@ def test_omarchy_prompt_narrows_only_the_configured_computer_backend(monkeypatch
     assert configured_tool_protocol() == TOOL_PROTOCOL
     monkeypatch.setenv("TALOS_COMPUTER_BACKEND", "omarchy")
     prompt = configured_tool_protocol()
-    assert "Omarchy offline visual desktop" in prompt
+    assert "Omarchy visual desktop with outbound NAT" in prompt
     assert "Do not request Computer exec, browser, files, routines or open" in prompt
     assert "click, type, key, scroll, pause, resume and stop" in prompt

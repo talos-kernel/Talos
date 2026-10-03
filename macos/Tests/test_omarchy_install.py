@@ -1,4 +1,4 @@
-"""The privileged Omarchy installer has a deterministic, offline launch plan."""
+"""The privileged Omarchy installer has a deterministic, outbound-only launch plan."""
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
@@ -54,14 +54,17 @@ def directory_service(initial=False):
     return run, records
 
 
-def test_qemu_plan_has_no_network_or_host_bridge(tmp_path):
+def test_qemu_plan_has_outbound_nat_without_host_forward_or_bridge(tmp_path):
     args = installer.qemu_arguments(tmp_path, {
         "kernelCommandLine": "root=/dev/vda rw mitigations=off console=hvc0"})
-    assert args[args.index("-nic") + 1] == "none"
+    assert args[args.index("-netdev") + 1] == "user,id=talos-omarchy-net,ipv6=off"
+    network = args[args.index("-device") + 1]
+    assert network == ("virtio-net-pci,id=talos-omarchy-nic,"
+                       "netdev=talos-omarchy-net,mac=52:54:00:12:34:56,romfile=")
     assert args[args.index("-display") + 1] == "none"
     assert "-nodefaults" in args
     text = " ".join(args)
-    for forbidden in ("hostfwd", "-netdev", "9p", "fsdev", "virtserialport",
+    for forbidden in ("hostfwd", "tap", "bridge", "9p", "fsdev", "virtserialport",
                       "clipboard", "usb-host", "mitigations=off"):
         assert forbidden not in text
     assert "qmp.sock" in args[args.index("-qmp") + 1]
@@ -83,6 +86,121 @@ def test_service_config_and_plists_keep_roles_separate(tmp_path):
     api = plists["org.talos.omarchy.api"]
     assert api["EnvironmentVariables"]["PYTHONNOUSERSITE"] == "1"
     assert api["ProgramArguments"][-1] == "talos.computer.omarchy_service"
+    assert installer.RETIRED_LABELS == ("org.talos.omarchy.network",)
+
+
+def test_retired_helper_not_loaded_is_verified_before_plist_removal(tmp_path, monkeypatch):
+    label = installer.RETIRED_LABELS[0]
+    launchd = tmp_path / "LaunchDaemons"
+    launchd.mkdir()
+    plist = launchd / f"{label}.plist"
+    plist.write_text("retired")
+    calls = []
+
+    def run(*argv, capture=False, check=True):
+        calls.append((argv, capture, check))
+        if argv[1] == "bootout":
+            return SimpleNamespace(returncode=3, stdout="",
+                                   stderr="Boot-out failed: 3: No such process\n")
+        assert argv == ("/bin/launchctl", "print", "system/" + label)
+        return SimpleNamespace(
+            returncode=113, stdout="",
+            stderr=("Bad request.\n"
+                    f'Could not find service "{label}" in domain for system\n'))
+
+    monkeypatch.setattr(installer, "LAUNCHD", launchd)
+    monkeypatch.setattr(installer, "_run", run)
+    installer._remove_retired_launchd_services()
+
+    assert not plist.exists()
+    assert calls == [
+        (("/bin/launchctl", "bootout", "system/" + label), True, False),
+        (("/bin/launchctl", "print", "system/" + label), True, False),
+    ]
+
+
+def test_retired_helper_genuine_bootout_failure_keeps_plist(tmp_path, monkeypatch):
+    label = installer.RETIRED_LABELS[0]
+    launchd = tmp_path / "LaunchDaemons"
+    launchd.mkdir()
+    plist = launchd / f"{label}.plist"
+    plist.write_text("retired")
+    calls = []
+
+    def run(*argv, capture=False, check=True):
+        calls.append((argv, capture, check))
+        if argv[1] == "bootout":
+            return SimpleNamespace(returncode=5, stdout="",
+                                   stderr="Boot-out failed: 5: Input/output error\n")
+        assert argv == ("/bin/launchctl", "print", "system/" + label)
+        return SimpleNamespace(returncode=0, stdout="loaded service state\n", stderr="")
+
+    monkeypatch.setattr(installer, "LAUNCHD", launchd)
+    monkeypatch.setattr(installer, "_run", run)
+    with pytest.raises(SystemExit, match="failed to unload retired launchd service"):
+        installer._remove_retired_launchd_services()
+
+    assert plist.read_text() == "retired"
+    assert calls == [
+        (("/bin/launchctl", "bootout", "system/" + label), True, False),
+        (("/bin/launchctl", "print", "system/" + label), True, False),
+    ]
+
+
+def test_retired_helper_successful_bootout_still_loaded_keeps_plist(tmp_path, monkeypatch):
+    label = installer.RETIRED_LABELS[0]
+    launchd = tmp_path / "LaunchDaemons"
+    launchd.mkdir()
+    plist = launchd / f"{label}.plist"
+    plist.write_text("retired")
+    calls = []
+
+    def run(*argv, capture=False, check=True):
+        calls.append((argv, capture, check))
+        if argv[1] == "bootout":
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        assert argv == ("/bin/launchctl", "print", "system/" + label)
+        return SimpleNamespace(returncode=0, stdout="loaded service state\n", stderr="")
+
+    monkeypatch.setattr(installer, "LAUNCHD", launchd)
+    monkeypatch.setattr(installer, "_run", run)
+    with pytest.raises(SystemExit, match="still reports the label loaded"):
+        installer._remove_retired_launchd_services()
+
+    assert plist.read_text() == "retired"
+    assert calls == [
+        (("/bin/launchctl", "bootout", "system/" + label), True, False),
+        (("/bin/launchctl", "print", "system/" + label), True, False),
+    ]
+
+
+def test_retired_helper_successful_bootout_and_absence_removes_plist(tmp_path, monkeypatch):
+    label = installer.RETIRED_LABELS[0]
+    launchd = tmp_path / "LaunchDaemons"
+    launchd.mkdir()
+    plist = launchd / f"{label}.plist"
+    plist.write_text("retired")
+    calls = []
+
+    def run(*argv, capture=False, check=True):
+        calls.append((argv, capture, check))
+        if argv[1] == "bootout":
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        assert argv == ("/bin/launchctl", "print", "system/" + label)
+        return SimpleNamespace(
+            returncode=113, stdout="",
+            stderr=("Bad request.\n"
+                    f'Could not find service "{label}" in domain for system\n'))
+
+    monkeypatch.setattr(installer, "LAUNCHD", launchd)
+    monkeypatch.setattr(installer, "_run", run)
+    installer._remove_retired_launchd_services()
+
+    assert not plist.exists()
+    assert calls == [
+        (("/bin/launchctl", "bootout", "system/" + label), True, False),
+        (("/bin/launchctl", "print", "system/" + label), True, False),
+    ]
 
 
 def test_service_identity_is_created_hidden_without_login(monkeypatch):

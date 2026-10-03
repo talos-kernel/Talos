@@ -49,6 +49,40 @@ def test_login_rate_limit_survives_separate_database_connections(tmp_path):
     assert not login_allowed(path,1001)
     assert login_allowed(path,1061)
 
+
+@pytest.mark.parametrize("handler_name", ["Handler", "SnapshotHandler"])
+def test_login_rate_limit_429_sends_retry_after_window(tmp_path, monkeypatch,
+                                                        handler_name):
+    from talos.computer import web
+    path = tmp_path / "login.db"
+    assert all(web.login_allowed(path, 1000) for _ in range(8))
+    monkeypatch.setattr(web, "CONFIG", {
+        "origin": "https://computer.example.test", "view_secret": "s" * 32})
+    monkeypatch.setattr(web, "LOGIN_DB", path)
+    monkeypatch.setattr(web.time, "time", lambda: 1001)
+
+    raw = json.dumps({"token": "s" * 32}).encode()
+    handler = object.__new__(getattr(web, handler_name))
+    handler.path = "/api/login"
+    handler.headers = Headers({
+        "Origin": web.CONFIG["origin"],
+        "Content-Type": "application/json",
+        "Content-Length": str(len(raw)),
+    })
+    handler.rfile = BytesIO(raw)
+    handler.wfile = BytesIO()
+    statuses = []
+    headers = []
+    handler.send_response = statuses.append
+    handler.send_header = lambda name, value: headers.append((name, value))
+    handler.end_headers = lambda: None
+
+    handler.do_POST()
+
+    assert statuses == [429]
+    assert ("Retry-After", "60") in headers
+    assert json.loads(handler.wfile.getvalue()) == {"error": "Bitte warte eine Minute."}
+
 @pytest.mark.parametrize('running', [False, True])
 def test_dashboard_reads_preview_without_consuming_agent_capture_pool(tmp_path, monkeypatch, running):
     from talos.computer import web
@@ -144,7 +178,7 @@ def test_snapshot_frontend_serializes_input_and_is_valid_javascript():
     assert "response.status===204" in text
     assert "snapshotViewer()||(desktopConnected&&rfb)" in text
     assert 'state.backend==="omarchy"' in text
-    assert "No network adapter, host files, clipboard or credentials." in text
+    assert "No inbound forwarding, host files, clipboard or credentials." in text
     html = source.with_name("index.html").read_text()
     assert 'id="intro-copy"' in html and 'id="bottom-grid"' in html
     if node := shutil.which("node"):

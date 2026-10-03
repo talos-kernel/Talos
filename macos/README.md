@@ -46,8 +46,10 @@ model changes only after validation succeeds. `/commands` remain available.
   already being polled by another machine. Chat and Telegram sessions are
   mutually exclusive in this preview.
 - **Computer**: uses a separately installed local Omarchy Computer whose private
-  loopback link is validated from the operator-owned 0600 profile. It is an offline,
-  visual-only VM with no host folders, clipboard or credentials. While that local
+  loopback link is validated from the operator-owned 0600 profile. It is a visual-only
+  VM with unprivileged QEMU user-mode NAT and no root network helper, inbound
+  forwarding, host folders, clipboard or
+  credentials. While that local
   link is valid, remote Computer controls are hidden and unused. Without Omarchy, a
   private HTTPS ARM64 Linux Computer can be connected instead. Link query/fragment
   tokens are opened once and are not saved in app preferences.

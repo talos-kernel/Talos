@@ -134,6 +134,9 @@ def test_the_site_states_the_real_number_of_tools() -> None:
 EXTRA_PAGES = (
     ROOT / "site" / "console.html",
     ROOT / "site" / "docs" / "index.html",
+    ROOT / "site" / "redteam" / "index.html",
+    ROOT / "site" / "registry" / "index.html",
+    ROOT / "site" / "setup" / "index.html",
     ROOT / "site" / "vergleich" / "index.html",
 )
 
@@ -182,6 +185,11 @@ def test_every_page_of_the_site_states_the_real_numbers() -> None:
                 f"{seite.relative_to(ROOT)} nennt {label} nicht (hat {claims}, "
                 f"echt ist {zahl})."
             )
+    llms = (ROOT / "site" / "llms.txt").read_text(encoding="utf-8")
+    assert f"Permission kernel: {erwartet['Kernel-Zeilen']} lines" in llms
+    assert f"{erwartet['Werkzeuge']} tools, all gated" in llms
+    assert f"{erwartet['Tests']} tests" in llms
+    assert f"{erwartet['Adversarial-Faelle']}/{erwartet['Adversarial-Faelle']} red-team" in llms
 
 
 # --- Das README zaehlt genauso mit wie die Seite ---------------------------------------

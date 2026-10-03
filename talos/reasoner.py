@@ -316,7 +316,7 @@ TOOL_PROTOCOL = (
 )
 
 OMARCHY_TOOL_PROTOCOL = (
-    "\n\nConfigured Computer backend: Omarchy offline visual desktop. "
+    "\n\nConfigured Computer backend: Omarchy visual desktop with outbound NAT. "
     "For this backend, computer_status supports only status, screenshot and job. "
     "computer_run supports only click, type, key, scroll, pause, resume and stop. "
     "Do not request Computer exec, browser, files, routines or open operations: they "
@@ -585,6 +585,7 @@ class ClaudeCliReasoner:
             tool_protocol=configured_tool_protocol(),
             plan_protocol=PLAN_PROTOCOL,
             skills=self._skills_text(prompt),
+            final_protocol=FINAL_CHANNEL_PROTOCOL,
         )
         full = f"{system}\n\nNachricht:\n{prompt}"
         model_argv = ["--model", self._model] if self._model else []

@@ -65,15 +65,18 @@ def classify(text: str) -> str | None:
     return None
 
 
-def note(status: str, text: str) -> str:
+def note(status: str, text: str, result: object | None = None) -> str:
     """Die eine Hinweiszeile fuer `tool_history_entry` — oder "".
 
-    Gehaengt wird an zwei Signale: ein gescheitertes Werkzeug (`status=error`)
-    oder ein Fehlbild im Text (rc != 0, HTTP 4xx/5xx). Ein erfolgreicher Aufruf
-    bekommt nie eine Zeile, auch wenn sein Text zufaellig „429" enthaelt —
-    der Anlass ist der Fehlschlag, nicht das Wort.
+    `text` ist die vom Runner gesetzte Detailzeile; `result` ist Werkzeugausgabe und
+    damit untrusted data. Bei einem erfolgreichen Aufruf darf diese Ausgabe nie eine
+    vertrauenswuerdig gerahmte Handlungsanweisung erzeugen, bloss weil sie wie ein Fehler
+    klingt. Erst `status=error` macht das Ergebnis zur zulaessigen Klassifikationsquelle.
+    Explizite Fehlercodes in der vertrauenswuerdigen Detailzeile bleiben ein Signal.
     """
     inhalt = str(text or "")
+    if status == "error" and result is not None:
+        inhalt = f"{inhalt} {result}"
     if status != "error" and not _FEHL_SIGNAL.search(inhalt):
         return ""
     klasse = classify(inhalt)

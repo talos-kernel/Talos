@@ -1,4 +1,4 @@
-"""Bounded, peer-pinned QMP session for the offline desktop experiment.
+"""Bounded, peer-pinned QMP session for the visual desktop backend.
 
 One connection per VM lifetime. Never reconnect or replay an uncertain command.
 Only operator code constructs this transport; model arguments are not endpoints.

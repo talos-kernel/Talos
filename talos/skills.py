@@ -53,6 +53,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from .prompt_context import strip_run_context
+
 SKILL_FILENAME = "SKILL.md"
 
 # Grenzen aus der Spec, wo sie eine nennt.
@@ -217,7 +219,7 @@ class SkillSource:
         return discover_skills(self.roots).render()
 
     def for_prompt(self, prompt: str) -> str:
-        request = prompt.split("[Tool results so far]", 1)[0]
+        request = strip_run_context(prompt)
         return discover_skills(self.roots).render(query=request)
 
 

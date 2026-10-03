@@ -57,6 +57,24 @@ def test_missing_helper_is_not_silently_omitted(source):
         build_app.source_record(allow_dirty=True)
 
 
+def test_swift_invocation_receives_only_build_environment(monkeypatch):
+    required = {key: 'build-' + key.lower() for key in build_app.SWIFT_ENV_ALLOWLIST}
+    inherited = dict(required)
+    inherited['OPERATOR_TEST_SECRET'] = 'synthetic-secret'
+    monkeypatch.setattr(build_app.os, 'environ', inherited)
+    observed = {}
+    monkeypatch.setattr(build_app, 'run',
+                        lambda *args, **kwargs: observed.update(args=args, kwargs=kwargs))
+
+    build_app.run_swift('test', '--package-path', 'macos')
+
+    assert observed['args'] == ('swift', 'test', '--package-path', 'macos')
+    environment = observed['kwargs']['env']
+    assert set(environment) == set(required)
+    assert 'OPERATOR_TEST_SECRET' not in environment
+    assert all(environment[key] == value for key, value in required.items())
+
+
 def test_python_bundle_paths_are_normalized(tmp_path):
     source_root = tmp_path / 'private-python'
     bundle = tmp_path / 'bundle'

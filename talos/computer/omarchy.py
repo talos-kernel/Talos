@@ -1,4 +1,4 @@
-"""Offline Omarchy desktop behind Talos' normal Computer capability boundary.
+"""Visual Omarchy desktop behind Talos' normal Computer capability boundary.
 
 The composition root supplies a fixed VM transport and a guest-only capture source.
 Register ``runner`` only behind GrantedRunner. This module never mints permission,
@@ -21,10 +21,10 @@ from .state import Store
 
 SIZE = (1440, 900)  # The existing public Computer coordinate contract.
 CAPTURE_LIMIT = 5 * 1024 * 1024
-KEY_HOLD_MS = 5
-SPECIAL_KEY_HOLD_MS = 120
 KEY_SETTLE_S = 0.06
-SPECIAL_KEY_SETTLE_S = 0.20
+SPECIAL_KEY_HOLD_MS = 50
+SPECIAL_KEY_RELEASE_S = 0.10
+SPECIAL_KEY_SETTLE_S = 0.10
 INPUT_OPS = frozenset({"click", "type", "key", "scroll"})
 KEYS = {
     "Return": ("ret",), "Tab": ("tab",), "Escape": ("esc",),
@@ -46,7 +46,7 @@ PUNCTUATION = dict(zip("`-=[]\\;',./ ", (
 def text_keys(value):
     """Validate the entire US-layout string before emitting even its first key."""
     if not isinstance(value, str) or not 1 <= len(value) <= 2000:
-        raise ValueError("offline typing requires 1-2000 US-layout characters")
+        raise ValueError("visual typing requires 1-2000 US-layout characters")
     result = []
     for char in value:
         if char not in PLAIN + SHIFTED:
@@ -67,7 +67,7 @@ class OfflineDesktop:
 
 ``qmp`` must be a pinned, authenticated local transport; ``capture`` must return
 only guest PNG bytes normalized to SIZE, never the host desktop. Neither is a
-model argument. ``check_vm`` proves the configured offline boundary and capture
+model argument. ``check_vm`` proves the configured VM boundary and capture
 geometry; failure means no input. A service/OS isolation layer is still required
 before this adapter can be exposed to an unrestricted agent installation.
 """
@@ -129,28 +129,31 @@ before this adapter can be exposed to an unrestricted agent installation.
         special = {"ret", "tab", "esc", "backspace", "delete", "up", "down",
                    "left", "right", "home", "end", "pgup", "pgdn", "ctrl",
                    "alt", "meta_l"}
-        hold = SPECIAL_KEY_HOLD_MS if any(code in special for code in codes) else KEY_HOLD_MS
+        is_special = any(code in special for code in codes)
         with self.lock:
             self._active(epoch, owner)
-            # Explicit release is more reliable than QEMU's send-key timer in
-            # the real Wayland guest. The timer occasionally left a printable
-            # key repeating and then swallowed the following Return. Keep the
-            # lock for this bounded press so takeover cannot interleave with it.
+            # Printable keys use one atomic QMP transaction: separate commands
+            # occasionally let the Wayland guest repeat a character before the
+            # release arrived. QEMU's bounded send-key path gives shortcuts and
+            # Return a real hold interval; the lock remains held past its timer.
             self.held.update(codes)
             try:
-                self.qmp("input-send-event", {
-                    "events": [key_event(code, True) for code in codes]})
-                time.sleep(hold / 1000)
-                self.qmp("input-send-event", {
-                    "events": [key_event(code, False) for code in reversed(codes)]})
+                if is_special:
+                    self.qmp("send-key", {
+                        "keys": [{"type": "qcode", "data": code} for code in codes],
+                        "hold-time": SPECIAL_KEY_HOLD_MS})
+                    time.sleep(SPECIAL_KEY_RELEASE_S)
+                else:
+                    self.qmp("input-send-event", {
+                        "events": ([key_event(code, True) for code in codes]
+                                   + [key_event(code, False) for code in reversed(codes)])})
             except Exception:
                 # Retain uncertain keys: control() calls _release before any
                 # subsequent owner can resume the VM.
                 raise
             else:
                 self.held.difference_update(codes)
-        time.sleep(SPECIAL_KEY_SETTLE_S if any(code in special for code in codes)
-                   else KEY_SETTLE_S)
+        time.sleep(SPECIAL_KEY_SETTLE_S if is_special else KEY_SETTLE_S)
         with self.lock:
             self._active(epoch, owner)
 
@@ -194,7 +197,7 @@ before this adapter can be exposed to an unrestricted agent installation.
             if type(args.get("amount", 3)) is not int or not 1 <= args.get("amount", 3) <= 10:
                 raise ValueError("scroll amount must be between 1 and 10")
         else:
-            raise ValueError("offline desktop supports click, type, key and scroll")
+            raise ValueError("visual desktop supports click, type, key and scroll")
         if set(args) - allowed:
             raise ValueError("unknown desktop input field")
         return op, strokes
@@ -221,7 +224,7 @@ before this adapter can be exposed to an unrestricted agent installation.
         if op in {"pause", "resume", "stop"}:
             return self.control({"pause": "paused", "resume": "agent", "stop": "stopped"}[op])
         if op not in INPUT_OPS or args.get("checks"):
-            raise ValueError("offline prototype supports desktop input only; no exec/browser/file verification")
+            raise ValueError("visual backend supports desktop input only; no exec/browser/file verification")
         input_args = {name: value for name, value in args.items()
                       if name in {"op", "text", "keys", "x", "y", "button", "direction", "amount"}}
         op, strokes = self._input(input_args)
@@ -265,7 +268,7 @@ before this adapter can be exposed to an unrestricted agent installation.
         if op in {"pause", "resume", "stop"}:
             return self.action(args)
         if op not in INPUT_OPS or args.get("checks"):
-            raise ValueError("offline desktop supports visual input only")
+            raise ValueError("visual desktop supports visual input only")
         input_args = {name: value for name, value in args.items()
                       if name in {"op", "text", "keys", "x", "y", "button", "direction", "amount"}}
         self._input(input_args)
@@ -341,7 +344,7 @@ before this adapter can be exposed to an unrestricted agent installation.
         if op == "job":
             return self.store.get(self.owner, args["job_id"])
         if op != "screenshot":
-            raise ValueError("offline prototype does not expose guest files or routines")
+            raise ValueError("visual backend does not expose guest files or routines")
         with self.lock:
             self.check_vm()
             raw = self.capture_source()

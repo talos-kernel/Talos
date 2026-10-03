@@ -1,7 +1,7 @@
 # Omarchy Computer for macOS (beta)
 
 Talos can use a separately installed Omarchy virtual machine as its local Mac
-Computer. This backend is intentionally **offline and visual-only**. When its private
+Computer. This backend is **visual-only with outbound Internet access**. When its private
 local link is present, it replaces the remote Computer in the Mac app: the app does
 not show or use a remote Computer URL. A Mac without Omarchy can still connect to the
 separately supported ARM64 Linux/KVM backend.
@@ -14,8 +14,11 @@ Those large guest artifacts are not downloaded or embedded by the repository.
 ## Boundary
 
 - QEMU runs under the hidden, non-admin, no-login `talosomarchyd` account.
-- The VM command line contains `-nic none`, no host folder, no clipboard bridge and
-  no host credential or user home mount.
+- QEMU's built-in user-mode network runs under the same no-login service account;
+  no root network helper is installed. The VM has one virtio
+  network card, with no `hostfwd`, bridged adapter, host folder, clipboard bridge,
+  host credential or user home mount. The guest can initiate network connections;
+  the Mac publishes no guest service through this path.
 - QEMU's disk, PID, logs and raw QMP socket stay inside root-owned
   `/Library/Application Support/TalosOmarchy`. The operator cannot read the raw disk
   or QMP socket.
@@ -26,7 +29,8 @@ Those large guest artifacts are not downloaded or embedded by the repository.
   once in the URL fragment, removed from browser history after login and stored only
   in operator-owned `0600` profile files.
 - The API, web process and VM are separate root-installed LaunchDaemons running as
-  the service account. A client group permits access only to normalized screenshot
+  the service account. There is no privileged network LaunchDaemon. A client group
+  permits access only to normalized screenshot
   evidence and the authenticated control socket; it cannot list the evidence pool.
 - Every agent input still travels through the normal Talos policy, capability,
   executor and receipt path. The model cannot select QMP, disk, socket, owner,
@@ -54,7 +58,7 @@ copy and the copied QEMU executable afterward, validates the Talos runtime/backe
 creates or strictly validates the hidden no-login service identity, creates a fresh
 immutable runtime directory, updates `runtime/current` atomically, installs the fixed
 LaunchDaemons and starts them fail-closed. It never downloads,
-enables networking, accepts credentials on the command line or overwrites the source
+accepts credentials on the command line or overwrites the source
 guest disk.
 
 The privileged phase writes one operator-owned handoff. The unprivileged
@@ -94,8 +98,9 @@ backend-specific reasoner instructions.
 
 ## Deliberate limitations
 
-- The guest has no network. Package updates, online accounts and network-dependent
-  Omarchy cards do not work in this backend.
+- The guest has outbound user-mode NAT. That network is not a separate trust zone from
+  the host LAN: do not treat browsing untrusted content as harmless merely because
+  the VM has no inbound forwarding or host integration.
 - Input uses a validated US keyboard layout; arbitrary Unicode and paste are not a
   hidden clipboard channel.
 - Geometry is fixed at 1440×900. Capture refuses the wrong size or a blank first
@@ -104,6 +109,7 @@ backend-specific reasoner instructions.
   file and routine operations fail explicitly; there is no silent remote fallback.
 - This beta does not make a public listener, share the Mac desktop or expose raw QMP.
 
-Do not add a virtual NIC, host share, clipboard bridge, public origin, unrestricted
-QMP access or same-identity service process for convenience. Each would change the
-security boundary and requires a new threat review and E2E evidence.
+Do not add inbound forwarding, a bridged adapter, host share, clipboard bridge,
+public origin, unrestricted QMP access or same-identity service process for
+convenience. Each would change the security boundary and requires a new threat review
+and E2E evidence.

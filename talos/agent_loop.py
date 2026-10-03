@@ -22,6 +22,7 @@ from .executor import Executor, Status
 from .eventlog import Event
 from .plan import BUDGET_REASON, PlanRun, parse_plan
 from .policy import ToolRequest, guard_targets
+from .prompt_context import frame_untrusted_tool_result
 from .question import clean_question
 from .redirect import Redirect
 from .ux import SYM_FAIL, SYM_OK
@@ -39,7 +40,8 @@ MAX_STEPS = 100
 MAX_TOOL_RESULT_CHARS = 12_000
 MAX_TOOL_ARGS_CHARS = 3_000
 TOOL_RESULT_CUT = " […tool output truncated]"
-_TOOL_RE = re.compile(r"^\s*TOOL_CALL:\s*(\{.*\})\s*$", re.MULTILINE | re.DOTALL)
+_TOOL_LINE = re.compile(r"^[ \t]*TOOL_CALL:[ \t]*(?P<payload>.*?)[ \t]*$")
+_TOOL_PREFIX = re.compile(r"^[ \t]*TOOL_CALL:")
 
 # --- Fremdsyntax: der Ausfall, der wie eine Antwort aussieht ------------------------
 # Der Reasoner laeuft als Subprozess einer CLI, die ihre EIGENE Werkzeug-Schreibweise
@@ -63,10 +65,17 @@ MAX_FOREIGN_CHARS = 300
 # Text eines per /stopall abgemeldeten Laufs. Fester Satz statt Modellprosa: der
 # Lauf endet an der Schrittgrenze, ohne dass noch ein Zug dafuer braende.
 STOPPED_NOTE = "[Stopped by the operator before the next step.]"
-# Zwei Nachfassversuche. Danach wird die Antwort ausgeliefert wie sie ist — eine
-# Endlosschleife waere schlimmer als eine schiefe Antwort, und der Zaehler des Laufs
-# laeuft ohnehin mit.
-MAX_FOREIGN_RETRIES = 2
+# Native kaputte Vorschlaege, unvollstaendige Argumente und Fremdsyntax sind derselbe
+# Fehlermodus: ein beabsichtigter Kontrollzug, der nichts ausloesen darf. Sie teilen ein
+# einziges Budget, damit ein Wechsel der Schreibweise keine neuen Versuche kauft.
+MAX_CONTROL_REPAIRS = 2
+# Oeffentlicher Kompatibilitaetsname fuer bestehende Integrationen. Es gibt trotzdem nur
+# den einen Zaehler `control_repairs` im Lauf.
+MAX_FOREIGN_RETRIES = MAX_CONTROL_REPAIRS
+CONTROL_REPAIR_FAILED = (
+    "Task unfinished: the model could not produce a valid tool request. "
+    "These replies ran no action."
+)
 FOREIGN_NOTE = (
     "[Your last reply used another tool syntax. Nothing ran — this system reads only a "
     "single line 'TOOL_CALL: {\"tool\": ..., \"args\": {...}}'. Send that line, or answer "
@@ -86,6 +95,128 @@ MALFORMED_NOTE = (
     "need no tool.]"
 )
 
+_CONTROL_TOP_LEVEL_KEYS = frozenset({"tool", "args", "targets"})
+_SAFE_SCHEMA_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+
+
+class _DuplicateJsonKey(ValueError):
+    pass
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Build one JSON object while rejecting duplicate keys at every depth."""
+    obj: dict[str, object] = {}
+    for key, value in pairs:
+        if key in obj:
+            raise _DuplicateJsonKey(key)
+        obj[key] = value
+    return obj
+
+
+def _reject_json_constant(value: str) -> object:
+    """Python accepts NaN/Infinity by default although the control protocol is JSON."""
+    raise ValueError(value)
+
+
+def _load_control_json(payload: str) -> object:
+    return json.loads(
+        payload,
+        object_pairs_hook=_unique_object,
+        parse_constant=_reject_json_constant,
+    )
+
+
+def _outside_tool_lines(text: str) -> list[tuple[int, str]]:
+    """Return native control lines that are outside Markdown fences.
+
+    Both backtick and tilde fences count. An unclosed fence intentionally remains open
+    through the end of the reply, so a protocol example cannot become executable merely
+    because the model forgot its closing fence.
+    """
+    controls: list[tuple[int, str]] = []
+    fence_char = ""
+    fence_size = 0
+    offset = 0
+    for raw_line in text.splitlines(keepends=True):
+        line = raw_line.rstrip("\r\n")
+        stripped = line.lstrip(" \t")
+        indent = len(line) - len(stripped)
+        marker_char = stripped[:1]
+        marker_size = 0
+        if indent <= 3 and marker_char in {"`", "~"}:
+            marker_size = len(stripped) - len(stripped.lstrip(marker_char))
+
+        if fence_char:
+            if (marker_char == fence_char and marker_size >= fence_size
+                    and not stripped[marker_size:].strip()):
+                fence_char = ""
+                fence_size = 0
+        elif marker_size >= 3:
+            fence_char = marker_char
+            fence_size = marker_size
+        elif _TOOL_PREFIX.match(line):
+            controls.append((offset, line))
+        offset += len(raw_line)
+    return controls
+
+
+def _final_tool_payload(text: str) -> str | None:
+    """Return the payload of exactly one final, unfenced TOOL_CALL line."""
+    controls = _outside_tool_lines(text)
+    if len(controls) != 1:
+        return None
+    start, line = controls[0]
+    match = _TOOL_LINE.fullmatch(line)
+    if match is None:
+        return None
+    # The control line is the final non-whitespace content. Prose may precede it (plans
+    # and short explanations do), but no text may follow and blur whether it is a request.
+    if start + len(line.rstrip()) != len(text.rstrip()):
+        return None
+    return match.group("payload").strip()
+
+
+def malformed_tool_note(text: str) -> str:
+    """Describe a misplaced argument shape without echoing argument values.
+
+    A fresh CLI subprocess cannot remember its previous reply. When Claude puts
+    ``command`` or ``query`` beside ``tool``, a generic "valid JSON" reminder loses
+    the only useful fact: which fields were misplaced. Preserve field names only;
+    values remain transient and nothing is executed before a corrected proposal
+    passes the parser and kernel normally.
+    """
+    controls = _outside_tool_lines(text)
+    if len(controls) != 1:
+        return MALFORMED_NOTE
+    match = _TOOL_LINE.fullmatch(controls[0][1])
+    if match is None:
+        return MALFORMED_NOTE
+    try:
+        obj = _load_control_json(match.group("payload"))
+    except (ValueError, TypeError):
+        return MALFORMED_NOTE
+    if not isinstance(obj, dict):
+        return MALFORMED_NOTE
+    misplaced = sorted(
+        key for key in obj
+        if key not in _CONTROL_TOP_LEVEL_KEYS
+        and isinstance(key, str)
+        and _SAFE_SCHEMA_NAME.fullmatch(key)
+    )
+    if not misplaced:
+        return MALFORMED_NOTE
+    tool = obj.get("tool")
+    named_tool = tool if isinstance(tool, str) and _SAFE_SCHEMA_NAME.fullmatch(tool) else "this tool"
+    fields = ", ".join(misplaced[:12])
+    return (
+        f"[Malformed TOOL_CALL shape for {named_tool}: argument field(s) {fields} were "
+        "placed at the top level. Nothing ran. The only top-level fields are tool, args "
+        "and optional targets. Recreate the intended values from the operator's task and "
+        f"put {fields} inside the args object. Return exactly one corrected TOOL_CALL line; "
+        "do not ask the operator to repair syntax. The corrected request still passes the "
+        "security kernel.]"
+    )
+
 
 def looks_foreign(text: str) -> bool:
     """Ist diese Antwort in Wahrheit ein Werkzeugaufruf einer FREMDEN Notation?"""
@@ -93,16 +224,6 @@ def looks_foreign(text: str) -> bool:
     if not stripped or len(stripped) > MAX_FOREIGN_CHARS:
         return False
     return bool(_FOREIGN_XML.match(stripped) or _FOREIGN_CALL.match(stripped))
-
-
-def _inside_code_fence(text: str, position: int) -> bool:
-    """Steht diese Stelle innerhalb eines ```-Blocks?
-
-    Gezaehlt wird, wie viele Zaeune VOR ihr liegen: bei einer ungeraden Zahl ist der
-    Block offen, die Stelle also drin. Das ist bewusst eine Zaehlung und keine
-    Klammer-Analyse — verschachtelte Zaeune gibt es in Markdown nicht.
-    """
-    return text.count("```", 0, position) % 2 == 1
 
 
 def looks_malformed_tool_call(text: str) -> bool:
@@ -115,10 +236,7 @@ def looks_malformed_tool_call(text: str) -> bool:
     drei Zuege an einer Antwort, die von Anfang an richtig war. Belegt in
     tests/test_proposal.py::test_tool_examples_in_prose_are_not_repair_requests.
     """
-    treffer = _TOOL_RE.search(text)
-    if treffer is None or _inside_code_fence(text, treffer.start()):
-        return False
-    return parse_tool_call(text) is None
+    return bool(_outside_tool_lines(text)) and parse_tool_call(text) is None
 
 
 # Der zweite misslungene Zug — und der teurere, weil er wie eine Entscheidung aussieht:
@@ -260,15 +378,24 @@ class AgentResult:
 
 def parse_tool_call(text: str) -> tuple[str, dict, tuple[str, ...]] | None:
     """Extrahiert (tool, args, targets) aus einer TOOL_CALL-Zeile — oder None."""
-    match = _TOOL_RE.search(text)
-    if match is None:
+    payload = _final_tool_payload(text)
+    if payload is None:
         return None
     try:
-        obj = json.loads(match.group(1))
-    except json.JSONDecodeError:
+        obj = _load_control_json(payload)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(obj, dict) or "args" not in obj:
+        return None
+    # Unknown top-level fields are malformed, not empty arguments. The real Claude
+    # route has emitted {"tool":"run_shell","command":"date"}; accepting that
+    # shape and then defaulting args to {} erased the evidence needed by the repair
+    # prompt. Never infer or move fields here: reject the shape and ask the model to
+    # put every argument inside the documented args object.
+    if set(obj) - {"tool", "args", "targets"}:
         return None
     tool = obj.get("tool", "")
-    args = obj.get("args", {})
+    args = obj["args"]
     raw_targets = obj.get("targets", [])
     if (not isinstance(tool, str) or not tool.strip() or not isinstance(args, dict)
             or not isinstance(raw_targets, list) or any(not isinstance(t, str) for t in raw_targets)):
@@ -333,11 +460,10 @@ def run_agent(
 ) -> AgentResult:
     history = list(initial_history)
     active = plan
-    foreign_retries = 0
+    control_repairs = 0
     self_block_retries = 0
     final_review_retries = 0
     question_retries = 0
-    proposal_repairs = 0
     empty_repairs = 0
     announcement_repairs = 0
     recovery_attempts = 0
@@ -430,23 +556,24 @@ def run_agent(
 
         call = parse_tool_call(text)
         if call is None:
-            from . import proposal
-            if proposal.malformed(text):
-                exhausted = proposal_repairs >= proposal.MAX_REPAIRS
+            malformed = looks_malformed_tool_call(text)
+            foreign = looks_foreign(text)
+            if malformed or foreign:
+                exhausted = control_repairs >= MAX_CONTROL_REPAIRS
                 executor.log.append(Event(run_id, "agent", "protocol.repair", {
-                    "reason": "malformed tool reply", "attempt": proposal_repairs + 1,
+                    "reason": "malformed tool reply" if malformed else "foreign tool syntax",
+                    "attempt": control_repairs + 1,
                     "exhausted": exhausted,
                 }))
                 if exhausted:
-                    message = "The model could not produce a valid tool request. These replies ran no action."
-                    stopped = active.abort(message) if active else None
+                    stopped = active.abort(CONTROL_REPAIR_FAILED) if active else None
                     return AgentResult(
                         AgentStatus.PLAN_ABORTED if stopped else AgentStatus.STEP_LIMIT,
-                        stopped.report() if stopped else message,
+                        CONTROL_REPAIR_FAILED,
                         steps=step, history=tuple(history), plan=stopped,
                     )
-                proposal_repairs += 1
-                history.append(proposal.MALFORMED_NOTE)
+                control_repairs += 1
+                history.append(malformed_tool_note(text) if malformed else FOREIGN_NOTE)
                 continue
             if text.strip() in {"", "(leere Antwort)", "(Empty answer.)"}:
                 executor.log.append(Event(run_id, "agent", "protocol.repair", {
@@ -493,20 +620,6 @@ def run_agent(
                     "declined or uncertain effects.]"
                 )
                 continue
-            # Eine native TOOL_CALL-Zeile mit kaputter JSON ist derselbe Fehlermodus wie
-            # Fremdsyntax: ein misslungener Werkzeugzug, kein Ergebnis. Ausliefern hiesse,
-            # rohe Tool-JSON als Antwort zu praesentieren, waehrend nichts lief.
-            if looks_malformed_tool_call(text) and foreign_retries < MAX_FOREIGN_RETRIES:
-                foreign_retries += 1
-                history.append(MALFORMED_NOTE)
-                continue
-            # Fremdsyntax ist kein Ergebnis, sondern ein misslungener Zug. Einmal
-            # nachfassen statt ausliefern: `Read(/tmp/x)` als Antwort zu praesentieren
-            # hiesse, einen Ausfall als Erfolg zu verkaufen.
-            if looks_foreign(text) and foreign_retries < MAX_FOREIGN_RETRIES:
-                foreign_retries += 1
-                history.append(FOREIGN_NOTE)
-                continue
             # Eine Weigerung, die sich auf die eigene Prozess-Schranke beruft, ist
             # ebenfalls kein Ergebnis — sie sieht nur wie eines aus. Genau EIN Nachfassen:
             # bleibt es dabei, ist die Ablehnung die Antwort des Modells und wird
@@ -549,24 +662,25 @@ def run_agent(
         from . import proposal
         issue = proposal.problem(tool, args)
         if issue:
-            exhausted = proposal_repairs >= proposal.MAX_REPAIRS
+            exhausted = control_repairs >= MAX_CONTROL_REPAIRS
             executor.log.append(Event(run_id, "agent", "protocol.repair", {
                 "tool": tool, "reason": "incomplete arguments",
                 "schema_issue": issue,
-                "attempt": proposal_repairs + 1, "exhausted": exhausted,
+                "attempt": control_repairs + 1, "exhausted": exhausted,
             }))
             if exhausted:
-                message = (f"Task unfinished: {tool} arguments remain invalid after "
-                           f"{proposal.MAX_REPAIRS} repair attempts — {issue}. "
-                           "These proposals did not run. Earlier tool results remain valid; "
-                           "completed actions have not been replayed.")
-                stopped = active.abort(message) if active else None
+                # The terminal text stays fixed and value-free. Keep only the trusted
+                # schema reason as a protocol receipt so an explicit later continuation
+                # can correct the shape without replaying earlier effects or retaining
+                # the rejected argument values.
+                history.append(f"[protocol -> rejected] {issue}")
+                stopped = active.abort(CONTROL_REPAIR_FAILED) if active else None
                 return AgentResult(
                     AgentStatus.PLAN_ABORTED if stopped else AgentStatus.STEP_LIMIT,
-                    stopped.report() if stopped else message,
+                    CONTROL_REPAIR_FAILED,
                     steps=step, history=tuple(history), plan=stopped,
                 )
-            proposal_repairs += 1
+            control_repairs += 1
             history.append(proposal.note(tool, issue, args))
             continue
         if tool == "ask_operator":
@@ -708,10 +822,13 @@ def tool_history_entry(tool: str, status: str, detail: str, result: object | Non
     raw = f"[{tool} -> {status}] {detail}{request} {'' if result is None else result}".strip()
     # Die Fehlerklasse ist eine Leserichtung, keine Entscheidung: sie aendert
     # kein Urteil, sie sagt dem naechsten Zug, ob Wiederholen Sinn ergibt.
-    raw += errors.note(status, f"{detail} {'' if result is None else result}")
-    if len(raw) <= MAX_TOOL_RESULT_CHARS:
-        return raw
-    return raw[: MAX_TOOL_RESULT_CHARS - len(TOOL_RESULT_CUT)] + TOOL_RESULT_CUT
+    guidance = errors.note(status, detail, result)
+    framed = frame_untrusted_tool_result(
+        raw,
+        max_chars=MAX_TOOL_RESULT_CHARS - len(guidance),
+        truncation_marker=TOOL_RESULT_CUT,
+    )
+    return framed + guidance
 
 
 def _emit(callback: Progress | None, event: AgentProgress) -> None:

@@ -138,15 +138,15 @@ struct ComputerView: View {
             Image(systemName: "desktopcomputer").font(.system(size: 40, weight: .light)).foregroundStyle(Palette.bronze)
             Text("Room to do more.").font(.system(size: 34, weight: .medium, design: .rounded)).tracking(-0.9)
             Text(localURL == nil
-                 ? "Connect a private Linux Computer, or install the offline Omarchy desktop on this Mac."
-                 : "Use the offline Omarchy desktop installed on this Mac.")
+                 ? "Connect a private Linux Computer, or install the Omarchy desktop on this Mac."
+                 : "Use the Omarchy desktop installed on this Mac.")
                 .foregroundStyle(Palette.muted).font(.system(size: 15)).lineSpacing(6)
             switch ComputerViewBackend.select(localURL: localURL) {
             case let .omarchy(localURL):
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Omarchy Computer · this Mac", systemImage: "shield.lefthalf.filled")
                         .font(.system(size: 16, weight: .medium)).foregroundStyle(Palette.bronze)
-                    Text("An offline visual desktop with human takeover. It has no network adapter and shares no Mac files, clipboard or credentials.")
+                    Text("A visual desktop with outbound NAT and human takeover. It accepts no inbound forwarding and shares no Mac files, clipboard or credentials.")
                         .font(.system(size: 13)).foregroundStyle(Palette.muted).lineSpacing(4)
                     Button("Open Omarchy Computer") { NSWorkspace.shared.open(localURL) }
                         .buttonStyle(BronzeButtonStyle()).controlSize(.large)

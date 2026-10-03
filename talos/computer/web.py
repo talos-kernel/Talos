@@ -45,6 +45,7 @@ NOVNC = Path("/usr/share/novnc")
 CAPTURES = Path("/var/lib/talos-computer-captures")
 CONTROL_SOCKET = Path("/run/talos-computer-api/control.sock")
 LOGIN_DB = Path("/var/lib/talos-computer-web/login.db")
+LOGIN_WINDOW_SECONDS = 60
 
 
 def rpc(kind, args):
@@ -86,7 +87,7 @@ def login_allowed(path, now):
     with sqlite3.connect(str(path), timeout=5) as db:
         db.execute("CREATE TABLE IF NOT EXISTS attempts (ts REAL NOT NULL)")
         db.execute("BEGIN IMMEDIATE")
-        db.execute("DELETE FROM attempts WHERE ts < ?", (now - 60,))
+        db.execute("DELETE FROM attempts WHERE ts < ?", (now - LOGIN_WINDOW_SECONDS,))
         if db.execute("SELECT COUNT(*) FROM attempts").fetchone()[0] >= 8:
             return False
         db.execute("INSERT INTO attempts VALUES (?)", (now,))
@@ -120,7 +121,8 @@ class RequestMixin:
                          "base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
         super().end_headers()
 
-    def respond(self, code, body, kind="application/json; charset=utf-8", cookie=None):
+    def respond(self, code, body, kind="application/json; charset=utf-8", cookie=None,
+                retry_after=None):
         if not isinstance(body, bytes):
             body = json.dumps(body, ensure_ascii=False).encode()
         self.send_response(code)
@@ -128,6 +130,8 @@ class RequestMixin:
         self.send_header("Content-Length", str(len(body)))
         if cookie:
             self.send_header("Set-Cookie", cookie)
+        if retry_after is not None:
+            self.send_header("Retry-After", str(retry_after))
         self.end_headers()
         self.wfile.write(body)
 
@@ -197,7 +201,8 @@ class RequestMixin:
             # Same-machine proxy addresses are deliberately not treated as identities.
             now = time.time()
             if not login_allowed(LOGIN_DB, now):
-                return self.respond(429, {"error": "Bitte warte eine Minute."})
+                return self.respond(429, {"error": "Bitte warte eine Minute."},
+                                    retry_after=LOGIN_WINDOW_SECONDS)
             token = args.get("token")
             if set(args) != {"token"} or not isinstance(token, str) or not hmac.compare_digest(token, CONFIG["view_secret"]):
                 return self.respond(401, {"error": "Öffne den persönlichen Link aus /computer."})

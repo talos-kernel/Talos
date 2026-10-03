@@ -7,6 +7,48 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The 0.20.0 beta line follows the frozen operator contract; earlier alpha releases
 remain historical snapshots. Beta does not mean error-free operation.
 
+## [0.20.0-beta.4] — 2026-10-03
+
+### Security
+
+- Frame tool results as explicitly untrusted data, escape forged frame delimiters,
+  and keep repair instructions outside that frame so tool-controlled output cannot
+  impersonate control text.
+- Reject `TOOL_CALL` objects that put arguments at the top level instead of inside
+  `args`. Nothing runs from the malformed proposal; repair names field names without
+  echoing their values, and the corrected request still passes the kernel.
+- Accept only one final, unfenced `TOOL_CALL` line, reject duplicate JSON keys at
+  every depth, and share one bounded repair budget across malformed, incomplete and
+  foreign control syntax. Exhaustion returns fixed system text, never raw control data.
+- Neutralize prompt-boundary markers inside tool results, keep interrupted receipts
+  in one balanced untrusted-data frame, and prevent successful result text from
+  creating trusted error guidance.
+- Run Swift release builds with an explicit minimal environment so unrelated operator
+  credentials cannot be copied into generated plugin caches.
+- Give the separately installed Omarchy Computer outbound access through one fixed,
+  unprivileged QEMU user-mode NAT device. Keep inbound forwarding, bridged or tap
+  networking, host folders, clipboard sharing, host credentials and root network
+  helpers absent.
+
+### Fixed
+
+- Bind Omarchy startup validation to the concrete QEMU process generation so a new
+  VM passes the framebuffer gate before its initial pause while an API-only restart
+  does not repeat the boot sequence.
+- Fail closed during first-boot initialization: re-pause after any startup error,
+  verify the paused state, and persist the process-generation marker only afterwards.
+- Prove the retired root network helper is absent after every unload attempt before
+  removing its launchd file or starting the unprivileged replacement services.
+- Return `Retry-After` on every Workbench login throttle response, using the same
+  60-second window that enforces the limit.
+- Send special keys through QEMU's bounded key path and printable keys in one atomic
+  event transaction, avoiding repeated characters and swallowed follow-up keys.
+- Assemble the final-answer protocol for the Claude CLI route as well as API routes.
+
+### App
+
+- Build macOS App 0.3.5 build 9 with this beta core and the current Omarchy boundary.
+
 ## [0.20.0-beta.3] — 2026-10-02
 
 ### Security

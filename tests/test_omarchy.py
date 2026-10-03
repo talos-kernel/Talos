@@ -1,4 +1,4 @@
-"""Offline desktop contract; real kernel grants, synthetic VM transport."""
+"""Visual desktop contract; real kernel grants, synthetic VM transport."""
 import json
 import threading
 from unittest.mock import Mock
@@ -89,8 +89,8 @@ def test_text_mapping_and_key_release(desktop):
     assert desktop.held == set()
     events = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
     assert events == [
-        [key_event("shift", True), key_event("a", True)],
-        [key_event("a", False), key_event("shift", False)],
+        [key_event("shift", True), key_event("a", True),
+         key_event("a", False), key_event("shift", False)],
     ]
 
 
@@ -98,7 +98,7 @@ def test_printable_key_uses_short_press_and_settle(desktop, monkeypatch):
     sleeps = []
     monkeypatch.setattr("talos.computer.omarchy.time.sleep", sleeps.append)
     desktop.action(ACTION | {"text": "e"})
-    assert sleeps == [0.005, 0.06]
+    assert sleeps == [0.06]
 
 
 def test_omarchy_terminal_shortcut_is_bounded_and_releases_super(desktop):
@@ -106,29 +106,28 @@ def test_omarchy_terminal_shortcut_is_bounded_and_releases_super(desktop):
     result = desktop.action(args | {"op": "key", "key": "open-terminal",
                                     "keys": "super+Return"})
     assert result["job"]["state"] == "needs_review"
-    events = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
-    assert events == [
-        [key_event("meta_l", True), key_event("ret", True)],
-        [key_event("ret", False), key_event("meta_l", False)],
-    ]
+    assert desktop.qmp.call_args.args == (
+        "send-key", {"keys": [{"type": "qcode", "data": "meta_l"},
+                               {"type": "qcode", "data": "ret"}], "hold-time": 50})
     assert not desktop.held
 
 
 def test_omarchy_menu_shortcut_is_bounded(desktop):
     args = {k: v for k, v in ACTION.items() if k != "text"}
     desktop.action(args | {"op": "key", "key": "open-menu", "keys": "super+Space"})
-    events = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
-    assert events == [
-        [key_event("meta_l", True), key_event("spc", True)],
-        [key_event("spc", False), key_event("meta_l", False)],
-    ]
+    assert desktop.qmp.call_args.args == (
+        "send-key", {"keys": [{"type": "qcode", "data": "meta_l"},
+                               {"type": "qcode", "data": "spc"}], "hold-time": 50})
 
 
-def test_return_is_one_longer_press_without_replay(desktop):
+def test_return_is_one_longer_press_without_replay(desktop, monkeypatch):
+    sleeps = []
+    monkeypatch.setattr("talos.computer.omarchy.time.sleep", sleeps.append)
     args = {k: v for k, v in ACTION.items() if k != "text"}
     desktop.action(args | {"op": "key", "key": "submit-once", "keys": "Return"})
-    events = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
-    assert events == [[key_event("ret", True)], [key_event("ret", False)]]
+    assert desktop.qmp.call_args.args == (
+        "send-key", {"keys": [{"type": "qcode", "data": "ret"}], "hold-time": 50})
+    assert sleeps == [0.10, 0.10]
 
 
 def test_click_coordinates_are_guest_only(desktop):

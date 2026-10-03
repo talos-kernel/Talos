@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Install the offline Omarchy Computer behind a dedicated macOS service account.
+"""Install the Omarchy Computer behind a dedicated macOS service account.
 
 The installer is intentionally explicit: it consumes a verified Try Omarchy app,
 an already-provisioned guest disk and a Talos app/source tree. It never downloads,
-enables networking, mounts host folders or accepts credentials on its command line.
+mounts host folders or accepts credentials on its command line. QEMU's unprivileged
+user-mode network provides outbound NAT without a root network helper.
 """
 from __future__ import annotations
 
@@ -26,7 +27,9 @@ SERVICE_GROUP = "talosomarchyd"
 CLIENT_GROUP = "talosomarchyclients"
 ROOT = Path("/Library/Application Support/TalosOmarchy")
 LAUNCHD = Path("/Library/LaunchDaemons")
-LABELS = ("org.talos.omarchy.web", "org.talos.omarchy.api", "org.talos.omarchy.vm")
+LABELS = ("org.talos.omarchy.web", "org.talos.omarchy.api",
+          "org.talos.omarchy.vm")
+RETIRED_LABELS = ("org.talos.omarchy.network",)
 PROFILE_KEYS = (
     "TALOS_COMPUTER_BACKEND", "TALOS_COMPUTER_DESKTOP",
     "TALOS_COMPUTER_OWNER_SHA256", "TALOS_COMPUTER_ROOT",
@@ -38,6 +41,29 @@ PROFILE_KEYS = (
 def _run(*argv: str, capture=False, check=True):
     return subprocess.run(argv, check=check, text=True,
                           capture_output=capture)
+
+
+def _launchd_label_is_absent(label: str) -> bool:
+    result = _run("/bin/launchctl", "print", "system/" + label,
+                  capture=True, check=False)
+    diagnostic = f'Could not find service "{label}" in domain for system'
+    output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+    # Neither a nonzero result nor generic launchctl text proves absence alone.
+    return result.returncode == 113 and diagnostic in output
+
+
+def _remove_retired_launchd_services() -> None:
+    for label in RETIRED_LABELS:
+        result = _run("/bin/launchctl", "bootout", "system/" + label,
+                      capture=True, check=False)
+        if not _launchd_label_is_absent(label):
+            if result.returncode == 0:
+                reason = "launchctl still reports the label loaded after bootout"
+            else:
+                detail = (result.stderr or result.stdout or "").strip()
+                reason = detail or f"exit status {result.returncode}"
+            raise SystemExit(f"failed to unload retired launchd service {label}: {reason}")
+        (LAUNCHD / (label + ".plist")).unlink(missing_ok=True)
 
 
 def _record(path: Path) -> dict[str, str]:
@@ -55,10 +81,14 @@ def qemu_arguments(root: Path, manifest: dict) -> list[str]:
     release = root / "runtime/current"
     return [
         str(release / "omarchy/bin/Try Omarchy"),
-        "-name", "Talos Omarchy - OFFLINE",
+        "-name", "Talos Omarchy - NAT",
         "-machine", "virt,accel=hvf,gic-version=3",
         "-cpu", "host,pmu=off", "-smp", "4", "-m", "8192M",
-        "-nodefaults", "-nic", "none", "-serial", "none", "-monitor", "none",
+        "-nodefaults",
+        "-netdev", "user,id=talos-omarchy-net,ipv6=off",
+        "-device", ("virtio-net-pci,id=talos-omarchy-nic,"
+                    "netdev=talos-omarchy-net,mac=52:54:00:12:34:56,romfile="),
+        "-serial", "none", "-monitor", "none",
         "-qmp", f"unix:{vm / 'qmp.sock'},server=on,wait=off",
         "-pidfile", str(vm / "qemu.pid"),
         "-action", "reboot=reset,shutdown=poweroff",
@@ -299,6 +329,7 @@ def install(options) -> None:
 
     for label in LABELS:
         _run("/bin/launchctl", "bootout", "system/" + label, check=False)
+    _remove_retired_launchd_services()
     root = ROOT
     for folder, mode, gid in (
         (root, 0o755, 0), (root / "runtime", 0o755, 0),
@@ -379,7 +410,7 @@ def install(options) -> None:
     }) + "\n").encode(), 0o600, options.operator_uid, operator.pw_gid)
 
     evidence = {
-        "release": release_id, "offline": True, "network": "none",
+        "release": release_id, "network": "qemu-user-nat", "host_forwards": [],
         "host_shares": False, "clipboard": False,
         "kernel": _record(release / "guest/vmlinuz-linux"),
         "initramfs": _record(release / "guest/initramfs-linux.img"),

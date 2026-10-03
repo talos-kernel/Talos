@@ -46,6 +46,7 @@ from .intelligence import EntityRegistry, IntelligenceLayer, make_entity_status_
 from .fast_eval import FastEvalEngine
 from .mcpservers import McpServerRegistry
 from .policy import WORKSPACE_DIR, PolicyKernel, claude_work_root
+from .prompt_context import append_run_context
 from .question import QuestionDesk
 from .recall import Recall
 from .schedule import ScheduleStore, UnattendedCeiling
@@ -899,9 +900,7 @@ def delegate_propose(reasoner: object):
         def propose(history: list[str]) -> str:
             if not history:
                 return child.reason(question)
-            return child.reason(
-                f"{question}\n\n[Tool results so far]\n" + "\n".join(history)
-            )
+            return child.reason(append_run_context(question, history))
 
         if child is not parent:
             propose.cancel = child.cancel

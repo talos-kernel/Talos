@@ -42,6 +42,59 @@ def test_parse_tool_call_reads_json() -> None:
     assert parsed == ("read_file", {"path": "/x"}, ())
 
 
+def test_parse_tool_call_requires_one_final_unfenced_control_line() -> None:
+    call = 'TOOL_CALL: {"tool":"read_file","args":{"path":"/x"}}'
+
+    assert parse_tool_call("I need one read.\n" + call) == (
+        "read_file", {"path": "/x"}, (),
+    )
+    assert parse_tool_call(call + "\nI already finished.") is None
+    assert parse_tool_call(call + "\n" + call) is None
+    assert parse_tool_call("Example:\n```json\n" + call) is None
+    assert parse_tool_call("Example:\n~~~json\n" + call) is None
+    assert parse_tool_call("Example:\n```json\n" + call + "\n```\n" + call) == (
+        "read_file", {"path": "/x"}, (),
+    )
+
+
+@pytest.mark.parametrize(
+    "control",
+    [
+        'TOOL_CALL: {"tool":"read_file","tool":"write_file","args":{"path":"x"}}',
+        'TOOL_CALL: {"tool":"read_file","args":{"path":"x","path":"y"}}',
+        'TOOL_CALL: {"tool":"read_file","args":{"meta":{"tag":"x","tag":"y"},"path":"x"}}',
+    ],
+)
+def test_duplicate_json_keys_are_rejected_recursively(control: str) -> None:
+    assert parse_tool_call(control) is None
+
+
+def test_top_level_tool_arguments_are_malformed_and_repaired_without_execution(tmp_path: Path) -> None:
+    broken = 'TOOL_CALL: {"tool":"run_shell","command":"date"}'
+    proof = tmp_path / "proof.txt"
+    proof.write_text("ok", encoding="utf-8")
+    replies = iter([
+        broken,
+        _tool_call("read_file", {"path": str(proof)}, [str(proof)]),
+        "The corrected request reached the kernel.",
+    ])
+    histories: list[tuple[str, ...]] = []
+
+    def propose(history: list[str]) -> str:
+        histories.append(tuple(history))
+        return next(replies)
+
+    assert parse_tool_call(broken) is None
+    executor = _executor(tmp_path)
+    result = run_agent(propose, executor, OWNER, "misplaced-arguments")
+    assert result.status is AgentStatus.ANSWERED
+    assert "argument field(s) command were placed at the top level" in histories[1][-1]
+    assert "put command inside the args object" in histories[1][-1]
+    assert "date" not in histories[1][-1]
+    intents = [row for row in executor.log.recent(20) if row["type"] == "exec.intent"]
+    assert [row["payload"]["tool"] for row in intents] == ["read_file"]
+
+
 def test_plain_text_is_final_answer() -> None:
     assert parse_tool_call("Das ist meine Antwort, kein Tool.") is None
 
@@ -169,18 +222,22 @@ def test_prose_that_merely_mentions_a_tool_name_is_still_an_answer(tmp_path: Pat
 
 
 def test_the_loop_stops_nagging_after_two_attempts(tmp_path: Path) -> None:
-    """Eine Endlosschleife waere schlimmer als eine schiefe Antwort."""
-    from talos.agent_loop import MAX_FOREIGN_RETRIES
+    """Eine Endlosschleife endet fest und fehlgeschlossen, nie mit roher Fremdsyntax."""
+    from talos.agent_loop import CONTROL_REPAIR_FAILED, MAX_CONTROL_REPAIRS
 
     zuege = [0]
+    executor = _executor(tmp_path)
 
     def propose(_h: list[str]) -> str:
         zuege[0] += 1
         return "Read(/tmp/x)"
 
-    result = run_agent(propose, _executor(tmp_path), OWNER, "hartnaeckig")
-    assert result.status is AgentStatus.ANSWERED
-    assert zuege[0] == MAX_FOREIGN_RETRIES + 1
+    result = run_agent(propose, executor, OWNER, "hartnaeckig")
+    assert result.status is AgentStatus.STEP_LIMIT
+    assert zuege[0] == MAX_CONTROL_REPAIRS + 1
+    assert result.text == CONTROL_REPAIR_FAILED
+    assert "Read(" not in result.text
+    assert not any(row["type"] == "exec.intent" for row in executor.log.recent(20))
 
 
 # --- Weigerung wegen der EIGENEN Prozess-Schranke ---------------------------------------
@@ -404,15 +461,19 @@ def test_a_malformed_tool_call_is_retried_not_delivered(tmp_path: Path) -> None:
 
 
 def test_malformed_tool_call_nagging_is_bounded(tmp_path: Path) -> None:
-    """Dasselbe Budget wie Fremdsyntax: nach MAX_FOREIGN_RETRIES wird ausgeliefert."""
-    from talos.agent_loop import MAX_FOREIGN_RETRIES
+    """Nach dem gemeinsamen Budget endet der Lauf mit festem Text, nie mit Rohkontrolle."""
+    from talos.agent_loop import CONTROL_REPAIR_FAILED, MAX_CONTROL_REPAIRS
 
     zuege = [0]
+    executor = _executor(tmp_path)
 
     def propose(_h: list[str]) -> str:
         zuege[0] += 1
         return KAPUTTE_TOOL_ZEILE
 
-    result = run_agent(propose, _executor(tmp_path), OWNER, "hartnaeckig")
-    assert result.status is AgentStatus.ANSWERED
-    assert zuege[0] == MAX_FOREIGN_RETRIES + 1
+    result = run_agent(propose, executor, OWNER, "hartnaeckig")
+    assert result.status is AgentStatus.STEP_LIMIT
+    assert result.text == CONTROL_REPAIR_FAILED
+    assert "TOOL_CALL" not in result.text and "powershell" not in result.text
+    assert zuege[0] == MAX_CONTROL_REPAIRS + 1
+    assert not any(row["type"] == "exec.intent" for row in executor.log.recent(20))

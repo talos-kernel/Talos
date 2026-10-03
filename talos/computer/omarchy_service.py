@@ -208,16 +208,19 @@ class Capture:
 
 
 def make_preflight(qmp, disk):
-    expected = sorted([(6966, 8), (6900, 4097), (6900, 4176),
+    expected = sorted([(6966, 8), (6900, 4096), (6900, 4097), (6900, 4176),
                        (6900, 4178), (6900, 4178), (6900, 4101), (6900, 4099)])
 
     def check():
         devices = [device for bus in qmp("query-pci") for device in bus["devices"]]
         observed = sorted((device["id"]["vendor"], device["id"]["device"])
                           for device in devices)
-        if observed != expected or any(device["class_info"]["class"] >> 8 == 2
-                                       for device in devices):
-            raise ValueError("unexpected VM device or network adapter")
+        network = [device for device in devices
+                   if device["class_info"]["class"] >> 8 == 2]
+        if (observed != expected or len(network) != 1
+                or network[0]["id"].get("vendor") != 6900
+                or network[0]["id"].get("device") != 4096):
+            raise ValueError("unexpected VM device or network boundary")
         if {item["label"] for item in qmp("query-chardev")} != {"console", "compat_monitor0"}:
             raise ValueError("unexpected host bridge channel")
         blocks = qmp("query-block")
@@ -256,21 +259,82 @@ def wait_for_framebuffer(qmp, capture, *, timeout=STARTUP_TIMEOUT,
     raise TimeoutError("Omarchy framebuffer did not become 1440x900 before timeout") from last
 
 
+def vm_generation(pid_file):
+    """Bind durable pause state to one concrete QEMU process generation."""
+    path = Path(pid_file)
+    props = path.lstat()
+    if path.is_symlink() or not path.is_file() or props.st_uid != os.getuid():
+        raise ValueError("QEMU pid file is not service-owned")
+    try:
+        pid = int(path.read_text().strip())
+    except (OSError, ValueError) as error:
+        raise ValueError("QEMU pid file is invalid") from error
+    if pid < 2:
+        raise ValueError("QEMU pid file is invalid")
+    identity = f"{pid}:{props.st_dev}:{props.st_ino}:{props.st_mtime_ns}"
+    return hashlib.sha256(identity.encode()).hexdigest()
+
+
+def remember_vm_generation(state, generation):
+    marker = Path(state) / "vm-generation"
+    temporary = marker.with_name(".vm-generation-" + uuid.uuid4().hex)
+    try:
+        with temporary.open("x", encoding="ascii") as stream:
+            stream.write(generation + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.chmod(0o600)
+        temporary.replace(marker)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 class OmarchyComputer:
     def __init__(self, config, *, qmp=None, capture=None, check_vm=None):
         self.config = config
         pid = int(Path(config["pid_file"]).read_text().strip()) if qmp is None else None
         self.qmp = qmp or LocalQMP(config["qmp"], pid=pid)
-        self.capture_source = capture or Capture(self.qmp, config["scratch"])
-        self.check_vm = check_vm or make_preflight(self.qmp, config["disk"])
-        state_db = Path(config["state"]) / "jobs.db"
-        if not state_db.exists():
-            self.check_vm()
-            wait_for_framebuffer(self.qmp, self.capture_source)
-        self.desktop = OfflineDesktop(
-            root=config["state"], capture_root=config["captures"], capture_mode=0o640,
-            owner=config["owner"], qmp=self.qmp, capture=self.capture_source,
-            check_vm=self.check_vm)
+        startup_complete = False
+        try:
+            self.capture_source = capture or Capture(self.qmp, config["scratch"])
+            self.check_vm = check_vm or make_preflight(self.qmp, config["disk"])
+            generation = vm_generation(config["pid_file"])
+            marker = Path(config["state"]) / "vm-generation"
+            remembered = marker.read_text(encoding="ascii").strip() if marker.exists() else ""
+            first_boot = remembered != generation
+            if first_boot:
+                self.check_vm()
+                wait_for_framebuffer(self.qmp, self.capture_source)
+            self.desktop = OfflineDesktop(
+                root=config["state"], capture_root=config["captures"], capture_mode=0o640,
+                owner=config["owner"], qmp=self.qmp, capture=self.capture_source,
+                check_vm=self.check_vm)
+            status = self.qmp("query-status")
+            if not isinstance(status, dict) or status.get("status") != "paused":
+                raise ValueError("Omarchy guest did not pause during startup")
+            if first_boot:
+                remember_vm_generation(config["state"], generation)
+            startup_complete = True
+        finally:
+            if not startup_complete:
+                # Initialization may have resumed the guest. A cleanup attempt is
+                # successful only when QMP both accepts stop and reads back paused.
+                stop_error = None
+                try:
+                    self.qmp("stop")
+                except Exception as error:
+                    stop_error = error
+                try:
+                    status = self.qmp("query-status")
+                except Exception as error:
+                    raise RuntimeError(
+                        "Omarchy guest could not be proven paused after startup failure"
+                    ) from error
+                if (stop_error is not None or not isinstance(status, dict)
+                        or status.get("status") != "paused"):
+                    raise RuntimeError(
+                        "Omarchy guest could not be proven paused after startup failure"
+                    ) from stop_error
         self.preview_lock = threading.Lock()
 
     def status(self):

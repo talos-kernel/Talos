@@ -267,7 +267,7 @@ async function refresh(){
   show("login",false);show("workspace",true);
   const omarchy=state.backend==="omarchy";
   $("intro-copy").textContent=omarchy
-   ?"An offline visual desktop with pause and human takeover. No network adapter, host files, clipboard or credentials."
+   ?"A visual desktop with outbound NAT, pause and human takeover. No inbound forwarding, host files, clipboard or credentials."
    :"Code, project files and a clear record of every job. An optional desktop when your work needs one.";
   show("bottom-grid",!omarchy);
   $("connection").textContent="Connected";

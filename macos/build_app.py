@@ -21,6 +21,8 @@ from desktop_runtime import backend_digest
 ROOT = Path(__file__).resolve().parent.parent
 HELPERS = ("desktop_runtime.py", "desktop_state.py", "desktop_connections.py",
            "desktop_accounts.py", "desktop_hermes.py")
+SWIFT_ENV_ALLOWLIST = ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL",
+                       "DEVELOPER_DIR", "SDKROOT", "TOOLCHAINS")
 
 
 def app_version() -> dict[str, str]:
@@ -53,6 +55,12 @@ def source_record(allow_dirty: bool = False) -> dict:
 
 def run(*args: str, **kwargs) -> None:
     subprocess.run(args, check=True, **kwargs)
+
+
+def run_swift(*args: str) -> None:
+    """Run Swift with build inputs, never the operator's credential environment."""
+    environment = {key: os.environ[key] for key in SWIFT_ENV_ALLOWLIST if key in os.environ}
+    run("swift", *args, env=environment)
 
 
 def scrub_python_paths(python_bundle: Path, packages: Path, source_root: Path) -> None:
@@ -114,8 +122,8 @@ def build(python_root: Path, destination: Path, identity: str = "-", *, allow_di
         text=True))
     if interpreter != ["arm64", [3, 13]]:
         raise SystemExit("The app requires an ARM64 CPython 3.13 interpreter.")
-    run("swift", "build", "--package-path", str(ROOT / "macos"), "-c", "release",
-        "--force-resolved-versions")
+    run_swift("build", "--package-path", str(ROOT / "macos"), "-c", "release",
+              "--force-resolved-versions")
     # A resolver must not silently change the reviewed dependency pins.
     if source_record(allow_dirty) != provenance:
         raise SystemExit("Build inputs changed during Swift compilation.")

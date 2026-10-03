@@ -21,6 +21,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .policy import ToolRequest
+from .prompt_context import strip_run_context
 
 MAX_ENTITY_FILE_BYTES = 64 * 1024
 MAX_ENTITIES = 64
@@ -227,7 +228,7 @@ def _task_text(prompt: str) -> str:
     marker = "[New message]"
     if marker in prompt:
         tail = prompt.rsplit(marker, 1)[1]
-        return tail.split("[Tool results so far]", 1)[0]
+        return strip_run_context(tail)
     return prompt
 
 

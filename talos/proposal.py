@@ -30,7 +30,8 @@ def malformed(text):
 MALFORMED_NOTE = (
     '[The last TOOL_CALL reply was not one valid request. Nothing ran from that reply. '
     'Return exactly one TOOL_CALL: {"tool":"name","args":{...}} with valid JSON, '
-    'or answer in prose if finished. Use existing receipts; do not repeat completed, '
+    'with every tool argument inside the args object, or answer in prose if finished. '
+    'Use existing receipts; do not repeat completed, '
     'uncertain or declined actions. Every corrected request still passes the kernel.]'
 )
 

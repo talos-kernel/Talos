@@ -4,8 +4,9 @@ Talos supports two deliberately different Computer installations. The Mac app
 selects exactly one: a valid local Omarchy link replaces the remote URL controls;
 without Omarchy, the app can connect to a remote Linux Computer.
 
-- **Local Omarchy on Apple silicon macOS:** an offline, visual-only desktop. When
-  separately installed, the Mac app uses its private loopback link as the Computer
+- **Local Omarchy on Apple silicon macOS:** a visual desktop with outbound Internet
+  access through unprivileged QEMU user-mode NAT and no inbound forwarding or bridged interface.
+  When separately installed, the Mac app uses its private loopback link as the Computer
   and hides the remote field. It supports screenshots,
   click, type, bounded keys, scroll and explicit pause/takeover; it does not expose a
   shell, browser protocol, guest files or routines. See the

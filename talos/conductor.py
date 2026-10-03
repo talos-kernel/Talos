@@ -34,7 +34,7 @@ import time
 from typing import Callable, Iterator, Protocol
 from weakref import WeakKeyDictionary
 
-from .agent_loop import AgentStatus, parse_tool_call, run_agent, tool_history_entry
+from .agent_loop import AgentStatus, run_agent, tool_history_entry
 from .approval import ApprovalPicker, ApprovalStore, Pending, is_affirmative, is_always, is_negative
 from .attachment import extract as extract_media
 from .attachment import resolve as resolve_media
@@ -47,6 +47,11 @@ from .executor import Executor, Outcome, Status
 from .memory import Memory, Turn, render
 from .plan import PlanRun
 from .policy import ToolRequest, command_risk_paths, guard_targets
+from .prompt_context import (
+    UNTRUSTED_TOOL_RESULT_OPEN,
+    append_run_context,
+    frame_untrusted_tool_result,
+)
 from .question import CALLBACK_PREFIX as QUESTION_PREFIX, Answer, QuestionDesk, SKIP_WORDS
 from .reasoner import Reasoner
 from .redirect import Redirect
@@ -158,6 +163,11 @@ LESSON_WINDOW = 400
 REVIEW_INTERVAL_S = 24 * 60 * 60
 REVIEW_WINDOW = 1_500
 REVIEW_TYPES = ("exec.intent", "exec.result", "grant.issued", "review.reported")
+
+# Keep the whole interrupted-memory turn below Memory.MAX_TURN_CHARS even when the
+# stop text reaches its own cap. Selected receipt bytes are re-framed once below.
+INTERRUPTED_RECEIPTS_MAX_CHARS = 1_000
+INTERRUPTED_RECEIPTS_CUT = " […receipt excerpts truncated]"
 
 
 @dataclass(frozen=True)
@@ -1122,12 +1132,27 @@ class Conductor:
                 and (past_override is None or approval_reply or initial_history)):
             # Protocol exhaustion is an unresolved task, not a blank conversation.
             # Keep bounded receipts as data; this does not resume or replay tools.
-            receipts = [entry[:300] for entry in result.history
-                        if entry.startswith("[") and " -> " in entry.split("\n", 1)[0]]
-            receipts = receipts if len(receipts) <= 4 else receipts[:2] + receipts[-2:]
+            receipt_excerpts = [
+                entry[:300]
+                for entry in result.history
+                if entry.startswith(UNTRUSTED_TOOL_RESULT_OPEN)
+                or (entry.startswith("[") and " -> " in entry.split("\n", 1)[0])
+            ]
+            if len(receipt_excerpts) > 4:
+                receipt_excerpts = receipt_excerpts[:2] + receipt_excerpts[-2:]
+            receipts = ""
+            if receipt_excerpts:
+                # Entries may already be framed, and the 300-character excerpt may cut
+                # that frame in half. Treat every byte as data and create one fresh,
+                # bounded frame whose closing marker cannot be truncated by Memory.
+                receipts = "\n" + frame_untrusted_tool_result(
+                    "\n".join(receipt_excerpts),
+                    max_chars=INTERRUPTED_RECEIPTS_MAX_CHARS,
+                    truncation_marker=INTERRUPTED_RECEIPTS_CUT,
+                )
             detail = (f"Stopped: {result.text[:550]}\n"
                       "For a status-only follow-up, explain this blocker from these receipts; "
-                      "do not restart the task.\n" + "\n".join(receipts[-4:]))
+                      "do not restart the task." + receipts)
             self.memory.remember_interrupted(update.conversation, asked=text, detail=detail)
         # PLAN_ABORTED liefert eine nachgeforderte Schlussmeldung statt des Rohdumps —
         # gemerkt wird, was der Operator gesehen hat, nicht das Maschinenartefakt.
@@ -1187,7 +1212,10 @@ class Conductor:
             closing = ""
         # Ein Werkzeugruf als „Schlussmeldung" ist ein Fehlschlag, kein Inhalt —
         # ausgefuehrt wuerde hier nichts, geliefert wuerde rohes Protokoll.
-        if closing and parse_tool_call(closing) is None:
+        # The closing pass has no tool channel. Any protocol token is therefore an
+        # attempted call, including malformed JSON that parse_tool_call would reject.
+        # Fail closed to the deterministic template instead of delivering machinery.
+        if closing and "tool_call" not in closing.casefold():
             self.log.append(
                 Event(run_id, "conductor", "closing.delivered", {"chars": len(closing)})
             )
@@ -1231,7 +1259,7 @@ class Conductor:
             if budget["used"] > distill.TOOL_BUDGET:
                 zug += "\n[Tool budget reached — answer in prose now, no TOOL_CALL line.]"
             joined = "\n".join(history[-6:])
-            zug = f"{zug}\n\n[Tool results so far]\n{joined}" if joined else zug
+            zug = append_run_context(zug, history[-6:]) if joined else zug
             # ⚠️ propose muss den REASONER rufen — der Loop erwartet Modelltext, nicht
             # den Prompt. Ein Prompt, der als „Antwort" zurueckkommt, traegt seine
             # eigenen TOOL_CALL-Beispielzeilen und endet als Prosa ohne jede Wirkung.
@@ -1835,8 +1863,11 @@ class Conductor:
             head = head_for(snapshot)
             if not history:
                 return self._ask(head + delivery_context + user_text, stream, run_id)
-            joined = "\n".join(history)
-            return self._ask(f"{head}{delivery_context}{user_text}\n\n[Tool results so far]\n{joined}", stream, run_id)
+            return self._ask(
+                append_run_context(f"{head}{delivery_context}{user_text}", history),
+                stream,
+                run_id,
+            )
         return propose
 
     def _ask(self, prompt: str, stream: ReplyStream | None, run_id: str = "") -> str:

@@ -9,7 +9,7 @@ import pytest
 
 from talos.computer.omarchy import SIZE
 from talos.computer.omarchy_service import (
-    Capture, OmarchyComputer, connect_computer, framebuffer_visible, load_config,
+    Capture, OmarchyComputer, connect_computer, framebuffer_visible, load_config, make_preflight,
     peer_uid, ppm_to_png, wait_for_framebuffer,
 )
 
@@ -42,6 +42,28 @@ def png_fixture():
     return ppm_to_png(ppm())
 
 
+class StatefulQMP:
+    def __init__(self, *, ignore_stop=False, fail_stops=0):
+        self.status = "paused"
+        self.ignore_stop = ignore_stop
+        self.fail_stops = fail_stops
+        self.commands = []
+
+    def __call__(self, command, _args=None):
+        self.commands.append(command)
+        if command == "query-status":
+            return {"status": self.status}
+        if command == "cont":
+            self.status = "running"
+        elif command == "stop":
+            if self.fail_stops:
+                self.fail_stops -= 1
+                raise RuntimeError("pause failed")
+            if not self.ignore_stop:
+                self.status = "paused"
+        return {}
+
+
 def test_ppm_conversion_is_exact_bounded_png():
     result = ppm_to_png(ppm())
     assert result.startswith(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
@@ -56,6 +78,37 @@ def test_first_boot_visibility_rejects_black_frame():
     assert not framebuffer_visible(ppm_to_png(ppm(b"\x00\x00\x00")))
     assert not framebuffer_visible(ppm_to_png(ppm(b"\x11\x11\x11")))
     assert framebuffer_visible(png_fixture())
+
+
+def test_preflight_accepts_one_fixed_virtio_nic_and_rejects_another(tmp_path):
+    disk = tmp_path / "rootfs.ext4"
+    disk.touch()
+    ids = [(6966, 8), (6900, 4096), (6900, 4097), (6900, 4176),
+           (6900, 4178), (6900, 4178), (6900, 4101), (6900, 4099)]
+
+    def device(vendor, product):
+        return {"id": {"vendor": vendor, "device": product,
+                       "subsystem-vendor": 6900, "subsystem": 1},
+                "class_info": {"class": 512 if product == 4096 else 256}}
+
+    devices = [device(*item) for item in ids]
+
+    def qmp(command):
+        if command == "query-pci":
+            return [{"devices": devices}]
+        if command == "query-chardev":
+            return [{"label": "console"}, {"label": "compat_monitor0"}]
+        if command == "query-block":
+            return [{"inserted": {"file": str(disk), "ro": False}}]
+        if command == "query-mice":
+            return [{"absolute": True}]
+        raise AssertionError(command)
+
+    check = make_preflight(qmp, disk)
+    check()
+    devices.append(device(6900, 4096))
+    with pytest.raises(ValueError, match="network boundary"):
+        check()
 
 
 def test_capture_uses_service_scratch_and_removes_ppm(tmp_path):
@@ -77,6 +130,150 @@ def test_fresh_start_waits_for_real_framebuffer_before_initial_pause():
                                   clock=lambda: next(moments), sleep=lambda _n: None)
     assert result.startswith(b"\x89PNG")
     assert any(call.args[0] == "cont" for call in qmp.call_args_list)
+
+
+def test_new_qemu_generation_boots_before_pause_but_api_restart_does_not(tmp_path, monkeypatch):
+    cfg = config(tmp_path)
+    qmp = StatefulQMP()
+    capture = Mock(return_value=png_fixture())
+    OmarchyComputer(cfg, qmp=qmp, capture=capture, check_vm=Mock())
+    assert qmp.status == "paused"
+    assert qmp.commands[-2:] == ["stop", "query-status"]
+    assert (Path(cfg["state"]) / "vm-generation").is_file()
+
+    wait = Mock(wraps=wait_for_framebuffer)
+    monkeypatch.setattr("talos.computer.omarchy_service.wait_for_framebuffer", wait)
+    restart_call = len(qmp.commands)
+    OmarchyComputer(cfg, qmp=qmp, capture=capture, check_vm=Mock())
+    wait.assert_not_called()
+    assert "cont" not in qmp.commands[restart_call:]
+    assert qmp.commands[restart_call:] == ["stop", "query-status"]
+
+    Path(cfg["pid_file"]).write_text("99999")
+    OmarchyComputer(cfg, qmp=qmp, capture=capture, check_vm=Mock())
+    wait.assert_called_once_with(qmp, capture)
+    assert qmp.status == "paused"
+
+
+def test_first_boot_wait_failure_best_effort_pauses_without_marker(tmp_path, monkeypatch):
+    cfg = config(tmp_path)
+    qmp = StatefulQMP()
+
+    def fail_after_resume(qmp, _capture):
+        qmp("cont")
+        raise TimeoutError("framebuffer failed")
+
+    monkeypatch.setattr("talos.computer.omarchy_service.wait_for_framebuffer",
+                        fail_after_resume)
+    with pytest.raises(TimeoutError, match="framebuffer failed"):
+        OmarchyComputer(cfg, qmp=qmp, capture=Mock(), check_vm=Mock())
+
+    assert qmp.status == "paused"
+    assert qmp.commands[-3:] == ["cont", "stop", "query-status"]
+    assert not (Path(cfg["state"]) / "vm-generation").exists()
+
+
+def test_first_boot_construction_and_preflight_failures_repause_without_marker(
+        tmp_path, monkeypatch):
+    for failure in ("construction", "preflight"):
+        root = tmp_path / failure
+        root.mkdir()
+        cfg = config(root)
+        qmp = StatefulQMP()
+        check_vm = Mock(side_effect=(None, ValueError("preflight failed")))
+        with monkeypatch.context() as patch:
+            if failure == "construction":
+                check_vm = Mock()
+                patch.setattr("talos.computer.omarchy_service.OfflineDesktop",
+                              Mock(side_effect=RuntimeError("construction failed")))
+
+            with pytest.raises((RuntimeError, ValueError), match=f"{failure} failed"):
+                OmarchyComputer(cfg, qmp=qmp, capture=Mock(return_value=png_fixture()),
+                                check_vm=check_vm)
+
+        assert qmp.status == "paused"
+        assert qmp.commands[-2:] == ["stop", "query-status"]
+        assert not (Path(cfg["state"]) / "vm-generation").exists()
+
+
+def test_first_boot_pause_failure_retries_stop_without_marker(tmp_path):
+    cfg = config(tmp_path)
+    qmp = StatefulQMP(fail_stops=1)
+
+    with pytest.raises(RuntimeError, match="pause failed"):
+        OmarchyComputer(cfg, qmp=qmp, capture=Mock(return_value=png_fixture()),
+                        check_vm=Mock())
+
+    assert qmp.status == "paused"
+    assert qmp.commands.count("stop") == 2
+    assert qmp.commands[-2:] == ["stop", "query-status"]
+    assert not (Path(cfg["state"]) / "vm-generation").exists()
+
+
+def test_first_boot_does_not_persist_marker_without_verified_pause(tmp_path):
+    cfg = config(tmp_path)
+    qmp = StatefulQMP(ignore_stop=True)
+
+    with pytest.raises(RuntimeError, match="could not be proven paused"):
+        OmarchyComputer(cfg, qmp=qmp, capture=Mock(return_value=png_fixture()),
+                        check_vm=Mock())
+
+    assert qmp.status == "running"
+    assert qmp.commands[-4:] == ["stop", "query-status", "stop", "query-status"]
+    assert not (Path(cfg["state"]) / "vm-generation").exists()
+
+
+def test_marker_read_failure_attempts_and_verifies_pause(tmp_path):
+    cfg = config(tmp_path)
+    marker = Path(cfg["state"]) / "vm-generation"
+    marker.mkdir()
+    qmp = StatefulQMP()
+
+    with pytest.raises(IsADirectoryError):
+        OmarchyComputer(cfg, qmp=qmp, capture=Mock(), check_vm=Mock())
+
+    assert qmp.status == "paused"
+    assert qmp.commands[-2:] == ["stop", "query-status"]
+
+
+def test_same_generation_initialization_failures_attempt_verified_pause(
+        tmp_path, monkeypatch):
+    for failure in ("construction", "preflight"):
+        root = tmp_path / failure
+        root.mkdir()
+        cfg = config(root)
+        qmp = StatefulQMP()
+        capture = Mock(return_value=png_fixture())
+        OmarchyComputer(cfg, qmp=qmp, capture=capture, check_vm=Mock())
+        qmp.commands.clear()
+        wait = Mock(side_effect=AssertionError("API restart must not wait"))
+
+        with monkeypatch.context() as patch:
+            patch.setattr("talos.computer.omarchy_service.wait_for_framebuffer", wait)
+            check_vm = Mock(side_effect=ValueError("restart preflight failed"))
+            if failure == "construction":
+                check_vm = Mock()
+                patch.setattr("talos.computer.omarchy_service.OfflineDesktop",
+                              Mock(side_effect=RuntimeError("restart construction failed")))
+
+            with pytest.raises((RuntimeError, ValueError), match=f"restart {failure} failed"):
+                OmarchyComputer(cfg, qmp=qmp, capture=capture, check_vm=check_vm)
+
+        wait.assert_not_called()
+        assert "cont" not in qmp.commands
+        assert qmp.status == "paused"
+        assert qmp.commands[-2:] == ["stop", "query-status"]
+
+
+def test_cleanup_stop_failure_escalates_even_if_status_was_paused(tmp_path):
+    cfg = config(tmp_path)
+    (Path(cfg["state"]) / "vm-generation").mkdir()
+    qmp = StatefulQMP(fail_stops=1)
+
+    with pytest.raises(RuntimeError, match="could not be proven paused"):
+        OmarchyComputer(cfg, qmp=qmp, capture=Mock(), check_vm=Mock())
+
+    assert qmp.commands[-2:] == ["stop", "query-status"]
 
 
 def test_service_waits_for_fixed_qmp_startup_without_retrying_rejections():
@@ -129,11 +326,11 @@ def test_darwin_or_linux_peer_identity_comes_from_unix_socket():
 @pytest.fixture
 def computer(tmp_path):
     cfg = config(tmp_path)
-    qmp = Mock(return_value={"status": "running"})
+    qmp = StatefulQMP()
     value = OmarchyComputer(cfg, qmp=qmp, capture=Mock(return_value=png_fixture()),
                             check_vm=Mock())
     value.desktop.control("agent", human=True)
-    qmp.reset_mock()
+    qmp.commands.clear()
     return value
 
 
