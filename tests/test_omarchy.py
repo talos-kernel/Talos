@@ -1,6 +1,7 @@
 """Visual desktop contract; real kernel grants, synthetic VM transport."""
 import json
 import threading
+import time
 from unittest.mock import Mock
 
 import pytest
@@ -96,7 +97,9 @@ def test_text_mapping_and_key_release(desktop):
 
 def test_printable_key_uses_short_press_and_settle(desktop, monkeypatch):
     sleeps = []
-    monkeypatch.setattr("talos.computer.omarchy.time.sleep", sleeps.append)
+    clock = Mock(wraps=time)
+    clock.sleep.side_effect = sleeps.append
+    monkeypatch.setattr("talos.computer.omarchy.time", clock)
     desktop.action(ACTION | {"text": "e"})
     assert sleeps == [0.06]
 
@@ -126,7 +129,9 @@ def test_omarchy_menu_shortcut_is_bounded(desktop):
 
 def test_return_is_one_longer_press_without_replay(desktop, monkeypatch):
     sleeps = []
-    monkeypatch.setattr("talos.computer.omarchy.time.sleep", sleeps.append)
+    clock = Mock(wraps=time)
+    clock.sleep.side_effect = sleeps.append
+    monkeypatch.setattr("talos.computer.omarchy.time", clock)
     args = {k: v for k, v in ACTION.items() if k != "text"}
     desktop.action(args | {"op": "key", "key": "submit-once", "keys": "Return"})
     events = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
