@@ -22,9 +22,8 @@ from .state import Store
 SIZE = (1440, 900)  # The existing public Computer coordinate contract.
 CAPTURE_LIMIT = 5 * 1024 * 1024
 KEY_SETTLE_S = 0.06
-SPECIAL_KEY_HOLD_MS = 50
-SPECIAL_KEY_RELEASE_S = 0.10
-SPECIAL_KEY_SETTLE_S = 0.10
+SPECIAL_KEY_HOLD_S = 0.12
+SPECIAL_KEY_SETTLE_S = 0.20
 INPUT_OPS = frozenset({"click", "type", "key", "scroll"})
 KEYS = {
     "Return": ("ret",), "Tab": ("tab",), "Escape": ("esc",),
@@ -133,16 +132,18 @@ before this adapter can be exposed to an unrestricted agent installation.
         with self.lock:
             self._active(epoch, owner)
             # Printable keys use one atomic QMP transaction: separate commands
-            # occasionally let the Wayland guest repeat a character before the
-            # release arrived. QEMU's bounded send-key path gives shortcuts and
-            # Return a real hold interval; the lock remains held past its timer.
+            # occasionally let the Wayland guest repeat a character. Special
+            # keys keep an explicit bounded hold because QEMU's timer-driven
+            # send-key path intermittently dropped the first Return in the real
+            # Wayland guest. Neither path replays an uncertain press.
             self.held.update(codes)
             try:
                 if is_special:
-                    self.qmp("send-key", {
-                        "keys": [{"type": "qcode", "data": code} for code in codes],
-                        "hold-time": SPECIAL_KEY_HOLD_MS})
-                    time.sleep(SPECIAL_KEY_RELEASE_S)
+                    self.qmp("input-send-event", {
+                        "events": [key_event(code, True) for code in codes]})
+                    time.sleep(SPECIAL_KEY_HOLD_S)
+                    self.qmp("input-send-event", {
+                        "events": [key_event(code, False) for code in reversed(codes)]})
                 else:
                     self.qmp("input-send-event", {
                         "events": ([key_event(code, True) for code in codes]

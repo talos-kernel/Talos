@@ -154,11 +154,6 @@ def main():
         client.action(input_args(run, "type", "type", text=command))
         time.sleep(1)
         client.action(input_args(run, "key", "run", keys="Return"))
-        # A second Return is harmless while the bounded probe is running (stdin
-        # is unused) and makes this installed-hardware proof resilient to a
-        # firmware-dropped first key-up event without replaying the command.
-        time.sleep(1)
-        client.action(input_args(run, "key", "run-confirm", keys="Return"))
 
         deadline = time.monotonic() + 35
         ocr = Path(__file__).with_name("vision_ocr.swift")

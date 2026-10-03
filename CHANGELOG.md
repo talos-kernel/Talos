@@ -41,13 +41,14 @@ remain historical snapshots. Beta does not mean error-free operation.
   removing its launchd file or starting the unprivileged replacement services.
 - Return `Retry-After` on every Workbench login throttle response, using the same
   60-second window that enforces the limit.
-- Send special keys through QEMU's bounded key path and printable keys in one atomic
-  event transaction, avoiding repeated characters and swallowed follow-up keys.
+- Send special keys once with an explicit bounded 120 ms press/release and printable
+  keys in one atomic event transaction, avoiding repeated characters and swallowed
+  follow-up keys without replaying uncertain input.
 - Assemble the final-answer protocol for the Claude CLI route as well as API routes.
 
 ### App
 
-- Build macOS App 0.3.5 build 9 with this beta core and the current Omarchy boundary.
+- Build macOS App 0.3.5 build 10 with this beta core and the current Omarchy boundary.
 
 ## [0.20.0-beta.3] — 2026-10-02
 
