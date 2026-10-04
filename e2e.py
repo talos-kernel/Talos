@@ -85,7 +85,7 @@ def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "absent"
 
 
-def production_reasoner(meter: UsageMeter):
+def production_reasoner(meter: UsageMeter, event_log: EventLog | None = None):
     """Build the exact route restored by the live service, without Telegram polling."""
     # Telegram is replaced by the local sink; a live bot token is neither needed
     # nor appropriate for this isolated model/kernel exercise.
@@ -94,7 +94,11 @@ def production_reasoner(meter: UsageMeter):
     registry = safe_talos_registry(loader.load() if config.hermes_catalog_configured
                                    else loader.load_if_present())
     fallback = ModelSelection(config.model_provider, config.model_name)
-    selection = restore_selection(EventLog(config.eventlog_db), registry, fallback)
+    selection = restore_selection(
+        event_log if event_log is not None else EventLog(config.eventlog_db),
+        registry,
+        fallback,
+    )
     if selection.provider == "claude-cli":
         return ClaudeCliReasoner(
             config.claude_bin,
@@ -173,7 +177,7 @@ class Harness:
         )
         # Wie in __main__: der Zaehler haengt am Reasoner, nicht am Kommando.
         self.usage = UsageMeter()
-        reasoner = production_reasoner(self.usage) if real_llm else _Mute()
+        reasoner = production_reasoner(self.usage, self.log) if real_llm else _Mute()
         self.reasoner: Any = reasoner
         # Wie in __main__: EIN Gedaechtnis, zwei Nutzer — der Conductor schreibt es,
         # `/new` und `/status` lesen es.

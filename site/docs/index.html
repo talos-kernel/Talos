@@ -254,7 +254,7 @@ html.js .rv.in{opacity:1; transform:none}
     <p class="lede">That one decision shapes the rest of this manual. It is why the
     command list is short, and why a few obvious conveniences are missing on purpose.</p>
     <div class="spec-row">
-      <div class="spec"><b>3031</b>unit tests</div>
+      <div class="spec"><b>3078</b>automated tests</div>
       <div class="spec"><b>263/263</b>adversarial</div>
       <div class="spec"><b>985</b>gate lines</div>
       <div class="spec"><b>33</b>gated tools</div>
@@ -280,7 +280,7 @@ html.js .rv.in{opacity:1; transform:none}
 
   <section id="install" class="rv">
     <h2><span class="n">Section 01</span>Install</h2>
-    <p>One line. It downloads the signed release, verifies the signature and the
+    <p>One line. It downloads the signed public release selected by the installer, verifies the signature and the
     checksum, runs the full test suite — and then <em>stops</em>.</p>
 <pre><span class="c"># read it first — it is served as plain text on purpose</span>
 curl -fsSL https://talos-agent.ch/install.sh | less
@@ -417,7 +417,7 @@ python -m talos help setup</pre>
   <section id="session" class="rv">
     <h2><span class="n">Section 05</span>The terminal session</h2>
 <pre>$ talos chat
-Talos 0.20.0-beta.4  ·  anthropic-api/claude-opus-4-8  ·  autonomy 3
+Talos 0.20.0-beta.4 candidate  ·  anthropic-api/claude-opus-4-8  ·  autonomy 3
 speaking as cli:1000  ·  approvals possible — you are at a terminal
 /help for commands, `exit` to leave
 

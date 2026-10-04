@@ -15,10 +15,12 @@ import time
 
 
 class LocalQMP:
-    def __init__(self, path, *, pid):
+    def __init__(self, path, *, pid, on_disconnect=None):
         path = Path(path)
         if type(pid) is not int or pid < 2 or not path.is_absolute() or path.resolve() != path:
             raise ValueError("a fixed canonical VM socket and PID are required")
+        if on_disconnect is not None and not callable(on_disconnect):
+            raise ValueError("VM disconnect handler must be callable")
         for candidate, predicate in ((path.parent, stat.S_ISDIR), (path, stat.S_ISSOCK)):
             props = candidate.lstat()
             if not predicate(props.st_mode) or props.st_uid != os.getuid() or props.st_mode & 0o077:
@@ -27,6 +29,8 @@ class LocalQMP:
         self.lock = threading.RLock()
         self.counter = 0
         self.closed = False
+        self.on_disconnect = on_disconnect
+        self.disconnect_notified = False
         self.buffer = b""
         try:
             self.socket.settimeout(4)
@@ -88,4 +92,7 @@ class LocalQMP:
                 raise RuntimeError("too many VM events while awaiting response")
             except Exception:
                 self.close()
+                if self.on_disconnect is not None and not self.disconnect_notified:
+                    self.disconnect_notified = True
+                    self.on_disconnect()
                 raise

@@ -21,9 +21,8 @@ from .state import Store
 
 SIZE = (1440, 900)  # The existing public Computer coordinate contract.
 CAPTURE_LIMIT = 5 * 1024 * 1024
-KEY_SETTLE_S = 0.06
-SPECIAL_KEY_HOLD_S = 0.12
-SPECIAL_KEY_SETTLE_S = 0.20
+KEY_REPORT_LIMIT = 63  # Virtio input has 64 descriptors; QEMU adds SYN_REPORT.
+KEY_REPORT_SETTLE_S = 0.20
 INPUT_OPS = frozenset({"click", "type", "key", "scroll"})
 KEYS = {
     "Return": ("ret",), "Tab": ("tab",), "Escape": ("esc",),
@@ -34,6 +33,7 @@ KEYS = {
     "ctrl+a": ("ctrl", "a"), "ctrl+c": ("ctrl", "c"),
     "ctrl+v": ("ctrl", "v"), "alt+Tab": ("alt", "tab"),
     "super+Return": ("meta_l", "ret"), "super+Space": ("meta_l", "spc"),
+    "super+W": ("meta_l", "w"),
 }
 PLAIN = "`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./ "
 SHIFTED = '~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:"ZXCVBNM<>? '
@@ -61,6 +61,12 @@ def key_event(code, down):
     return {"type": "key", "data": {"down": down, "key": {"type": "qcode", "data": code}}}
 
 
+def press_events(codes):
+    """Build one bounded key-event batch with every intended release included."""
+    return ([key_event(code, True) for code in codes]
+            + [key_event(code, False) for code in reversed(codes)])
+
+
 class OfflineDesktop:
     """One fixed VM, durable non-replayed receipts and explicit operator handover.
 
@@ -86,9 +92,12 @@ before this adapter can be exposed to an unrestricted agent installation.
         self.input_lock = threading.Lock()
         self.epoch = 0
         self.held = set()
+        # Stop first. A QMP disconnect terminates the API process immediately;
+        # no validation may run while a possibly resumed guest is still moving.
+        # The replacement process repeats this stop before doing anything else.
+        self.qmp("stop")
         self.store.recover()
         self.check_vm()
-        self.qmp("stop")
 
     def _release(self):
         if self.held:
@@ -106,11 +115,16 @@ before this adapter can be exposed to an unrestricted agent installation.
             self.epoch += 1
             self.store.control("paused")
             try:
-                # Release before slow health/capture checks: a held key can repeat
-                # in the guest even when the host emits no more input messages.
+                # Freeze the guest before release or preflight. If either later
+                # operation loses QMP and terminates this process, launchd's
+                # replacement starts from the same stop-first sequence.
+                self.qmp("stop")
                 self._release()
                 self.check_vm()
-                self.qmp("cont" if state in {"human", "agent"} else "stop")
+                if state in {"human", "agent"}:
+                    # Resume is deliberately last: a lost response forces the
+                    # replacement process to stop before its first preflight.
+                    self.qmp("cont")
             except Exception:
                 self.qmp("stop")
                 raise
@@ -125,48 +139,49 @@ before this adapter can be exposed to an unrestricted agent installation.
             raise RuntimeError("operator interrupted input; inspect before retrying")
 
     def _keys(self, codes, epoch, owner="agent"):
-        special = {"ret", "tab", "esc", "backspace", "delete", "up", "down",
-                   "left", "right", "home", "end", "pgup", "pgdn", "ctrl",
-                   "alt", "meta_l"}
-        is_special = any(code in special for code in codes)
         with self.lock:
             self._active(epoch, owner)
-            # Printable keys use one atomic QMP transaction: separate commands
-            # occasionally let the Wayland guest repeat a character. Special
-            # keys keep an explicit bounded hold because QEMU's timer-driven
-            # send-key path intermittently dropped the first Return in the real
-            # Wayland guest. Neither path replays an uncertain press.
+            # QMP success is only dispatch acknowledgement. Virtio input drops a
+            # submitted batch when its fixed queue lacks descriptors, so every key
+            # action is one bounded batch with its own releases. Never replay
+            # uncertain input.
             self.held.update(codes)
             try:
-                if is_special:
-                    self.qmp("input-send-event", {
-                        "events": [key_event(code, True) for code in codes]})
-                    time.sleep(SPECIAL_KEY_HOLD_S)
-                    self.qmp("input-send-event", {
-                        "events": [key_event(code, False) for code in reversed(codes)]})
-                else:
-                    self.qmp("input-send-event", {
-                        "events": ([key_event(code, True) for code in codes]
-                                   + [key_event(code, False) for code in reversed(codes)])})
+                self.qmp("input-send-event", {"events": press_events(codes)})
             except Exception:
                 # Retain uncertain keys: control() calls _release before any
                 # subsequent owner can resume the VM.
                 raise
             else:
                 self.held.difference_update(codes)
-        time.sleep(SPECIAL_KEY_SETTLE_S if is_special else KEY_SETTLE_S)
+        time.sleep(KEY_REPORT_SETTLE_S)
+        with self.lock:
+            self._active(epoch, owner)
+
+    def _type(self, strokes, epoch, owner="agent"):
+        """Submit one text action once as one bounded QMP event batch."""
+        events = []
+        for codes in strokes:
+            events.extend(press_events(codes))
+        if len(events) > KEY_REPORT_LIMIT:
+            raise RuntimeError("validated keyboard report grew unexpectedly")
+        with self.lock:
+            self._active(epoch, owner)
+            self.qmp("input-send-event", {"events": events})
+        time.sleep(KEY_REPORT_SETTLE_S)
         with self.lock:
             self._active(epoch, owner)
 
     def _button(self, button, epoch, position=(), owner="agent"):
         with self.lock:
             self._active(epoch, owner)
-            try:
-                self.qmp("input-send-event", {"events": list(position) + [
-                    {"type": "btn", "data": {"down": True, "button": button}}]})
-            finally:
-                self.qmp("input-send-event", {"events": [
-                    {"type": "btn", "data": {"down": False, "button": button}}]})
+            # Keep position, press and release in one bounded batch. If QMP loses
+            # the response, service fail-stop removes the session without a
+            # second press or a best-effort replay.
+            self.qmp("input-send-event", {"events": list(position) + [
+                {"type": "btn", "data": {"down": True, "button": button}},
+                {"type": "btn", "data": {"down": False, "button": button}},
+            ]})
 
     @staticmethod
     def _input(args, *, human=False):
@@ -178,6 +193,9 @@ before this adapter can be exposed to an unrestricted agent installation.
         if op == "type":
             allowed.add("text")
             strokes = text_keys(args.get("text"))
+            report_size = sum(len(press_events(codes)) for codes in strokes)
+            if report_size > KEY_REPORT_LIMIT:
+                raise ValueError("visual typing exceeds one bounded keyboard batch; nothing typed")
             if human and len(args["text"]) > 1024:
                 raise ValueError("human input is limited to 1024 characters")
         elif op == "key":
@@ -205,8 +223,7 @@ before this adapter can be exposed to an unrestricted agent installation.
 
     def _perform(self, op, args, strokes, epoch, owner="agent"):
         if op == "type":
-            for codes in strokes:
-                self._keys(codes, epoch, owner)
+            self._type(strokes, epoch, owner)
         elif op == "key":
             self._keys(KEYS[args["keys"]], epoch, owner)
         elif op == "click":
@@ -246,7 +263,7 @@ before this adapter can be exposed to an unrestricted agent installation.
                 with self.lock:
                     self._active(epoch)
                     self.store.finish(job["id"], "needs_review", {
-                        "verification": "input delivered; inspect the resulting screen, not proof of task success"})
+                        "verification": "input dispatched; inspect the resulting screen for delivery and task success"})
             except Exception:
                 with self.lock:
                     self.store.finish(job["id"], "interrupted", {
@@ -299,7 +316,7 @@ before this adapter can be exposed to an unrestricted agent installation.
             with self.lock:
                 self._active(epoch)
                 self.store.finish(job_id, "needs_review", {
-                    "verification": "input delivered; inspect the resulting screen, not proof of task success"})
+                    "verification": "input dispatched; inspect the resulting screen for delivery and task success"})
         except Exception:
             self.store.finish(job_id, "interrupted", {
                 "verification": "input may be partial; no automatic retry"})
@@ -324,7 +341,7 @@ before this adapter can be exposed to an unrestricted agent installation.
                 self._active(epoch, "human")
                 self.check_vm()
             self._perform(op, args, strokes, epoch, "human")
-            return {"input": "delivered", "control": "human"}
+            return {"input": "dispatched", "control": "human"}
         except Exception:
             with self.lock:
                 self.store.control("paused")

@@ -1,9 +1,10 @@
 {
   "version": "0.20.0-beta.4",
-  "tests": 3031,
+  "release_state": "candidate",
+  "installer_version": "0.20.0-beta.3",
+  "tests": 3078,
   "redteam_faelle": 263,
   "kernel_zeilen": 985,
   "werkzeuge": 33,
-  "gebaut_am": "2026-10-03T09:47:18Z",
   "release_ref": "v0.20.0-beta.4"
 }

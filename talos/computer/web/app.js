@@ -91,11 +91,16 @@ async function sendText(){
  if(!canType()||!text)return;
  const chars=Array.from(text);
  if(chars.length>1024){notice("Send up to 1,024 characters at a time.");return;}
+ const plain="`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./ ";
+ const reportEvents=chars.reduce((count,char)=>count+(plain.includes(char)?2:4),0);
+ if(snapshotViewer()&&reportEvents>63){
+  notice("This text is too long for one bounded keyboard batch. Send a shorter part.");return;
+ }
  modifiers.clear();
  if(snapshotViewer()){if(!await sendSnapshot({op:"type",text}))return;}
  else for(const character of chars){if(!sendKey(keysyms.lookup(character.codePointAt(0))))return;}
  input.value="";input.blur();$("keyboard").classList.remove("composing");
- $("keyboard-help").textContent="Text sent. Enter was not pressed.";
+ $("keyboard-help").textContent="Text dispatched. Inspect the desktop; Enter was not pressed.";
 }
 $("keyboard-toggle").onclick=()=>{
  if(keyboardOpen){closeKeyboard();return;}

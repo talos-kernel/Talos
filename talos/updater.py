@@ -78,15 +78,12 @@ Es wird bewusst KEINE Versions-Ordnung berechnet. Was veroeffentlicht ist, gilt 
 wenn es aelter ist als das Laufende. Sonst waere ein Rueckruf einer schlechten Version
 per Veroeffentlichung nicht installierbar.
 
-WARNUNG — die Versionsnummer steht an ZWEI Stellen: `talos/__init__.py`
-(`__version__`) und `site/install.sh` (`VERSION=`). Sie sind bereits einmal
-auseinandergelaufen (Paket 0.0.1 gegen Installer 0.2.0-alpha), und genau dieser Riss
-ist fuer einen Updater toedlich: dieses Modul vergleicht `talos.__version__` gegen
-`latest.txt`, weil das die Zahl ist, die im laufenden Prozess wirklich gilt. Sagt der
-Installer etwas anderes, vergleicht das Update gegen eine Basis, die nie ausgeliefert
-wurde — es meldet "aktuell", waehrend eine neue Version bereitliegt, oder umgekehrt.
-Die beiden Stellen muessen zusammengefuehrt bleiben (eine Quelle, die andere liest sie,
-oder ein Test haelt sie zusammen). Wer hier hochzaehlt, zaehlt im Installer mit.
+VERSION CONTRACT — this updater compares the running ``talos.__version__`` with
+``latest.txt``. The website installer separately points to the last signed public
+release. While a new candidate is being qualified those values intentionally differ,
+and ``site/status.json`` names both. At publication they must converge before
+``latest.txt`` moves. ``tests/test_version.py`` enforces the candidate and released
+states so neither path can advertise an archive that does not exist.
 
 Aufruf::
 

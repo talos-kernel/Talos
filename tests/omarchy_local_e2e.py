@@ -23,6 +23,8 @@ def wait_job(computer, job_id, timeout=10):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         job = computer.desktop.read({"op": "job", "job_id": job_id})
+        if time.monotonic() >= deadline:
+            break
         if job["state"] not in {"queued", "running"}:
             return job
         time.sleep(0.05)
@@ -46,6 +48,26 @@ def action(computer, run, suffix, **values):
     if job["state"] != "needs_review":
         raise RuntimeError(f"{suffix} ended as {job['state']}")
     return job
+
+
+def leave_paused(computer):
+    """Pause the guest and independently prove both durable control states."""
+    pause_error = None
+    try:
+        computer.desktop.control("paused", human=True)
+    except Exception as error:
+        pause_error = error
+
+    try:
+        status = computer.status()
+    except Exception as error:
+        raise RuntimeError("final pause status read-back failed") from error
+    if (pause_error is not None or status.get("control") != "paused"
+            or status.get("vm") != "paused"):
+        raise RuntimeError(
+            "final pause could not be proven as control=paused and vm=paused"
+        ) from pause_error
+    return status
 
 
 def main():
@@ -94,33 +116,33 @@ def main():
         time.sleep(0.5)
         terminal = computer.desktop.read({"op": "screenshot"})
         typed = action(computer, run, "type-marker", op="type",
-                       text="echo TALOS_OMARCHY_E2E")
+                       text="echo TALOSE2E")
         entered = action(computer, run, "submit-marker", op="key", keys="Return")
         time.sleep(0.5)
         final = computer.desktop.read({"op": "screenshot"})
         hashes = [png_receipt(value["image_path"]) for value in (before, terminal, final)]
         if len(set(hashes)) != 3:
             raise RuntimeError("visible desktop did not change across E2E actions")
+        closed = action(computer, run, "close-terminal", op="key", keys="super+W")
 
         job_count = len(computer.status()["jobs"])
         computer.handle({"kind": "human", "args": {"op": "takeover"}}, os.getuid())
         human = computer.handle({"kind": "human", "args": {"op": "input", "input": {
             "op": "click", "x": 720, "y": 450}}}, os.getuid())
-        if human != {"input": "delivered", "control": "human"}:
+        if human != {"input": "dispatched", "control": "human"}:
             raise RuntimeError("human input receipt changed")
         if len(computer.status()["jobs"]) != job_count:
             raise RuntimeError("human input incorrectly created a model job")
         result = {"ok": True, "control": "human", "hashes": hashes,
                   "screens": [before["image_path"], terminal["image_path"], final["image_path"]],
-                  "jobs": [opened["id"], typed["id"], entered["id"]],
+                  "jobs": [opened["id"], typed["id"], entered["id"], closed["id"]],
                   "isolation": "exact-pci-no-nic-one-disk-no-host-bridge"}
     finally:
-        if computer is not None:
-            try:
-                computer.desktop.control("paused", human=True)
-            except Exception:
-                pass
-        transport.close()
+        try:
+            if computer is not None:
+                leave_paused(computer)
+        finally:
+            transport.close()
     print(json.dumps(result, indent=2))
 
 

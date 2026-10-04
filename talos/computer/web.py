@@ -54,7 +54,14 @@ def rpc(kind, args):
         sock.connect(str(CONTROL_SOCKET))
         sock.sendall(json.dumps({"kind": kind, "args": args}).encode() + b"\n")
         raw = sock.makefile("rb").readline(1000000)
-    result = json.loads(raw)
+    if not raw:
+        raise ConnectionError("Computer service ended before replying")
+    try:
+        result = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ConnectionError("Computer service reply was incomplete") from error
+    if not isinstance(result, dict):
+        raise ConnectionError("Computer service reply was invalid")
     if "error" in result:
         raise ValueError(result["error"])
     return result

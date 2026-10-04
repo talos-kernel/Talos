@@ -284,7 +284,7 @@ html.js .push.pending{opacity:.32}
 .lg .k.c-deny{color:var(--deny)}
 .lg .k.c-allow{color:var(--allow)}
 
-/* ── this release, measured ── */
+/* ── this beta candidate, measured ── */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin-top:44px}
 .stat{background:var(--bg);padding:28px 26px}
 .stat .n{font-family:var(--crt);font-size:clamp(30px,3.4vw,44px);color:var(--hot);line-height:1.05;
@@ -386,10 +386,10 @@ body>nav{inset:0 0 auto 0 !important;z-index:50 !important;pointer-events:auto !
     Every line below is the shape the append-only ledger actually keeps.</p>
     <div class="cta-row">
       <button class="btn" id="replayBtn" type="button">Unfurl the record</button>
-      <a class="btn ghost" href="#measured">This release, measured</a>
+      <a class="btn ghost" href="#measured">This candidate, measured</a>
     </div>
     <div class="meter-row">
-      <span><b>3031</b>unit tests</span>
+      <span><b>3078</b>automated tests</span>
       <span><b>263/263</b>adversarial</span>
       <span><b>985</b>lines · gate</span>
       <span><b>33</b>gated tools</span>
@@ -554,22 +554,22 @@ body>nav{inset:0 0 auto 0 !important;z-index:50 !important;pointer-events:auto !
   </div>
 </section>
 
-<!-- ── II · this release, measured ────────────────────────────────────────── -->
+<!-- ── II · this candidate, measured ─────────────────────────────────────── -->
 <section id="measured">
   <div class="wrap">
-    <p class="sec-tag rv">this release, measured</p>
-    <h2 class="rv">Numbers this release ships.</h2>
+    <p class="sec-tag rv">this candidate, measured</p>
+    <h2 class="rv">Numbers this candidate must ship.</h2>
     <p class="sub rv">The console tries to read <code>./status.json</code>, generated
-    from the release itself. If the file is not there, the page falls back to the snapshot
+    from the candidate itself. If the file is not there, the page falls back to the snapshot
     embedded below. Either way the digits come from a count, not from memory.</p>
 
     <div class="stats" id="releaseStats">
-      <div class="stat rv"><div class="n" data-f="version">0.20.0-beta.4</div><div class="l">beta release</div></div>
-      <div class="stat rv"><div class="n" data-f="tests">3031</div><div class="l">unit tests, collected by pytest</div></div>
+      <div class="stat rv"><div class="n" data-f="version">0.20.0-beta.4</div><div class="l">beta candidate</div><div class="sub-l" data-f="installer_version">public installer v0.20.0-beta.3</div></div>
+      <div class="stat rv"><div class="n" data-f="tests">3078</div><div class="l">automated tests, collected by pytest</div></div>
       <div class="stat rv"><div class="n" data-f="redteam_faelle">263</div><div class="l">adversarial cases, all behaving</div></div>
       <div class="stat rv"><div class="n" data-f="kernel_zeilen">985</div><div class="l">lines in policy.py, readable in one sitting</div></div>
       <div class="stat rv"><div class="n" data-f="werkzeuge">33</div><div class="l">tools, every one through the gate</div></div>
-      <div class="stat rv"><div class="n" data-f="release_ref">v0.20.0-beta.4</div><div class="l">release tag</div><div class="sub-l" data-f="gebaut_am">2026-10-03</div></div>
+      <div class="stat rv"><div class="n" data-f="release_ref">v0.20.0-beta.4</div><div class="l">intended tag</div></div>
     </div>
 
     <div class="measure-note rv">
@@ -735,17 +735,17 @@ if (!reduced) setInterval(() => { if (Math.random() < 0.12) flickOnce(); }, 4000
   replayBtn.addEventListener('click', play);
 })();
 
-/* ─── this release, measured: ./status.json with an embedded fallback ─── */
+/* ─── this beta candidate, measured: ./status.json with an embedded fallback ─── */
 (() => {
   const src = document.getElementById('statusSrc');
-  const FIELDS = ['version', 'tests', 'redteam_faelle', 'kernel_zeilen', 'werkzeuge', 'release_ref', 'gebaut_am'];
+  const FIELDS = ['version', 'installer_version', 'tests', 'redteam_faelle', 'kernel_zeilen', 'werkzeuge', 'release_ref'];
 
   function apply(data) {
     FIELDS.forEach(key => {
       const el = document.querySelector('[data-f="' + key + '"]');
       const value = data[key];
       if (!el || (typeof value !== 'string' && typeof value !== 'number')) return;
-      if (key === 'gebaut_am') { el.textContent = 'built ' + value; return; }
+      if (key === 'installer_version') { el.textContent = 'public installer v' + value; return; }
       el.textContent = String(value);
     });
   }

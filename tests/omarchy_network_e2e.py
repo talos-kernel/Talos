@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 import re
 import shutil
@@ -35,9 +36,12 @@ class Client:
     def __init__(self, endpoint: str, owner: str):
         self.endpoint, self.owner = endpoint, owner
 
-    def call(self, kind: str, args: dict) -> dict:
+    def call(self, kind: str, args: dict, *, timeout: float = 20) -> dict:
+        if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+                or not math.isfinite(timeout) or timeout <= 0):
+            raise ValueError("RPC timeout must be a positive finite number")
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-            connection.settimeout(20)
+            connection.settimeout(timeout)
             connection.connect(self.endpoint)
             frame = {"kind": kind, "owner": self.owner, "args": args}
             connection.sendall(json.dumps(frame).encode() + b"\n")
@@ -47,19 +51,28 @@ class Client:
         return result
 
     def action(self, args: dict, timeout=120) -> dict:
-        result = self.call("action", args)
+        if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+                or not math.isfinite(timeout) or timeout <= 0):
+            raise ValueError("action timeout must be a positive finite number")
+        deadline = time.monotonic() + timeout
+        timeout_message = "desktop input did not settle"
+        result = self.call(
+            "action", args,
+            timeout=remaining_time(deadline, timeout_message))
+        remaining_time(deadline, timeout_message)
         job = result.get("job")
         if job is None:
             return result
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            state = self.call("read", {"op": "job", "job_id": job["id"]})
+        while True:
+            state = self.call(
+                "read", {"op": "job", "job_id": job["id"]},
+                timeout=remaining_time(deadline, timeout_message))
+            remaining = remaining_time(deadline, timeout_message)
             if state["state"] not in {"queued", "running"}:
                 if state["state"] != "needs_review":
                     raise RuntimeError("desktop input ended as " + state["state"])
                 return state
-            time.sleep(0.2)
-        raise TimeoutError("desktop input did not settle")
+            time.sleep(min(0.2, remaining))
 
 
 def launch_pid(label: str) -> int:
@@ -107,11 +120,63 @@ def input_args(run: str, op: str, name: str, **extra) -> dict:
     }
 
 
+def type_in_bounded_chunks(client: Client, run: str, text: str) -> None:
+    """Compose one command without exceeding a virtio keyboard report."""
+    for index, offset in enumerate(range(0, len(text), 10)):
+        client.action(input_args(
+            run, "type", f"type-{index:03d}", text=text[offset:offset + 10]))
+
+
+def remaining_time(
+        deadline: float,
+        message: str = "network evidence deadline expired") -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError(message)
+    return remaining
+
+
+def capture_and_recognize(client: Client, ocr: Path, deadline: float) -> tuple[Path, str]:
+    """Capture and OCR without letting either operation exceed the deadline."""
+    receipt = client.call(
+        "read", {"op": "screenshot", "question": "Verify DNS and HTTPS markers"},
+        timeout=remaining_time(deadline))
+    capture = Path(receipt["image_path"])
+    recognized = subprocess.run(
+        ["/usr/bin/swift", str(ocr), str(capture)], check=True,
+        capture_output=True, text=True,
+        timeout=remaining_time(deadline)).stdout.replace(" ", "")
+    # A subprocess can return just after its timeout budget. Such evidence is
+    # useful for diagnostics, but it is not proof within the semantic deadline.
+    remaining_time(deadline)
+    return capture, recognized
+
+
 def marker_occurrences(recognized: str, marker: str) -> int:
     """Count a visible marker while tolerating Vision's O/0 glyph ambiguity."""
     normalize = str.maketrans({"0": "o"})
     return recognized.casefold().translate(normalize).count(
         marker.casefold().translate(normalize))
+
+
+def leave_paused(client: Client) -> dict:
+    """Request pause, then independently read back control and VM state."""
+    pause_error = None
+    try:
+        client.action({"op": "pause"})
+    except Exception as error:
+        pause_error = error
+
+    try:
+        status = client.call("read", {"op": "status"})
+    except Exception as error:
+        raise RuntimeError("final pause status read-back failed") from error
+    if (pause_error is not None or status.get("control") != "paused"
+            or status.get("vm") != "paused"):
+        raise RuntimeError(
+            "final pause could not be proven as control=paused and vm=paused"
+        ) from pause_error
+    return status
 
 
 def main():
@@ -139,6 +204,7 @@ def main():
     end_marker = "TALOSPROBEEND" + run[-4:].upper()
     capture = None
     recognized = ""
+    result = {}
     try:
         status = client.call("read", {"op": "status"})
         if status.get("control") != "paused" or status.get("vm") != "paused":
@@ -151,24 +217,24 @@ def main():
         command = (
             "timeout 10 getent hosts example.com&&curl -4 -fsS --max-time 15 "
             f"https://example.com>/dev/null&&echo {marker};echo {end_marker}")
-        client.action(input_args(run, "type", "type", text=command))
+        type_in_bounded_chunks(client, run, command)
         time.sleep(1)
         client.action(input_args(run, "key", "run", keys="Return"))
 
         deadline = time.monotonic() + 35
         ocr = Path(__file__).with_name("vision_ocr.swift")
-        while time.monotonic() < deadline:
-            time.sleep(1)
-            receipt = client.call(
-                "read", {"op": "screenshot", "question": "Verify DNS and HTTPS markers"})
-            capture = Path(receipt["image_path"])
-            recognized = subprocess.run(
-                ["/usr/bin/swift", str(ocr), str(capture)], check=True,
-                capture_output=True, text=True, timeout=60).stdout.replace(" ", "")
-            if marker_occurrences(recognized, end_marker) >= 2:
+        completed_in_time = False
+        while True:
+            try:
+                time.sleep(min(1, remaining_time(deadline)))
+                capture, recognized = capture_and_recognize(client, ocr, deadline)
+            except (TimeoutError, subprocess.TimeoutExpired):
                 break
-        if capture is None:
-            raise RuntimeError("installed guest produced no screenshot")
+            if marker_occurrences(recognized, end_marker) >= 2:
+                completed_in_time = True
+                break
+        if not completed_in_time:
+            raise TimeoutError("installed guest did not finish within the evidence deadline")
         shutil.copy2(capture, evidence / "online-terminal.png")
         (evidence / "ocr.txt").write_text(recognized, encoding="utf-8")
         occurrences = marker_occurrences(recognized, marker)
@@ -187,21 +253,17 @@ def main():
             raise RuntimeError("retired root network helper is still installed")
         if tcp_listeners(vm_pid):
             raise RuntimeError("Omarchy opened an unexpected host TCP listener")
-        client.action(input_args(run, "type", "close-type", text="exit"))
-        client.action(input_args(run, "key", "close-run", keys="Return"))
+        client.action(input_args(run, "key", "close-terminal", keys="super+W"))
         result = {
             "ok": True, "dns_https_visible": True, "host_tcp_listeners": 0,
             "host_forwarding": False, "root_network_helper": False,
             "marker_occurrences": occurrences,
         }
-        (evidence / "result.json").write_text(
-            json.dumps(result, indent=2) + "\n", encoding="utf-8")
-        print(json.dumps(result))
     finally:
-        try:
-            client.action({"op": "pause"})
-        except Exception:
-            pass
+        leave_paused(client)
+    (evidence / "result.json").write_text(
+        json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(result))
 
 
 if __name__ == "__main__":

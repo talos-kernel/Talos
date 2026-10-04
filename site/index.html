@@ -403,7 +403,7 @@ html.js .rv.in{opacity:1;transform:none}
         <span class="t-why" id="tickWhy">clean — runs sandboxed, logged before it runs</span>
       </div>
       <div class="meter-row">
-        <span><b>3031</b>unit tests</span>
+        <span><b>3078</b>automated tests</span>
         <span><b>263/263</b>adversarial</span>
         <span><b>985</b>lines · gate</span>
         <span><b>30s</b>token life</span>
@@ -685,13 +685,13 @@ html.js .rv.in{opacity:1;transform:none}
 <section id="numbers">
   <div class="wrap">
     <p class="sec-tag rv">proof, not boasts</p>
-    <h2 class="rv">Proved in under a minute</h2>
-    <p class="sub rv">None of this asks for belief. The installer runs both suites in front
-    of you. Every number on this page is a number the suite reproduces.</p>
+    <h2 class="rv">Measured, with the path stated</h2>
+    <p class="sub rv">None of this asks for belief. The installer runs the unit and
+    adversarial suites in front of you; the real-model cases are a separate opt-in E2E run.</p>
     <div class="stats">
-      <div class="stat rv"><div class="n cnt" data-n="3031">0</div><div class="l">unit tests, run by the installer in front of you</div></div>
+      <div class="stat rv"><div class="n cnt" data-n="3078">0</div><div class="l">automated tests collected from this beta candidate</div></div>
       <div class="stat rv"><div class="n cnt" data-n="263">0</div><div class="l">adversarial cases trying to pass the kernel</div></div>
-      <div class="stat rv"><div class="n cnt" data-n="44">0</div><div class="l">end-to-end cases against a real model</div></div>
+      <div class="stat rv"><div class="n cnt" data-n="44">0</div><div class="l">opt-in end-to-end cases against a real model</div></div>
       <div class="stat rv"><div class="n cnt" data-n="985">0</div><div class="l">lines in the file that decides every verdict</div></div>
       <div class="stat rv"><div class="n cnt" data-n="33">0</div><div class="l">gated tools, each with a declared effect</div></div>
       <div class="stat rv"><div class="n cnt" data-n="30" data-suf="s">0</div><div class="l">token lifetime, single use</div></div>
@@ -810,9 +810,9 @@ html.js .rv.in{opacity:1;transform:none}
   <div class="wrap">
     <p class="sec-tag rv">raise the keep</p>
     <h2 class="rv">The command remains yours</h2>
-    <p class="sub rv">Beta 0.20.0-beta.4. Tested on Python 3.11–3.13, Linux and macOS, including Raspberry Pi.
+    <p class="sub rv">Beta candidate 0.20.0-beta.4. Tested on Python 3.11–3.13, Linux and macOS, including Raspberry Pi.
     Bring your own model: a supported CLI, configured API provider or local Ollama.
-    The installer proves every claim in front of you, then <strong>starts nothing.</strong></p>
+    The installer runs the unit and adversarial suites in front of you, then <strong>starts nothing.</strong></p>
     <div class="term rv">
       <button class="copy">copy the command</button>
 <pre><span class="c"># read it first — it is served as plain text for exactly that reason</span>

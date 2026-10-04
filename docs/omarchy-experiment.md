@@ -43,12 +43,14 @@ Startup recovers unfinished jobs as interrupted and pauses the VM. Human takeove
 invalidates the current input generation and releases any uncertain held keys before
 another owner can resume it.
 
-Input acknowledgements are `needs_review`, not proof that a visible task succeeded.
+Input acknowledgements are `needs_review` and report `dispatched`, not proof that a
+guest received the events or that a visible task succeeded.
 The snapshot workbench makes that distinction explicit: an operator sees the guest,
 takes control, returns control or pauses it. The on-screen keyboard serializes input.
-Printable keys use explicit short key-down/key-up events; special keys and shortcuts
-use a separate bounded hold so neither a swallowed Enter nor a repeating letter is
-silently retried.
+Each keyboard action is submitted once as one bounded QMP event batch containing its
+key-downs and key-ups. Text above the 63-event software cap is rejected before the job
+or any guest input is created. A successful receipt proves dispatch, not guest
+delivery. An uncertain or visibly missing action is never retried automatically.
 
 ## Installation contract
 
@@ -87,8 +89,37 @@ The installed E2E opens the real private workbench, removes the fragment token,
 takes control, opens a terminal, types a unique marker through the visible keyboard,
 presses Enter and uses macOS Vision OCR to require the marker both as command and as
 terminal output. It also checks changed pixels, browser console and HTTP health,
-absence of an agent job, mobile overflow, release and final pause. The acceptance
-gate requires two clean consecutive runs.
+absence of an agent job, mobile overflow, release and final pause. Keyboard release
+qualification requires 60 consecutive clean hardware trials across at least three
+fresh VM/service generations; any failure resets that consecutive count.
+`tests/omarchy_hardware_qualification.py` runs one generation (20 trials by
+default), refuses a dirty source tree, binds every result to the exact Git tree,
+installed backend, install evidence, signed-artifact digests, host class and
+launchd process identities (PID plus start time captured under the fixed C locale and
+UTC timezone), and stops at the first failure. Cleanup screenshots are authenticated
+individually against their referenced SHA-256 values; their full-frame hashes need not
+match because semantic comparison deliberately excludes the dynamic top bar.
+
+Every run names one explicit `--chain-root`; there is no operator-selected previous
+summary. The harness creates evidence below that root and appends contiguous
+`entries/000001.json`, `000002.json`, … records. Each record binds its in-root evidence
+directory, summary and evidence-tree hashes, exact cohort binding, all three role
+process identities, and the validated preceding head hash. Each web, API and VM
+PID/start pair must be fresh against that same role in every earlier generation. A
+failed run is still appended and retained as the terminal head. That cohort can never
+continue; the next attempt must use a new empty chain root. Only the third clean entry
+in one uninterrupted root can assert the 60-run qualification.
+
+Completed generation files and chain entries are made read-only to reduce accidental
+tampering. This is not protection from a malicious operator: the operator owns the
+files and can restore write permission, delete a trailing entry and its evidence, or
+start a different root. The final audit/release commit must record and externally
+anchor the final chain-head hash. Until that anchor exists, the chain proves internal
+continuity, not resistance to an operator rewriting local history. The qualification
+harness stays unprivileged and performs no administrator action or service restart.
+It reads the private local Computer profile only to authenticate the loopback control
+socket and workbench; those values are redacted from evidence and output, and no model,
+provider or channel credential is used.
 
 A separate restart E2E replaces only the API process and proves that the PID changes
 while durable jobs remain byte-for-byte unchanged and both control state and VM stay
@@ -104,7 +135,8 @@ backend-specific reasoner instructions.
 - Input uses a validated US keyboard layout; arbitrary Unicode and paste are not a
   hidden clipboard channel.
 - Geometry is fixed at 1440×900. Capture refuses the wrong size or a blank first
-  frame instead of guessing coordinates.
+frame instead of guessing coordinates. Keyboard text is deliberately bounded by one
+QMP event batch; send longer prose as separately inspected actions.
 - The local backend is not feature-equivalent to the Linux Computer. Shell, browser,
   file and routine operations fail explicitly; there is no silent remote fallback.
 - This beta does not make a public listener, share the Mac desktop or expose raw QMP.

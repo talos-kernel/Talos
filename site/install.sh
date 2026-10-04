@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-VERSION="0.20.0-beta.4"
+VERSION="0.20.0-beta.3"
 BASE="${TALOS_BASE:-https://talos-agent.ch}"
 TARBALL="${BASE}/dist/talos-${VERSION}.tar.gz"
 PREFIX="${TALOS_PREFIX:-$HOME/talos}"
@@ -167,7 +167,7 @@ ok "sha256 ${SUM:0:16}…${SUM: -8} matches the published sum"
 # whoever can replace one replaces both. The key below does not live on that server.
 step "Proving the archive came from us"
 curl -fsSL "${BASE}/dist/talos-${VERSION}.tar.gz.sig" -o "$TMP/sig" \
-  || die "no signature at ${BASE}/dist/talos-${VERSION}.tar.gz.sig — this release cannot prove its origin."
+  || die "no signature at ${BASE}/dist/talos-${VERSION}.tar.gz.sig — this public release cannot prove its origin."
 # ⚠️ Verified with a vetted implementation in a THROWAWAY environment, not with
 # hand-written crypto in a shell script and not with the tarball's own dependencies —
 # those are exactly what is still unproven at this point. `cryptography` is named here,

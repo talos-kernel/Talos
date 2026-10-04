@@ -8,6 +8,7 @@ laufen sie hier ohne Ausnahme.
 """
 from io import BytesIO
 import json
+from unittest.mock import Mock
 
 import pytest
 
@@ -129,11 +130,11 @@ def test_snapshot_input_requires_origin_session_and_human_rpc(monkeypatch):
                                         "view_secret": "s" * 32})
     calls = []
     monkeypatch.setattr(web, "rpc", lambda kind, args: calls.append((kind, args)) or {
-        "input": "delivered", "control": "human"})
+        "input": "dispatched", "control": "human"})
 
     handler, response = post_handler(web, body={"op": "click", "x": 4, "y": 8})
     handler.do_POST()
-    assert response == [((200, {"input": "delivered", "control": "human"}), {})]
+    assert response == [((200, {"input": "dispatched", "control": "human"}), {})]
     assert calls == [("human", {"op": "input", "input": {
         "op": "click", "x": 4, "y": 8}})]
 
@@ -148,6 +149,16 @@ def test_snapshot_input_requires_origin_session_and_human_rpc(monkeypatch):
     handler.do_POST()
     assert response == [((401, {"error": "Anmeldung erforderlich."}), {})]
     assert len(calls) == 1
+
+
+def test_snapshot_input_maps_broken_service_stream_to_503(monkeypatch):
+    from talos.computer import web
+    monkeypatch.setattr(web, "CONFIG", {"origin": "https://computer.example.test",
+                                        "view_secret": "s" * 32})
+    monkeypatch.setattr(web, "rpc", Mock(side_effect=ConnectionError("service ended")))
+    handler, response = post_handler(web, body={"op": "key", "keys": "Return"})
+    handler.do_POST()
+    assert response == [((503, {"error": "Computer gerade nicht erreichbar."}), {})]
 
 
 def test_snapshot_input_rejects_oversized_or_non_object_body(monkeypatch):
@@ -175,6 +186,7 @@ def test_snapshot_frontend_serializes_input_and_is_valid_javascript():
     text = source.read_text()
     assert "snapshotInputQueue=result.then" in text
     assert 'api("/api/input",input)' in text
+    assert "reportEvents>63" in text and "one bounded keyboard batch" in text
     assert "response.status===204" in text
     assert "snapshotViewer()||(desktopConnected&&rfb)" in text
     assert 'state.backend==="omarchy"' in text

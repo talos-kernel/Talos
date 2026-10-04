@@ -25,6 +25,14 @@ e2e.load_config = load_config
 e2e.HermesCatalogLoader = Loader
 e2e.ClaudeCliReasoner = lambda binary, timeout, meter, *, model: (binary, model)
 assert e2e.production_reasoner(None) == ('test-cli', 'claude-fable-5-1')
+isolated_log = object()
+seen = []
+def restore(log, registry, fallback):
+    seen.append(log)
+    return fallback
+e2e.restore_selection = restore
+assert e2e.production_reasoner(None, isolated_log) == ('test-cli', 'claude-fable-5-1')
+assert seen == [isolated_log]
 config.hermes_catalog_configured = True
 try:
     e2e.production_reasoner(None)

@@ -169,6 +169,9 @@ def test_every_page_of_the_site_states_the_real_numbers() -> None:
     assert status["werkzeuge"] == erwartet["Werkzeuge"]
     assert status["kernel_zeilen"] == erwartet["Kernel-Zeilen"]
     assert status["redteam_faelle"] == erwartet["Adversarial-Faelle"]
+    if (status["release_state"] == "candidate"
+            and status["installer_version"] != status["version"]):
+        assert "run by the installer" not in SITE.read_text(encoding="utf-8")
     for page in (ROOT / "site").rglob("*.html"):
         text = page.read_text(encoding="utf-8")
         for match in re.finditer(r"<b>(\d+)</b>gated tools", text):

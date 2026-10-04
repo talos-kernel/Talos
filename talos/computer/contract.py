@@ -57,7 +57,7 @@ def validate_browser(args):
     return allowed
 KEYS = {"Return", "Tab", "Escape", "BackSpace", "Delete", "Up", "Down", "Left", "Right",
         "Home", "End", "Page_Up", "Page_Down", "ctrl+l", "ctrl+a", "ctrl+c", "ctrl+v",
-        "alt+Tab", "super+Return", "super+Space"}
+        "alt+Tab", "super+Return", "super+Space", "super+W"}
 
 
 def slug(value, label="name"):

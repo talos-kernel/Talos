@@ -9,8 +9,9 @@ import pytest
 
 from talos.computer.omarchy import SIZE
 from talos.computer.omarchy_service import (
-    Capture, OmarchyComputer, connect_computer, framebuffer_visible, load_config, make_preflight,
-    peer_uid, ppm_to_png, wait_for_framebuffer,
+    QMP_DISCONNECT_EXIT, Capture, OmarchyComputer, connect_computer,
+    framebuffer_visible, load_config, make_preflight, peer_uid, ppm_to_png,
+    terminate_on_qmp_disconnect, wait_for_framebuffer,
 )
 
 
@@ -136,7 +137,12 @@ def test_new_qemu_generation_boots_before_pause_but_api_restart_does_not(tmp_pat
     cfg = config(tmp_path)
     qmp = StatefulQMP()
     capture = Mock(return_value=png_fixture())
-    OmarchyComputer(cfg, qmp=qmp, capture=capture, check_vm=Mock())
+    observed_preflight_states = []
+    check_vm = Mock(side_effect=lambda: observed_preflight_states.append(qmp.status))
+    OmarchyComputer(cfg, qmp=qmp, capture=capture, check_vm=check_vm)
+    # First boot validates the paused hardware before boot, then OfflineDesktop
+    # must stop the now-running guest before its own validation.
+    assert observed_preflight_states == ["paused", "paused"]
     assert qmp.status == "paused"
     assert qmp.commands[-2:] == ["stop", "query-status"]
     assert (Path(cfg["state"]) / "vm-generation").is_file()
@@ -153,6 +159,77 @@ def test_new_qemu_generation_boots_before_pause_but_api_restart_does_not(tmp_pat
     OmarchyComputer(cfg, qmp=qmp, capture=capture, check_vm=Mock())
     wait.assert_called_once_with(qmp, capture)
     assert qmp.status == "paused"
+
+
+def test_real_qmp_transport_is_bound_to_launchd_fail_stop(tmp_path, monkeypatch):
+    cfg = config(tmp_path)
+    qmp = StatefulQMP()
+    observed = {}
+
+    def transport(path, *, pid, on_disconnect):
+        observed.update(path=path, pid=pid, callback=on_disconnect)
+        return qmp
+
+    monkeypatch.setattr("talos.computer.omarchy_service.LocalQMP", transport)
+    OmarchyComputer(cfg, capture=Mock(return_value=png_fixture()), check_vm=Mock())
+    assert observed == {"path": cfg["qmp"], "pid": os.getpid(),
+                        "callback": terminate_on_qmp_disconnect}
+
+    exit_call = Mock(side_effect=SystemExit("service terminated"))
+    monkeypatch.setattr("talos.computer.omarchy_service.os._exit", exit_call)
+    with pytest.raises(SystemExit, match="service terminated"):
+        observed["callback"]()
+    exit_call.assert_called_once_with(QMP_DISCONNECT_EXIT)
+
+
+def test_lost_cont_response_is_not_served_until_restart_proves_pause(tmp_path):
+    class ServiceTerminated(BaseException):
+        pass
+
+    class LostContQMP(StatefulQMP):
+        fail_cont = False
+
+        def __call__(self, command, args=None):
+            if command == "cont" and self.fail_cont:
+                self.commands.append(command)
+                self.status = "running"
+                raise ServiceTerminated("API process exited")
+            return super().__call__(command, args)
+
+    cfg = config(tmp_path)
+    qmp = LostContQMP()
+    computer = OmarchyComputer(cfg, qmp=qmp, capture=Mock(return_value=png_fixture()),
+                               check_vm=Mock())
+    qmp.commands.clear()
+    qmp.fail_cont = True
+    with pytest.raises(ServiceTerminated, match="process exited"):
+        computer.desktop.control("agent", human=True)
+    assert computer.desktop.store.control() == "paused"
+    assert qmp.status == "running"
+    assert qmp.commands == ["stop", "cont"]
+
+    recovery = StatefulQMP()
+    recovery.status = "running"
+    restarted = OmarchyComputer(cfg, qmp=recovery,
+                                capture=Mock(return_value=png_fixture()), check_vm=Mock())
+    assert recovery.commands == ["stop", "query-status"]
+    assert restarted.status()["control"] == "paused"
+    assert restarted.status()["vm"] == "paused"
+
+
+def test_same_generation_restart_refuses_when_stop_does_not_pause(tmp_path):
+    cfg = config(tmp_path)
+    initial = StatefulQMP()
+    OmarchyComputer(cfg, qmp=initial, capture=Mock(return_value=png_fixture()),
+                    check_vm=Mock())
+
+    still_running = StatefulQMP(ignore_stop=True)
+    still_running.status = "running"
+    with pytest.raises(RuntimeError, match="could not be proven paused"):
+        OmarchyComputer(cfg, qmp=still_running,
+                        capture=Mock(return_value=png_fixture()), check_vm=Mock())
+    assert still_running.status == "running"
+    assert still_running.commands == ["stop", "query-status", "stop", "query-status"]
 
 
 def test_first_boot_wait_failure_best_effort_pauses_without_marker(tmp_path, monkeypatch):
@@ -353,7 +430,7 @@ def test_human_takeover_allows_only_bounded_desktop_input(computer):
     assert computer.desktop.store.control() == "human"
     result = computer.handle({"kind": "human", "args": {
         "op": "input", "input": {"op": "click", "x": 50, "y": 60}}}, os.getuid())
-    assert result == {"input": "delivered", "control": "human"}
+    assert result == {"input": "dispatched", "control": "human"}
     with pytest.raises(ValueError, match="unknown human"):
         computer.handle({"kind": "human", "args": {
             "op": "input", "input": {"op": "click", "x": 1, "y": 1},

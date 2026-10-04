@@ -19,10 +19,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3031).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3078).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-3031-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-3078-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-263%2F263-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-985%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-33%20gated-8a4318.svg" alt="Tools">
@@ -763,6 +763,9 @@ inbound port forwarding, bridged adapter, host folders, clipboard bridge
 or host credentials. Talos can inspect screenshots and propose bounded click, type,
 key and scroll actions; unsupported shell, browser-protocol, file and routine
 operations fail instead of falling through to the Mac.
+Each keyboard action is submitted once as one bounded QMP event batch and must be
+inspected. Text above the 63-event software cap is refused before dispatch; a success
+receipt proves dispatch, not guest delivery.
 
 The existing ARM64 Linux/KVM Computer remains available for structured projects,
 terminal commands, browser automation, files and routines. The Omarchy installer is

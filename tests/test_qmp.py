@@ -32,7 +32,10 @@ def endpoint():
                         if req["execute"] == "qmp_capabilities":
                             connection.sendall(json.dumps({"return": {}, "id": req["id"]}).encode() + b"\n")
                         else:
-                            connection.sendall(respond(req))
+                            response = respond(req)
+                            if response is None:
+                                return
+                            connection.sendall(response)
             except (OSError, ValueError):
                 pass
         thread = threading.Thread(target=serve, daemon=True)
@@ -78,6 +81,39 @@ def test_uncertain_reply_closes_session_without_retry(endpoint, response):
         qmp("input-send-event")
     with pytest.raises(RuntimeError, match="explicit reattachment"):
         qmp("input-send-event")
+
+
+def test_uncertain_reply_notifies_fail_stop_exactly_once(endpoint):
+    path, start = endpoint
+    start(lambda _req: b'{"return":{},"id":-1}\n')
+    disconnects = []
+    qmp = LocalQMP(path, pid=os.getpid(),
+                   on_disconnect=lambda: disconnects.append("uncertain"))
+    with pytest.raises(RuntimeError, match="identity changed"):
+        qmp("input-send-event")
+    with pytest.raises(RuntimeError, match="explicit reattachment"):
+        qmp("query-status")
+    assert disconnects == ["uncertain"]
+
+
+def test_eof_notifies_once_and_explicit_close_does_not_notify(endpoint):
+    path, start = endpoint
+    start(lambda _req: None)
+    eof = []
+    qmp = LocalQMP(path, pid=os.getpid(),
+                   on_disconnect=lambda: eof.append(qmp.closed))
+    with pytest.raises(ValueError, match="incomplete"):
+        qmp("query-status")
+    with pytest.raises(RuntimeError, match="explicit reattachment"):
+        qmp("query-status")
+    assert eof == [True]
+
+    start(lambda req: json.dumps({"return": {}, "id": req["id"]}).encode() + b"\n")
+    explicit = []
+    healthy = LocalQMP(path, pid=os.getpid(),
+                       on_disconnect=lambda: explicit.append(True))
+    healthy.close()
+    assert explicit == []
 
 
 def test_world_accessible_socket_refused(endpoint):

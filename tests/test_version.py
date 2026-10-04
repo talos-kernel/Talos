@@ -1,13 +1,13 @@
-"""Eine Version, zwei Orte — und ein Test, der sie zusammenhaelt.
+"""Keep the candidate identity separate from the safe public installer pointer.
 
-Der Installer laeuft, bevor es ein Paket gibt, das er nach seiner Version fragen koennte.
-Die Zahl muss deshalb doppelt stehen. Doppelt stehende Zahlen driften: `talos.__version__`
-sagte 0.0.1, waehrend `site/install.sh` 0.2.0-alpha auslieferte und das Tarball unter
-diesem Namen ablegte. Wer daraus einen Update-Weg baut, vergleicht ab da Aepfel mit Birnen
-— und meldet „aktuell", waehrend eine neue Fassung bereitliegt.
+While a candidate is still under qualification, ``site/install.sh`` must keep serving
+the last signed public release. Once ``release_state`` becomes ``released``, the pointer
+must match ``talos.__version__``. This prevents a website deployment from advertising an
+archive that has not been signed and published yet.
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -16,21 +16,28 @@ import pytest
 import talos
 
 INSTALLER = Path(__file__).resolve().parent.parent / "site" / "install.sh"
+STATUS = Path(__file__).resolve().parent.parent / "site" / "status.json"
 _VERSION_LINE = re.compile(r'^VERSION="([^"]+)"', re.MULTILINE)
 
-# Der Installer liegt unter `site/` und traegt damit `export-ignore` — wer aus dem Tarball
-# installiert, hat ihn bereits ausgefuehrt und besitzt ihn nicht. Die Kopplung, die dieser
-# Test bewacht, entsteht ohnehin beim Veroeffentlichen, also im Repository.
+# The installer is export-ignored from release archives; this contract is therefore
+# enforced in the repository where the public pointer is prepared and published.
 pytestmark = pytest.mark.skipif(
     not INSTALLER.exists(),
     reason="site/install.sh gehoert nicht zur Auslieferung — geprueft wird im Repository.",
 )
 
 
-def test_installer_and_package_agree_on_the_version() -> None:
+def test_installer_tracks_the_declared_public_release_pointer() -> None:
     match = _VERSION_LINE.search(INSTALLER.read_text(encoding="utf-8"))
     assert match is not None, "install.sh hat keine VERSION-Zeile mehr"
-    assert match.group(1) == talos.__version__
+    status = json.loads(STATUS.read_text(encoding="utf-8"))
+    assert match.group(1) == status["installer_version"]
+    if status["release_state"] == "released":
+        assert match.group(1) == talos.__version__
+    else:
+        assert status["release_state"] == "candidate"
+        assert status["version"] == talos.__version__
+        assert match.group(1) != talos.__version__
 
 
 def test_the_installer_downloads_the_version_it_announces() -> None:

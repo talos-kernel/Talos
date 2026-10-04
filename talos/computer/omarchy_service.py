@@ -31,6 +31,19 @@ MAX_PPM = SIZE[0] * SIZE[1] * 3 + 4096
 MAX_PNG = 5 * 1024 * 1024
 PREVIEW_LIMIT = 12
 STARTUP_TIMEOUT = 90
+QMP_DISCONNECT_EXIT = 70
+
+
+def terminate_on_qmp_disconnect():
+    """Remove an uncertain VM session from service before it can answer again.
+
+    launchd keeps this API process alive. Its replacement establishes a fresh,
+    peer-pinned QMP session, recovers unfinished jobs, stops the guest and reads
+    back ``paused`` before recreating the control socket. Until then the web
+    service receives a broken local RPC stream and reports HTTP 503, never a
+    stale success or a validation-style 409.
+    """
+    os._exit(QMP_DISCONNECT_EXIT)
 
 
 def _inside(path, root):
@@ -293,7 +306,8 @@ class OmarchyComputer:
     def __init__(self, config, *, qmp=None, capture=None, check_vm=None):
         self.config = config
         pid = int(Path(config["pid_file"]).read_text().strip()) if qmp is None else None
-        self.qmp = qmp or LocalQMP(config["qmp"], pid=pid)
+        self.qmp = qmp or LocalQMP(
+            config["qmp"], pid=pid, on_disconnect=terminate_on_qmp_disconnect)
         startup_complete = False
         try:
             self.capture_source = capture or Capture(self.qmp, config["scratch"])

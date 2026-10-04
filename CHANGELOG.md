@@ -7,7 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The 0.20.0 beta line follows the frozen operator contract; earlier alpha releases
 remain historical snapshots. Beta does not mean error-free operation.
 
-## [0.20.0-beta.4] — 2026-10-03
+## [Unreleased — 0.20.0-beta.4 candidate]
 
 ### Security
 
@@ -41,14 +41,17 @@ remain historical snapshots. Beta does not mean error-free operation.
   removing its launchd file or starting the unprivileged replacement services.
 - Return `Retry-After` on every Workbench login throttle response, using the same
   60-second window that enforces the limit.
-- Send special keys once with an explicit bounded 120 ms press/release and printable
-  keys in one atomic event transaction, avoiding repeated characters and swallowed
-  follow-up keys without replaying uncertain input.
+- Submit each keyboard action once as one bounded QMP event batch, reject oversized
+  text before any input, never replay uncertainty, and distinguish dispatch from guest
+  delivery in receipts. Queue capacity and delivery remain unconfirmed.
+- Terminate the local Computer API session on an uncertain QMP response. launchd then
+  creates a fresh peer-pinned session that recovers unfinished jobs and proves the VM
+  paused before the control socket becomes available again.
 - Assemble the final-answer protocol for the Claude CLI route as well as API routes.
 
 ### App
 
-- Build macOS App 0.3.5 build 10 with this beta core and the current Omarchy boundary.
+- Prepare macOS App 0.3.5 build 11 with this beta core and the current Omarchy boundary.
 
 ## [0.20.0-beta.3] — 2026-10-02
 

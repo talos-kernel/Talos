@@ -28,11 +28,13 @@ export default class RFB extends EventTarget {
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence-dir", type=Path, required=True)
+    parser.add_argument("--browser", type=Path,
+                        default=Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"))
     args = parser.parse_args()
     args.evidence_dir.mkdir(parents=True, exist_ok=True)
     results = []
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
+        browser = pw.chromium.launch(headless=True, executable_path=str(args.browser))
         for run in (1, 2):
             fixture = {"control": "agent", "vm": "running", "desktop": True,
                        "jobs": [], "routines": []}

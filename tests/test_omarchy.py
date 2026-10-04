@@ -14,9 +14,38 @@ from talos.executor import Executor, Status
 from talos.policy import PolicyKernel, ToolRequest
 from talos.snapshot import Snapshotter
 from talos.tools import default_manifest
+from omarchy_installed_e2e import write_evidence_json
 
 OWNER = Principal("cli", "12345")
 ACTION = {"op": "type", "project": "fixture", "key": "type-one", "title": "Type fixture", "text": "Talos"}
+
+
+def test_installed_e2e_result_redacts_all_workbench_failure_evidence(tmp_path):
+    sentinel = "LOCAL-WORKBENCH-TOKEN-SENTINEL"
+    url = f"https://workbench.invalid/#token={sentinel}"
+    result = {
+        "error": f"uncaught exception at {url}; echoed credential {sentinel}",
+        # The harness stores page errors and error-level console messages together.
+        "console_errors": [f"page error at {url}", f"console echoed {sentinel}"],
+        "http_errors": [(503, url)],
+        "request_failures": [{"url": url, "reason": f"failed with {sentinel}"}],
+        "browser_close_error": f"close failed at {url}",
+        "failure_precheck_error": f"precheck failed with {sentinel}",
+        "failure_terminal_cleanup_error": (
+            "cleanup failed at https://workbench.invalid/#token=UNKNOWN-FRAGMENT"),
+        "failure_cleanup_error": f"pause failed with {sentinel}",
+    }
+    path = tmp_path / "result.json"
+
+    write_evidence_json(path, result, token=sentinel)
+
+    persisted = path.read_text(encoding="utf-8")
+    decoded = json.loads(persisted)
+    assert sentinel not in persisted
+    assert "UNKNOWN-FRAGMENT" not in persisted
+    assert decoded["http_errors"][0][0] == 503
+    assert "https://workbench.invalid/#token=<redacted>" in persisted
+    assert "uncaught exception" in decoded["error"]
 
 
 @pytest.fixture
@@ -95,13 +124,43 @@ def test_text_mapping_and_key_release(desktop):
     ]
 
 
-def test_printable_key_uses_short_press_and_settle(desktop, monkeypatch):
+def test_printable_key_uses_one_report_and_settle(desktop, monkeypatch):
     sleeps = []
     clock = Mock(wraps=time)
     clock.sleep.side_effect = sleeps.append
     monkeypatch.setattr("talos.computer.omarchy.time", clock)
     desktop.action(ACTION | {"text": "e"})
-    assert sleeps == [0.06]
+    assert sleeps == [0.20]
+
+
+def test_largest_lowercase_text_uses_one_queue_bounded_report(desktop):
+    desktop.action(ACTION | {"text": "a" * 31})
+    reports = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
+    assert len(reports) == 1 and len(reports[0]) == 62
+    assert sum(event["data"]["down"] for event in reports[0]) == 31
+
+
+def test_largest_shifted_text_uses_one_queue_bounded_report(desktop):
+    desktop.action(ACTION | {"text": "A" * 15})
+    reports = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
+    assert len(reports) == 1 and len(reports[0]) == 60
+    assert sum(event["data"]["down"] for event in reports[0]) == 30
+
+
+@pytest.mark.parametrize("text", ["a" * 32, "A" * 16])
+def test_oversized_text_report_is_rejected_before_job_or_input(desktop, text):
+    with pytest.raises(ValueError, match="bounded keyboard batch"):
+        desktop.action(ACTION | {"text": text})
+    desktop.qmp.assert_not_called()
+    assert desktop.store.jobs(str(OWNER)) == []
+
+
+def test_mixed_text_reproducer_is_one_bounded_batch(desktop):
+    desktop.action(ACTION | {"text": "echo TRXK73A"})
+    reports = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
+    assert len(reports) == 1
+    assert len(reports[0]) == 34
+    assert sum(event["data"]["down"] for event in reports[0]) == 17
 
 
 def test_omarchy_terminal_shortcut_is_bounded_and_releases_super(desktop):
@@ -111,23 +170,28 @@ def test_omarchy_terminal_shortcut_is_bounded_and_releases_super(desktop):
     assert result["job"]["state"] == "needs_review"
     events = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
     assert events == [
-        [key_event("meta_l", True), key_event("ret", True)],
-        [key_event("ret", False), key_event("meta_l", False)],
+        [key_event("meta_l", True), key_event("ret", True),
+         key_event("ret", False), key_event("meta_l", False)],
     ]
     assert not desktop.held
 
 
-def test_omarchy_menu_shortcut_is_bounded(desktop):
+def test_other_supported_super_chords_are_bounded(desktop):
     args = {k: v for k, v in ACTION.items() if k != "text"}
-    desktop.action(args | {"op": "key", "key": "open-menu", "keys": "super+Space"})
+    desktop.action(args | {"op": "key", "key": "alternate-super-chord",
+                           "keys": "super+Space"})
+    desktop.action(args | {"op": "key", "key": "close-window",
+                           "keys": "super+W"})
     events = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
     assert events == [
-        [key_event("meta_l", True), key_event("spc", True)],
-        [key_event("spc", False), key_event("meta_l", False)],
+        [key_event("meta_l", True), key_event("spc", True),
+         key_event("spc", False), key_event("meta_l", False)],
+        [key_event("meta_l", True), key_event("w", True),
+         key_event("w", False), key_event("meta_l", False)],
     ]
 
 
-def test_return_is_one_longer_press_without_replay(desktop, monkeypatch):
+def test_return_is_one_bounded_batch_without_replay(desktop, monkeypatch):
     sleeps = []
     clock = Mock(wraps=time)
     clock.sleep.side_effect = sleeps.append
@@ -135,12 +199,15 @@ def test_return_is_one_longer_press_without_replay(desktop, monkeypatch):
     args = {k: v for k, v in ACTION.items() if k != "text"}
     desktop.action(args | {"op": "key", "key": "submit-once", "keys": "Return"})
     events = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
-    assert events == [[key_event("ret", True)], [key_event("ret", False)]]
-    assert sleeps == [0.12, 0.20]
+    assert events == [[
+        key_event("ret", True), key_event("ret", False),
+    ]]
+    assert sum(event["data"]["down"] for event in events[0]) == 1
+    assert sleeps == [0.20]
 
 
-def test_special_key_up_failure_pauses_without_replaying_press(desktop):
-    desktop.qmp.side_effect = [None, RuntimeError("key-up failed"), None, None]
+def test_special_key_report_failure_pauses_without_replaying_press(desktop):
+    desktop.qmp.side_effect = [RuntimeError("key report failed"), None, None]
     args = {k: v for k, v in ACTION.items() if k != "text"}
     result = desktop.action(args | {"op": "key", "key": "failed-up", "keys": "Return"})
     assert result["job"]["state"] == "interrupted"
@@ -148,21 +215,53 @@ def test_special_key_up_failure_pauses_without_replaying_press(desktop):
     event_calls = [call.args[1]["events"] for call in desktop.qmp.call_args_list
                    if call.args[0] == "input-send-event"]
     assert event_calls == [
-        [key_event("ret", True)],
-        [key_event("ret", False)],
+        [key_event("ret", True), key_event("ret", False)],
         [key_event("ret", False)],
     ]
     assert sum(event["data"]["down"] for events in event_calls for event in events) == 1
     assert desktop.held == set()
 
 
+@pytest.mark.parametrize("input_args", [
+    {"op": "type", "key": "fatal-type", "text": "echo TRXK73A"},
+    {"op": "key", "key": "fatal-return", "keys": "Return"},
+    {"op": "click", "key": "fatal-click", "x": 12, "y": 34},
+])
+def test_process_fail_stop_leaves_uncertain_job_for_restart_recovery(
+        desktop, input_args):
+    class ServiceTerminated(BaseException):
+        pass
+
+    desktop.qmp.side_effect = ServiceTerminated("QMP session removed")
+    args = {k: v for k, v in ACTION.items() if k not in {"op", "text", "key", "keys"}}
+    with pytest.raises(ServiceTerminated, match="session removed"):
+        desktop.action(args | input_args)
+
+    jobs = desktop.store.jobs(str(OWNER))
+    assert len(jobs) == 1 and jobs[0]["state"] == "running"
+    assert desktop.store.control() == "agent"
+    assert desktop.qmp.call_count == 1
+
+    fresh_qmp = Mock()
+    restarted = OfflineDesktop(root=desktop.root, owner=str(OWNER), qmp=fresh_qmp,
+                               capture=Mock(), check_vm=Mock())
+    recovered = restarted.store.jobs(str(OWNER))
+    assert recovered[0]["state"] == "interrupted"
+    assert restarted.store.control() == "paused"
+    fresh_qmp.assert_called_once_with("stop")
+
+
 def test_click_coordinates_are_guest_only(desktop):
     args = {k: v for k, v in ACTION.items() if k != "text"}
     desktop.action(args | {"op": "click", "x": SIZE[0] - 1, "y": 0})
+    assert desktop.qmp.call_count == 1
     events = desktop.qmp.call_args_list[0].args[1]["events"]
     assert events[:2] == [{"type": "abs", "data": {"axis": "x", "value": 32767}},
                           {"type": "abs", "data": {"axis": "y", "value": 0}}]
-    assert desktop.qmp.call_args.args[1]["events"][-1]["data"]["down"] is False
+    assert events[-2:] == [
+        {"type": "btn", "data": {"down": True, "button": "left"}},
+        {"type": "btn", "data": {"down": False, "button": "left"}},
+    ]
 
 
 def test_repeat_returns_receipt_without_new_input(desktop):
@@ -204,7 +303,7 @@ def test_human_input_requires_takeover_and_creates_no_model_job(desktop):
     desktop.control("human", human=True)
     desktop.qmp.reset_mock()
     assert desktop.human_input({"op": "type", "text": "A"}) == {
-        "input": "delivered", "control": "human"}
+        "input": "dispatched", "control": "human"}
     assert desktop.store.jobs(str(OWNER)) == []
     assert desktop.held == set()
     assert desktop.qmp.called
@@ -246,6 +345,7 @@ def test_takeover_interrupts_typing_and_preserves_human_control(desktop, monkeyp
     assert entered.wait(2)
     def assert_released_before_preflight():
         assert not desktop.held
+        assert desktop.qmp.call_args_list[-1].args[0] == "stop"
     desktop.check_vm.side_effect = assert_released_before_preflight
     desktop.control("human", human=True)
     count = desktop.qmp.call_count
