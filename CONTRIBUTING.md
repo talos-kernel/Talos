@@ -10,10 +10,21 @@ anything security-relevant — it states the scope and the limits no patch will 
 
 ## Set up
 
+Fork the repository on GitHub, then clone your fork. Keeping the canonical repository as
+`upstream` makes it possible to rebase without mixing your work with release commits:
+
 ```bash
+git clone https://github.com/YOUR-ACCOUNT/Talos.git
+cd Talos
+git remote add upstream https://github.com/talos-kernel/Talos.git
 python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt -r requirements-dev.txt
+pip install --require-hashes -r requirements.lock -r requirements-dev.lock
+git switch -c feat/your-change
 ```
+
+Before publishing a branch, check that no local configuration, event log, API key or
+operator identity was added. `talos.env`, `data/` and the operator's prompt state do not
+belong in a fork.
 
 Three suites, and they are the point — Talos sells that its claims are checked, so a change
 is not done until they are green:
@@ -41,6 +52,20 @@ periphery that surrounds it, where a mistake costs a test rather than the securi
 
 Good first issues are labelled as such. If none fit, open an issue describing what you want
 to do before you write it — for anything non-trivial that conversation saves you a rewrite.
+The current list is
+[`good first issue`](https://github.com/talos-kernel/Talos/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+
+Keep a long-lived fork current with:
+
+```bash
+git fetch upstream
+git switch main
+git merge --ff-only upstream/main
+git push origin main
+```
+
+Do not force-push a shared branch. Rebase a private feature branch only when nobody else
+depends on it.
 
 ## Changing the kernel
 

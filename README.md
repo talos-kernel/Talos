@@ -15,7 +15,8 @@
 <p align="center">
   <a href="https://talos-agent.ch"><b>talos-agent.ch</b></a> ·
   <a href="https://talos-agent.ch/docs/">Field manual</a> ·
-  <a href="CHANGELOG.md">Changelog</a>
+  <a href="CHANGELOG.md">Changelog</a> ·
+  <a href="https://github.com/talos-kernel/Talos/fork"><b>Fork Talos</b></a>
 </p>
 
 <p align="center">
@@ -78,12 +79,13 @@ The installer verifies the signature and the checksum, runs the full suite — a
 ---
 
 <details>
-<summary><b>Contents</b> — twenty-two sections, in the order they matter</summary>
+<summary><b>Contents</b> — in the order they matter</summary>
 
 **Start here**
 [Why this exists](#why-this-exists) ·
 [What it does not do](#what-it-does-not-do) ·
-[Install](#install)
+[Install](#install) ·
+[Fork and build](#fork-and-build)
 
 **Using it**
 [A session in the terminal](#a-session-in-the-terminal) ·
@@ -297,6 +299,40 @@ and says so. Approve in the chat, where somebody is actually looking.
 It also refuses to run inside the agent's own sandbox. Otherwise the agent could start
 `talos ask` from its shell and give itself orders — no channel, no foreign identity,
 nobody reading along.
+
+## Fork and build
+
+You do **not** need a fork to run or configure Talos. Keep a fork when you want to add a
+provider, polling channel, blueprint, gated tool, package or red-team case — work that is
+useful to your installation and may be useful upstream.
+
+1. **[Fork Talos](https://github.com/talos-kernel/Talos/fork)** on GitHub.
+2. Clone your fork and keep this repository as `upstream`:
+
+   ```bash
+   git clone https://github.com/YOUR-ACCOUNT/Talos.git
+   cd Talos
+   git remote add upstream https://github.com/talos-kernel/Talos.git
+   python3 -m venv .venv && . .venv/bin/activate
+   pip install --require-hashes -r requirements.lock -r requirements-dev.lock
+   ```
+
+3. Pick a bounded first change from the
+   **[good first issues](https://github.com/talos-kernel/Talos/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)**,
+   create a branch and prove it locally:
+
+   ```bash
+   git switch -c feat/your-change
+   python -m pytest tests/ -q
+   python redteam.py
+   ```
+
+4. Open a pull request that says what changed, what you ran and — for anything near the
+   kernel — what the change makes possible that was impossible before.
+
+The [contribution guide](CONTRIBUTING.md) names the safe extension points and the higher
+bar for kernel changes. If you find a way past the kernel, do not demonstrate it in a
+public fork or issue; use the private process in [SECURITY.md](SECURITY.md).
 
 ## A session in the terminal
 
@@ -871,6 +907,12 @@ a command line that grants nothing by being one, **MCP over the claude-worker se
 [skills the agent may write — but never alone](#skills-it-writes-for-itself).
 
 ## Contributing
+
+Start with **[Fork and build](#fork-and-build)** and the
+**[good first issues](https://github.com/talos-kernel/Talos/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)**.
+Provider adapters, blueprints, packaging, tests and documentation are the most useful
+first contributions because they improve the agent without making the gate harder to
+audit.
 
 Changes to the kernel (`policy.py`, `capability.py`, `command_floor.py`, `approval.py`,
 `standing.py`, `autonomy.py`, `trust.py`, `verifier.py`, `executor.py`) need:
