@@ -2,7 +2,7 @@
   "version": "0.20.0-beta.4",
   "release_state": "released",
   "installer_version": "0.20.0-beta.4",
-  "tests": 3215,
+  "tests": 3216,
   "redteam_faelle": 263,
   "kernel_zeilen": 985,
   "werkzeuge": 33,

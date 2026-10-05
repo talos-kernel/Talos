@@ -23,6 +23,14 @@ network_e2e = load_script("qmp_network_e2e")
 installed_e2e = load_script("qmp_installed_e2e")
 
 
+def test_installed_e2e_requires_optional_playwright_only_when_run(monkeypatch):
+    monkeypatch.setattr(installed_e2e, "expect", None)
+    monkeypatch.setattr(installed_e2e, "sync_playwright", None)
+
+    with pytest.raises(RuntimeError, match="optional Playwright dependency"):
+        installed_e2e.require_playwright()
+
+
 def valid_local_session():
     return {
         "qmp": "/private/qmp.sock", "pid": 1234,

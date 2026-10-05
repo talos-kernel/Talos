@@ -20,7 +20,13 @@ import zlib
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "macos"))
 
-from playwright.sync_api import expect, sync_playwright
+try:
+    from playwright.sync_api import expect, sync_playwright
+except ModuleNotFoundError:
+    # The normal unit-test environment intentionally does not install the
+    # browser driver.  Require it only when the installed-VM E2E actually runs.
+    expect = None
+    sync_playwright = None
 from talos.configcli import read_file
 from talos.computer.qmp_service import framebuffer_visible
 
@@ -43,6 +49,13 @@ TERMINAL_EXIT_INPUTS = (
     {"op": "type", "text": "exit"},
     {"op": "key", "keys": "Return"},
 )
+
+
+def require_playwright():
+    """Fail explicitly when the installed-browser E2E lacks its optional driver."""
+    if expect is None or sync_playwright is None:
+        raise RuntimeError(
+            "installed QMP E2E requires the optional Playwright dependency")
 
 
 def sanitize_evidence(value, *, token=None):
@@ -385,6 +398,7 @@ def prove_recovery_guest_output(page):
 def recover_failure_with_workbench(link, browser_path, inputs, observe=None,
                                    receipts=None, record_receipt=None):
     """Use the authenticated workbench for bounded cleanup, then prove it paused."""
+    require_playwright()
     if receipts is None:
         receipts = []
     with sync_playwright() as playwright:
@@ -428,6 +442,7 @@ def recover_failure_with_workbench(link, browser_path, inputs, observe=None,
 
 
 def main():
+    require_playwright()
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", type=Path, required=True)
     parser.add_argument("--evidence-dir", type=Path, required=True)
