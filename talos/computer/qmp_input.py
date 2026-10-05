@@ -1,4 +1,4 @@
-"""Visual Omarchy desktop behind Talos' normal Computer capability boundary.
+"""Visual QMP VM desktop behind Talos' normal Computer capability boundary.
 
 The composition root supplies a fixed VM transport and a guest-only capture source.
 Register ``runner`` only behind GrantedRunner. This module never mints permission,
@@ -21,8 +21,10 @@ from .state import Store
 
 SIZE = (1440, 900)  # The existing public Computer coordinate contract.
 CAPTURE_LIMIT = 5 * 1024 * 1024
-KEY_REPORT_LIMIT = 63  # Virtio input has 64 descriptors; QEMU adds SYN_REPORT.
-KEY_REPORT_SETTLE_S = 0.20
+TEXT_ACTION_EVENT_LIMIT = 63  # Preserve the existing bounded text-action contract.
+KEY_REPORT_SETTLE_S = 1.0
+KEY_STROKE_SETTLE_S = 0.05
+KEY_CHORD_SETTLE_S = 0.1
 INPUT_OPS = frozenset({"click", "type", "key", "scroll"})
 KEYS = {
     "Return": ("ret",), "Tab": ("tab",), "Escape": ("esc",),
@@ -40,6 +42,10 @@ SHIFTED = '~!@#$%^&*()_+QWERTYUIOP{}|ASDFGHJKL:"ZXCVBNM<>? '
 PUNCTUATION = dict(zip("`-=[]\\;',./ ", (
     "grave_accent", "minus", "equal", "bracket_left", "bracket_right",
     "backslash", "semicolon", "apostrophe", "comma", "dot", "slash", "spc")))
+MODIFIER_CODES = frozenset({"shift", "ctrl", "alt", "meta_l"})
+INPUT_KEY_CODES = frozenset(
+    string.ascii_lowercase + string.digits) | frozenset(PUNCTUATION.values()) | frozenset(
+        code for codes in KEYS.values() for code in codes) | MODIFIER_CODES
 
 
 def text_keys(value):
@@ -67,7 +73,7 @@ def press_events(codes):
             + [key_event(code, False) for code in reversed(codes)])
 
 
-class OfflineDesktop:
+class QmpInputAdapter:
     """One fixed VM, durable non-replayed receipts and explicit operator handover.
 
 ``qmp`` must be a pinned, authenticated local transport; ``capture`` must return
@@ -96,12 +102,38 @@ before this adapter can be exposed to an unrestricted agent installation.
         # no validation may run while a possibly resumed guest is still moving.
         # The replacement process repeats this stop before doing anything else.
         self.qmp("stop")
+        pending = self._validated_pending()
         self.store.recover()
         self.check_vm()
+        self.held.update(pending)
+        self._release()
+
+    def _pending(self, codes):
+        ordered = tuple(codes)
+        self._validate_pending(ordered)
+        self.store.pending_keys(ordered)
+        self.held = set(ordered)
+
+    @staticmethod
+    def _validate_pending(codes):
+        if (len(codes) > 2 or any(code not in INPUT_KEY_CODES for code in codes)
+                or (len(codes) == 2 and (
+                    codes[0] not in MODIFIER_CODES or codes[1] in MODIFIER_CODES))):
+            raise ValueError("invalid pending keyboard state")
+        return codes
+
+    def _validated_pending(self):
+        return self._validate_pending(self.store.pending_keys())
 
     def _release(self):
-        if self.held:
-            self.qmp("input-send-event", {"events": [key_event(k, False) for k in sorted(self.held)]})
+        pending = list(self._validated_pending())
+        pending.extend(key for key in sorted(self.held) if key not in pending)
+        if pending:
+            # Keys are stored in press order. Release the target first and then
+            # modifiers in reverse order so no bare target remains held.
+            self.qmp("input-send-event", {
+                "events": [key_event(key, False) for key in reversed(pending)]})
+            self.store.pending_keys(())
             self.held.clear()
 
     def control(self, state, *, human=False):
@@ -139,35 +171,63 @@ before this adapter can be exposed to an unrestricted agent installation.
             raise RuntimeError("operator interrupted input; inspect before retrying")
 
     def _keys(self, codes, epoch, owner="agent"):
-        with self.lock:
-            self._active(epoch, owner)
-            # QMP success is only dispatch acknowledgement. Virtio input drops a
-            # submitted batch when its fixed queue lacks descriptors, so every key
-            # action is one bounded batch with its own releases. Never replay
-            # uncertain input.
-            self.held.update(codes)
-            try:
-                self.qmp("input-send-event", {"events": press_events(codes)})
-            except Exception:
-                # Retain uncertain keys: control() calls _release before any
-                # subsequent owner can resume the VM.
-                raise
-            else:
-                self.held.difference_update(codes)
+        if len(codes) == 1:
+            phases = ((press_events(codes), tuple(codes), ()),)
+        else:
+            modifiers, target = codes[:-1], codes[-1]
+            pressed = []
+            phases = []
+            for code in modifiers:
+                pressed.append(code)
+                phases.append(([key_event(code, True)], tuple(pressed), None))
+            phases.append((
+                [key_event(target, True), key_event(target, False)],
+                tuple(pressed + [target]), tuple(pressed)))
+            for code in reversed(modifiers):
+                pressed.remove(code)
+                phases.append(([key_event(code, False)], None, tuple(pressed)))
+        for index, (events, before, after) in enumerate(phases):
+            with self.lock:
+                self._active(epoch, owner)
+                # A chord must cross the guest input boundary as observable
+                # modifier/key/release phases. One simultaneous QMP frame can be
+                # acknowledged yet missed by the guest compositor. Persist each
+                # possibly-held key before dispatch so a stopped replacement can
+                # release it without replaying the uncertain phase.
+                if before is not None:
+                    self._pending(before)
+                self.qmp("input-send-event", {"events": events})
+                if after is not None:
+                    self._pending(after)
+            if index + 1 < len(phases):
+                # Keep takeover immediate between phases.
+                time.sleep(KEY_CHORD_SETTLE_S)
         time.sleep(KEY_REPORT_SETTLE_S)
         with self.lock:
             self._active(epoch, owner)
 
     def _type(self, strokes, epoch, owner="agent"):
-        """Submit one text action once as one bounded QMP event batch."""
-        events = []
-        for codes in strokes:
-            events.extend(press_events(codes))
-        if len(events) > KEY_REPORT_LIMIT:
-            raise RuntimeError("validated keyboard report grew unexpectedly")
-        with self.lock:
-            self._active(epoch, owner)
-            self.qmp("input-send-event", {"events": events})
+        """Submit one text action once as bounded, ordered key reports."""
+        if sum(len(press_events(codes)) for codes in strokes) > TEXT_ACTION_EVENT_LIMIT:
+            raise RuntimeError("validated keyboard action grew unexpectedly")
+        for index, codes in enumerate(strokes):
+            with self.lock:
+                self._active(epoch, owner)
+                # A QMP acknowledgement does not prove that virtio consumed a
+                # large descriptor batch. Keep one validated high-level action
+                # and never replay it, but bound each report to one complete
+                # stroke with all modifier releases included.
+                self._pending(codes)
+                try:
+                    self.qmp("input-send-event", {"events": press_events(codes)})
+                except Exception:
+                    raise
+                else:
+                    self._pending(())
+            if index + 1 < len(strokes):
+                # Do not hold the ownership lock here: an operator takeover
+                # must invalidate the epoch before the next report is sent.
+                time.sleep(KEY_STROKE_SETTLE_S)
         time.sleep(KEY_REPORT_SETTLE_S)
         with self.lock:
             self._active(epoch, owner)
@@ -194,8 +254,8 @@ before this adapter can be exposed to an unrestricted agent installation.
             allowed.add("text")
             strokes = text_keys(args.get("text"))
             report_size = sum(len(press_events(codes)) for codes in strokes)
-            if report_size > KEY_REPORT_LIMIT:
-                raise ValueError("visual typing exceeds one bounded keyboard batch; nothing typed")
+            if report_size > TEXT_ACTION_EVENT_LIMIT:
+                raise ValueError("visual typing exceeds the bounded text-action budget; nothing typed")
             if human and len(args["text"]) > 1024:
                 raise ValueError("human input is limited to 1024 characters")
         elif op == "key":
@@ -356,7 +416,7 @@ before this adapter can be exposed to an unrestricted agent installation.
     def read(self, args):
         op = validate(args, read=True)
         if op == "status":
-            return {"backend": "omarchy", "control": self.store.control(),
+            return {"backend": "qmp", "control": self.store.control(),
                     "vm": self.qmp("query-status"), "jobs": self.store.jobs(self.owner),
                     "supported_actions": sorted(INPUT_OPS), "desktop_size": SIZE}
         if op == "job":

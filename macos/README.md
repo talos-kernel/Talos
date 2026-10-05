@@ -45,14 +45,13 @@ model changes only after validation succeeds. `/commands` remain available.
   Telegram**. It runs while that session stays open. Do not reuse a bot token
   already being polled by another machine. Chat and Telegram sessions are
   mutually exclusive in this preview.
-- **Computer**: uses a separately installed local Omarchy Computer whose private
-  loopback link is validated from the operator-owned 0600 profile. It is a visual-only
-  VM with unprivileged QEMU user-mode NAT and no root network helper, inbound
-  forwarding, host folders, clipboard or
-  credentials. While that local
-  link is valid, remote Computer controls are hidden and unused. Without Omarchy, a
-  private HTTPS ARM64 Linux Computer can be connected instead. Link query/fragment
-  tokens are opened once and are not saved in app preferences.
+- **Computer**: the source contains a generic `QmpInputAdapter`, but the local Mac VM
+  is still a planned deployment rather than a hardware-qualified Computer option. Its
+  fixed target is an x86_64 Debian guest with Hyprland under QEMU TCG on Apple silicon,
+  not HVF. The operator must supply a signed VM bundle and matching pre-provisioned
+  disk; neither QEMU nor the disk is bundled or downloaded. Evidence from an earlier
+  guest prototype cannot qualify this target. The separate private HTTPS ARM64 Linux
+  Computer remains the documented remote design.
 
 ## Your files
 
@@ -63,9 +62,8 @@ No other Talos profile or Telegram credentials are imported. The UI is native
 SwiftUI; chat and guided setup use the existing Talos CLI inside a visible PTY.
 Kernel permissions and approval handling are the same as `talos chat`.
 Closing the app ends its session. The app itself installs no background service or
-listener. The separate, explicit Omarchy installer creates three loopback/local-only
-services under a hidden non-admin account; the ordinary app build does not provision
-that VM.
+listener. The ordinary app build does not provision the planned QMP VM, its QEMU
+runtime or its disk.
 
 ## Building the preview
 

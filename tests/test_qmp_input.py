@@ -2,19 +2,19 @@
 import json
 import threading
 import time
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
 from talos.capability import CapabilityError, CapabilityMint, GrantedRunner
 from talos.channel import Principal
-from talos.computer.omarchy import OfflineDesktop, SIZE, key_event, text_keys
+from talos.computer.qmp_input import QmpInputAdapter, SIZE, key_event, press_events, text_keys
 from talos.eventlog import EventLog
 from talos.executor import Executor, Status
 from talos.policy import PolicyKernel, ToolRequest
 from talos.snapshot import Snapshotter
 from talos.tools import default_manifest
-from omarchy_installed_e2e import write_evidence_json
+from qmp_installed_e2e import write_evidence_json
 
 OWNER = Principal("cli", "12345")
 ACTION = {"op": "type", "project": "fixture", "key": "type-one", "title": "Type fixture", "text": "Talos"}
@@ -54,7 +54,7 @@ def desktop(tmp_path, monkeypatch):
     monkeypatch.setenv("TALOS_COMPUTER_ROOT", str(tmp_path / "target"))
     monkeypatch.setenv("TALOS_COMPUTER_AUTOAPPROVE", "0")
     qmp = Mock(return_value={"status": "running"})
-    value = OfflineDesktop(root=tmp_path / "desk", owner=str(OWNER), qmp=qmp,
+    value = QmpInputAdapter(root=tmp_path / "desk", owner=str(OWNER), qmp=qmp,
                            capture=Mock(), check_vm=Mock())
     value.control("agent", human=True)
     qmp.reset_mock()
@@ -128,52 +128,101 @@ def test_printable_key_uses_one_report_and_settle(desktop, monkeypatch):
     sleeps = []
     clock = Mock(wraps=time)
     clock.sleep.side_effect = sleeps.append
-    monkeypatch.setattr("talos.computer.omarchy.time", clock)
+    monkeypatch.setattr("talos.computer.qmp_input.time", clock)
     desktop.action(ACTION | {"text": "e"})
-    assert sleeps == [0.20]
+    assert sleeps == [1.0]
 
 
-def test_largest_lowercase_text_uses_one_queue_bounded_report(desktop):
+def test_largest_lowercase_text_uses_queue_bounded_stroke_reports(desktop):
     desktop.action(ACTION | {"text": "a" * 31})
     reports = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
-    assert len(reports) == 1 and len(reports[0]) == 62
-    assert sum(event["data"]["down"] for event in reports[0]) == 31
+    assert len(reports) == 31
+    assert all(len(report) == 2 for report in reports)
+    assert sum(event["data"]["down"] for report in reports for event in report) == 31
 
 
-def test_largest_shifted_text_uses_one_queue_bounded_report(desktop):
+def test_largest_shifted_text_releases_modifier_in_each_stroke_report(desktop):
     desktop.action(ACTION | {"text": "A" * 15})
     reports = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
-    assert len(reports) == 1 and len(reports[0]) == 60
-    assert sum(event["data"]["down"] for event in reports[0]) == 30
+    assert len(reports) == 15
+    assert all(len(report) == 4 for report in reports)
+    assert all(report == [
+        key_event("shift", True), key_event("a", True),
+        key_event("a", False), key_event("shift", False),
+    ] for report in reports)
 
 
 @pytest.mark.parametrize("text", ["a" * 32, "A" * 16])
 def test_oversized_text_report_is_rejected_before_job_or_input(desktop, text):
-    with pytest.raises(ValueError, match="bounded keyboard batch"):
+    with pytest.raises(ValueError, match="bounded text-action budget"):
         desktop.action(ACTION | {"text": text})
     desktop.qmp.assert_not_called()
     assert desktop.store.jobs(str(OWNER)) == []
 
 
-def test_mixed_text_reproducer_is_one_bounded_batch(desktop):
-    desktop.action(ACTION | {"text": "echo TRXK73A"})
+def test_mixed_text_reproducer_is_ordered_without_replay(desktop, monkeypatch):
+    sleeps = []
+    clock = Mock(wraps=time)
+    clock.sleep.side_effect = sleeps.append
+    monkeypatch.setattr("talos.computer.qmp_input.time", clock)
+    text = "echo TRXK73A"
+    desktop.action(ACTION | {"text": text})
     reports = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
-    assert len(reports) == 1
-    assert len(reports[0]) == 34
-    assert sum(event["data"]["down"] for event in reports[0]) == 17
+    assert reports == [press_events(codes) for codes in text_keys(text)]
+    assert sleeps == [0.05] * (len(reports) - 1) + [1.0]
 
 
-def test_omarchy_terminal_shortcut_is_bounded_and_releases_super(desktop):
+def test_partial_text_report_failure_pauses_without_replay(desktop):
+    desktop.qmp.side_effect = [
+        None, RuntimeError("shifted stroke failed"), None, None]
+
+    result = desktop.action(ACTION | {"text": "eCz"})
+
+    assert result["job"]["state"] == "interrupted"
+    assert desktop.store.control() == "paused"
+    event_calls = [call.args[1]["events"] for call in desktop.qmp.call_args_list
+                   if call.args[0] == "input-send-event"]
+    assert event_calls == [
+        [key_event("e", True), key_event("e", False)],
+        [key_event("shift", True), key_event("c", True),
+         key_event("c", False), key_event("shift", False)],
+        [key_event("c", False), key_event("shift", False)],
+    ]
+
+
+def test_qmp_terminal_shortcut_is_phased_and_releases_super(
+        desktop, monkeypatch):
+    sleeps = []
+    clock = Mock(wraps=time)
+    clock.sleep.side_effect = sleeps.append
+    monkeypatch.setattr("talos.computer.qmp_input.time", clock)
     args = {k: v for k, v in ACTION.items() if k != "text"}
     result = desktop.action(args | {"op": "key", "key": "open-terminal",
                                     "keys": "super+Return"})
     assert result["job"]["state"] == "needs_review"
     events = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
     assert events == [
-        [key_event("meta_l", True), key_event("ret", True),
-         key_event("ret", False), key_event("meta_l", False)],
+        [key_event("meta_l", True)],
+        [key_event("ret", True), key_event("ret", False)],
+        [key_event("meta_l", False)],
     ]
+    assert sleeps == [0.1, 0.1, 1.0]
     assert not desktop.held
+
+    desktop.qmp.reset_mock()
+    desktop.qmp.side_effect = [
+        None, RuntimeError("target phase failed"), None, None]
+    failed = desktop.action(args | {"op": "key", "key": "close-terminal",
+                                    "keys": "super+W"})
+    assert failed["job"]["state"] == "interrupted"
+    failed_events = [call.args[1]["events"] for call in desktop.qmp.call_args_list
+                     if call.args[0] == "input-send-event"]
+    assert failed_events == [
+        [key_event("meta_l", True)],
+        [key_event("w", True), key_event("w", False)],
+        [key_event("w", False), key_event("meta_l", False)],
+    ]
+    assert desktop.store.control() == "paused"
 
 
 def test_other_supported_super_chords_are_bounded(desktop):
@@ -184,10 +233,12 @@ def test_other_supported_super_chords_are_bounded(desktop):
                            "keys": "super+W"})
     events = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
     assert events == [
-        [key_event("meta_l", True), key_event("spc", True),
-         key_event("spc", False), key_event("meta_l", False)],
-        [key_event("meta_l", True), key_event("w", True),
-         key_event("w", False), key_event("meta_l", False)],
+        [key_event("meta_l", True)],
+        [key_event("spc", True), key_event("spc", False)],
+        [key_event("meta_l", False)],
+        [key_event("meta_l", True)],
+        [key_event("w", True), key_event("w", False)],
+        [key_event("meta_l", False)],
     ]
 
 
@@ -195,7 +246,7 @@ def test_return_is_one_bounded_batch_without_replay(desktop, monkeypatch):
     sleeps = []
     clock = Mock(wraps=time)
     clock.sleep.side_effect = sleeps.append
-    monkeypatch.setattr("talos.computer.omarchy.time", clock)
+    monkeypatch.setattr("talos.computer.qmp_input.time", clock)
     args = {k: v for k, v in ACTION.items() if k != "text"}
     desktop.action(args | {"op": "key", "key": "submit-once", "keys": "Return"})
     events = [call.args[1]["events"] for call in desktop.qmp.call_args_list]
@@ -203,7 +254,7 @@ def test_return_is_one_bounded_batch_without_replay(desktop, monkeypatch):
         key_event("ret", True), key_event("ret", False),
     ]]
     assert sum(event["data"]["down"] for event in events[0]) == 1
-    assert sleeps == [0.20]
+    assert sleeps == [1.0]
 
 
 def test_special_key_report_failure_pauses_without_replaying_press(desktop):
@@ -222,17 +273,22 @@ def test_special_key_report_failure_pauses_without_replaying_press(desktop):
     assert desktop.held == set()
 
 
-@pytest.mark.parametrize("input_args", [
-    {"op": "type", "key": "fatal-type", "text": "echo TRXK73A"},
-    {"op": "key", "key": "fatal-return", "keys": "Return"},
-    {"op": "click", "key": "fatal-click", "x": 12, "y": 34},
+@pytest.mark.parametrize(("input_args", "side_effect", "pending"), [
+    ({"op": "type", "key": "fatal-type", "text": "echo TRXK73A"},
+     lambda error: error, ("e",)),
+    ({"op": "key", "key": "fatal-return", "keys": "super+Return"},
+     lambda error: [None, error], ("meta_l", "ret")),
+    ({"op": "click", "key": "fatal-click", "x": 12, "y": 34},
+     lambda error: error, ()),
 ])
 def test_process_fail_stop_leaves_uncertain_job_for_restart_recovery(
-        desktop, input_args):
+        desktop, input_args, side_effect, pending):
     class ServiceTerminated(BaseException):
         pass
 
-    desktop.qmp.side_effect = ServiceTerminated("QMP session removed")
+    terminated = ServiceTerminated("QMP session removed")
+    effects = side_effect(terminated)
+    desktop.qmp.side_effect = effects
     args = {k: v for k, v in ACTION.items() if k not in {"op", "text", "key", "keys"}}
     with pytest.raises(ServiceTerminated, match="session removed"):
         desktop.action(args | input_args)
@@ -240,15 +296,21 @@ def test_process_fail_stop_leaves_uncertain_job_for_restart_recovery(
     jobs = desktop.store.jobs(str(OWNER))
     assert len(jobs) == 1 and jobs[0]["state"] == "running"
     assert desktop.store.control() == "agent"
-    assert desktop.qmp.call_count == 1
+    expected_dispatches = len(effects) if isinstance(effects, list) else 1
+    assert desktop.qmp.call_count == expected_dispatches
 
     fresh_qmp = Mock()
-    restarted = OfflineDesktop(root=desktop.root, owner=str(OWNER), qmp=fresh_qmp,
+    restarted = QmpInputAdapter(root=desktop.root, owner=str(OWNER), qmp=fresh_qmp,
                                capture=Mock(), check_vm=Mock())
     recovered = restarted.store.jobs(str(OWNER))
     assert recovered[0]["state"] == "interrupted"
     assert restarted.store.control() == "paused"
-    fresh_qmp.assert_called_once_with("stop")
+    expected = [call("stop")]
+    if pending:
+        expected.append(call("input-send-event", {
+            "events": [key_event(key, False) for key in reversed(pending)]}))
+    assert fresh_qmp.call_args_list == expected
+    assert restarted.store.pending_keys() == ()
 
 
 def test_click_coordinates_are_guest_only(desktop):
@@ -315,7 +377,7 @@ def test_capture_can_be_separated_from_private_state(tmp_path):
     png = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" +
            SIZE[0].to_bytes(4, "big") + SIZE[1].to_bytes(4, "big") +
            b"\x08\x02\x00\x00\x00fixture")
-    value = OfflineDesktop(root=state, capture_root=captures, capture_mode=0o640,
+    value = QmpInputAdapter(root=state, capture_root=captures, capture_mode=0o640,
                            owner=str(OWNER), qmp=Mock(return_value={"status": "running"}),
                            capture=Mock(return_value=png), check_vm=Mock())
     receipt = value.read({"op": "screenshot"})
@@ -339,7 +401,7 @@ def test_takeover_interrupts_typing_and_preserves_human_control(desktop, monkeyp
     def pause(_):
         entered.set()
         assert proceed.wait(2)
-    monkeypatch.setattr("talos.computer.omarchy.time.sleep", pause)
+    monkeypatch.setattr("talos.computer.qmp_input.time.sleep", pause)
     thread = threading.Thread(target=desktop.action, args=(ACTION | {"text": "abc"},))
     thread.start()
     assert entered.wait(2)
@@ -359,16 +421,62 @@ def test_takeover_interrupts_typing_and_preserves_human_control(desktop, monkeyp
         desktop.action({"op": "resume"})
 
 
+def test_takeover_during_final_type_settle_preserves_human_control(
+        desktop, monkeypatch):
+    entered = threading.Event()
+    proceed = threading.Event()
+
+    def pause(duration):
+        assert duration == 1.0
+        entered.set()
+        assert proceed.wait(2)
+
+    monkeypatch.setattr("talos.computer.qmp_input.time.sleep", pause)
+    thread = threading.Thread(
+        target=desktop.action, args=(ACTION | {"text": "a"},))
+    thread.start()
+    assert entered.wait(2)
+    desktop.control("human", human=True)
+    count = desktop.qmp.call_count
+    proceed.set()
+    thread.join(2)
+
+    assert not thread.is_alive()
+    assert desktop.qmp.call_count == count
+    assert desktop.store.control() == "human"
+    assert desktop.store.jobs(str(OWNER))[0]["state"] == "interrupted"
+
+
 def test_restart_does_not_replay_uncertain_input(desktop):
     job, _ = desktop.store.begin(str(OWNER), ACTION)
     desktop.store.finish(job["id"], "running")
-    restarted = OfflineDesktop(root=desktop.root, owner=str(OWNER), qmp=Mock(),
+    restarted = QmpInputAdapter(root=desktop.root, owner=str(OWNER), qmp=Mock(),
                                capture=Mock(), check_vm=Mock())
     assert restarted.store.control() == "paused"
     restarted.control("agent", human=True)
     restarted.qmp.reset_mock()
     assert restarted.action(ACTION)["job"]["state"] == "interrupted"
     restarted.qmp.assert_not_called()
+
+    for corrupt in (("unknown",), ("w", "meta_l")):
+        desktop.store.pending_keys(corrupt)
+        stopped = Mock()
+        boundary = Mock()
+        with pytest.raises(ValueError, match="invalid pending keyboard state"):
+            QmpInputAdapter(root=desktop.root, owner=str(OWNER), qmp=stopped,
+                           capture=Mock(), check_vm=boundary)
+        stopped.assert_called_once_with("stop")
+        boundary.assert_not_called()
+        assert desktop.store.pending_keys() == corrupt
+
+    desktop.store.pending_keys(("meta_l", "ret"))
+    stopped = Mock()
+    boundary = Mock(side_effect=ValueError("wrong VM boundary"))
+    with pytest.raises(ValueError, match="wrong VM boundary"):
+        QmpInputAdapter(root=desktop.root, owner=str(OWNER), qmp=stopped,
+                       capture=Mock(), check_vm=boundary)
+    stopped.assert_called_once_with("stop")
+    assert desktop.store.pending_keys() == ("meta_l", "ret")
 
 
 @pytest.mark.parametrize("op", ["exec", "browser", "files", "routines"])

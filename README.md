@@ -19,10 +19,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3078).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3215).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-3078-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-3215-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-263%2F263-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-985%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-33%20gated-8a4318.svg" alt="Tools">
@@ -231,7 +231,7 @@ python -m talos config set TALOS_MODEL claude-fable-5-1
 python -m talos config set TALOS_MODEL_OVERRIDES '{"local-model": {"context_window": 128000}}'
                                          # a window or a price the catalogue does not know —
                                          # never a provider, url or key; shown as your word
-python -m talos models --refresh         # ask each provider what it offers now
+python -m talos models --refresh         # force the same provider-catalogue sync now
 python -m talos status                   # what it did last
 python -m talos chat                     # a session here; approvals at a terminal
 python -m talos ask "how many …?"        # one turn from here, answer on stdout
@@ -256,6 +256,15 @@ These providers use the native API adapter, including runtime fallback. Without
 `env_key` no Authorization header is sent; a named but missing key fails closed.
 Built-in provider names cannot be replaced. The isolated model worker does **not**
 accept agent-defined custom providers; it retains its own provider allowlist.
+
+The long-running service refreshes configured model catalogues in a background thread
+at startup and at most once per day; startup and replies never wait for it. A complete,
+validated OpenAI, Anthropic, Ollama or LM Studio listing may add new models and remove
+retired ones. Paginated, incomplete, CLI/OAuth or otherwise unproven listings are
+additive only. Authentication, network, HTTP, JSON and empty-list failures preserve the
+exact last-known-good catalogue. If a complete list retires the active model, Talos hides
+it from new selections and records the fact, but never switches a running conversation
+to another model silently.
 
 Empty API replies and stream errors stay failures throughout the configured fallback
 chain. If every permitted route fails, the task ends with an explicit error and keeps
@@ -755,24 +764,23 @@ photographs is a different conversation than one that can only look at them.
 
 ## Computers
 
-The macOS app can prefer a separately installed local **Omarchy Computer**: a
-visual desktop behind Talos's normal kernel, capability and receipt path. It runs as
-a hidden non-admin service account and reaches the Internet through QEMU user-mode NAT.
-No network helper runs as root; QEMU and the control services stay under that account. No
-inbound port forwarding, bridged adapter, host folders, clipboard bridge
-or host credentials. Talos can inspect screenshots and propose bounded click, type,
-key and scroll actions; unsupported shell, browser-protocol, file and routine
-operations fail instead of falling through to the Mac.
-Each keyboard action is submitted once as one bounded QMP event batch and must be
-inspected. Text above the 63-event software cap is refused before dispatch; a success
-receipt proves dispatch, not guest delivery.
+The repository contains a generic `QmpInputAdapter` for bounded visual input over a
+pinned QMP transport. It is not tied to a guest distribution or desktop. A successful
+input receipt records dispatch only; it does not prove guest delivery or a visible
+result.
 
-The existing ARM64 Linux/KVM Computer remains available for structured projects,
-terminal commands, browser automation, files and routines. The Omarchy installer is
-currently an explicit macOS beta/developer workflow that consumes a reviewed signed
-app and a pre-provisioned guest disk; the ordinary one-line installer does not create
-the VM. See [the Computer guide](docs/computer.md) and
-[the Omarchy boundary](docs/omarchy-experiment.md).
+The planned macOS deployment is deliberately narrower: one fixed **x86_64 Debian guest
+with Hyprland**, running under QEMU **TCG** on Apple silicon, not HVF. The intended
+boundary excludes inbound forwarding, bridged networking, host folders, clipboard
+sharing and host credentials. Shell, browser-protocol, file and routine operations
+remain outside this visual-only path.
+
+That deployment is not yet hardware-qualified. It requires a signed,
+operator-supplied VM bundle and a matching pre-provisioned disk; Talos does not bundle
+or download QEMU or a guest disk. Evidence collected for any earlier guest prototype
+is not reusable for this fixed contract. The ARM64 Linux/KVM Computer is a separate
+backend documented in [the Computer guide](docs/computer.md); the planned Mac contract
+is described in [the QMP VM boundary](docs/qmp-debian-vm.md).
 
 ## Commands
 
@@ -826,7 +834,7 @@ sitting — a gate you cannot read is not a gate.
 | `vision.py` / `hearing.py` / `speech.py` / `frames.py` | reading a picture, hearing a recording, speaking, one still out of a video — ordinary READ/WRITE with a target |
 | `cli.py` / `doctor.py` / `configcli.py` / `schema.py` | the subcommands: diagnose, read and change settings — the schema decides what may be written, and the allowlist and the network exceptions never are |
 | `askcli.py` | `talos ask` — one turn from a script, as a channel with no special right |
-| `models.py` | live model lists, cached on disk, added to the curated catalogue and never replacing it |
+| `models.py` / `model_catalog_sync.py` | provider-bound live model lists; complete snapshots may replace membership, incomplete ones only add, and failures keep the last good cache |
 | `updater.py` | update beside the old tree, both suites in the new one, switch only if green |
 | `eventlog.py` / `memory.py` / `usage.py` | durable log, conversation memory, metering |
 | `mcpservers.py` / `skillwrite.py` | the operator-owned MCP registry, and the one gated write into the skills directory |

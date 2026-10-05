@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive browser E2E against the real offline Omarchy VM and service socket."""
+"""Interactive browser E2E against the fixed offline QMP VM and service socket."""
 import argparse
 import hashlib
 import json
@@ -19,8 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from playwright.sync_api import expect, sync_playwright
 
 from talos.computer import web
-from talos.computer.omarchy_service import (
-    Capture, Handler, OmarchyComputer, SocketServer, make_preflight,
+from talos.computer.qmp_service import (
+    Capture, Handler, QmpComputer, SocketServer, make_preflight,
 )
 from talos.computer.qmp import LocalQMP
 
@@ -74,8 +74,21 @@ def main():
     options = parser.parse_args()
 
     session = json.loads(options.session.resolve().read_text())
-    if session.get("offline") is not True or session.get("display") != "software-headless":
-        raise RuntimeError("workbench E2E requires the software-headless offline profile")
+    required_profile = {
+        "architecture": "x86_64", "distribution": "debian",
+        "desktop": "hyprland", "geometry": [1440, 900],
+        "offline": True, "display": "software-headless",
+    }
+    if any(session.get(name) != value for name, value in required_profile.items()):
+        raise RuntimeError(
+            "workbench E2E requires the fixed offline x86_64 Debian/Hyprland profile")
+    pci_devices = session.get("pci_devices")
+    if (not isinstance(pci_devices, list) or not 1 <= len(pci_devices) <= 32
+            or any(not isinstance(item, list) or len(item) != 2
+                   or any(type(number) is not int or not 0 <= number <= 65535
+                          for number in item)
+                   for item in pci_devices)):
+        raise RuntimeError("workbench E2E requires a bounded expected PCI device list")
     evidence = options.evidence_dir.resolve()
     evidence.mkdir(mode=0o700, parents=True, exist_ok=True)
     folders = {name: evidence / name for name in ("state", "captures", "scratch", "web-state")}
@@ -84,13 +97,13 @@ def main():
     # Darwin's AF_UNIX address limit is shorter than this checkout's path.
     # Only the ephemeral socket lives in /private/tmp; evidence remains private
     # under the caller-selected directory.
-    runtime = Path(tempfile.mkdtemp(prefix="talos-omarchy-e2e-", dir="/private/tmp"))
+    runtime = Path(tempfile.mkdtemp(prefix="talos-qmp-e2e-", dir="/private/tmp"))
     control = runtime / "control.sock"
     secret = "w" * 32
     origin = "http://127.0.0.1"
     config = {
         "root": str(evidence),
-        "owner": hashlib.sha256(b"talos-omarchy-workbench-e2e").hexdigest(),
+        "owner": hashlib.sha256(b"talos-qmp-workbench-e2e").hexdigest(),
         "agent_uid": os.getuid() + 1000, "client_gid": os.getgid(),
         "qmp": str(Path(session["qmp"]).resolve()),
         "pid_file": str(evidence / "vm.pid"), "disk": str(options.disk.resolve()),
@@ -98,12 +111,19 @@ def main():
         "scratch": str(folders["scratch"]), "control_socket": str(control),
         "view_url": origin, "origin": origin, "view_secret": secret,
         "viewer": "snapshot", "web_state": str(folders["web-state"]),
+        "architecture": session["architecture"],
+        "distribution": session["distribution"],
+        "desktop": session["desktop"], "geometry": session["geometry"],
+        "pci_devices": pci_devices,
     }
     Path(config["pid_file"]).write_text(str(session["pid"]) + "\n")
     qmp = LocalQMP(config["qmp"], pid=session["pid"])
-    computer = OmarchyComputer(config, qmp=qmp,
-                               capture=Capture(qmp, config["scratch"], settle=0.35),
-                               check_vm=make_preflight(qmp, config["disk"]))
+    capture = Capture(qmp, config["scratch"], settle=0.35)
+    computer = QmpComputer(config, qmp=qmp,
+                           capture=capture,
+                           check_vm=make_preflight(
+                               qmp, config["disk"], config["architecture"],
+                               config["pci_devices"], capture))
     human_inputs = []
     original_human_input = computer.desktop.human_input
     def traced_human_input(args):
@@ -238,10 +258,13 @@ def main():
     # Reattach explicitly: an API restart must recover fail-closed and never replay.
     restarted_qmp = LocalQMP(config["qmp"], pid=session["pid"])
     try:
-        restarted = OmarchyComputer(
+        restarted = QmpComputer(
             config, qmp=restarted_qmp,
-            capture=Capture(restarted_qmp, config["scratch"], settle=0.35),
-            check_vm=make_preflight(restarted_qmp, config["disk"]))
+            capture=(restarted_capture := Capture(
+                restarted_qmp, config["scratch"], settle=0.35)),
+            check_vm=make_preflight(
+                restarted_qmp, config["disk"], config["architecture"],
+                config["pci_devices"], restarted_capture))
         status = restarted.status()
         if status["control"] != "paused" or status["vm"] != "paused":
             raise RuntimeError("service restart did not recover fail-closed")

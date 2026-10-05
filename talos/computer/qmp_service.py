@@ -1,4 +1,4 @@
-"""macOS service boundary for the headless Omarchy Computer backend.
+"""macOS service boundary for the headless QMP VM Computer backend.
 
 QEMU, its disk, raw QMP socket and durable state belong to a dedicated no-login
 service identity. The ordinary Talos process can reach only ``control.sock``;
@@ -23,10 +23,10 @@ import uuid
 from urllib.parse import urlsplit
 import zlib
 
-from .omarchy import OfflineDesktop, SIZE
+from .qmp_input import QmpInputAdapter, SIZE
 from .qmp import LocalQMP
 
-DEFAULT_CONFIG = Path("/Library/Application Support/TalosOmarchy/config.json")
+DEFAULT_CONFIG = Path("/Library/Application Support/TalosQmpVm/config.json")
 MAX_PPM = SIZE[0] * SIZE[1] * 3 + 4096
 MAX_PNG = 5 * 1024 * 1024
 PREVIEW_LIMIT = 12
@@ -49,7 +49,7 @@ def terminate_on_qmp_disconnect():
 def _inside(path, root):
     path = Path(path)
     if not path.is_absolute() or path.resolve() != path or not path.is_relative_to(root):
-        raise ValueError("Omarchy service paths must be canonical and service-owned")
+        raise ValueError("QMP VM service paths must be canonical and service-owned")
     return path
 
 
@@ -58,12 +58,13 @@ def load_config(path=DEFAULT_CONFIG):
     value = json.loads(path.read_text())
     required = {"root", "owner", "agent_uid", "client_gid", "qmp", "pid_file",
                 "disk", "state", "captures", "scratch", "control_socket", "view_url",
-                "origin", "view_secret", "viewer", "web_state"}
+                "origin", "view_secret", "viewer", "web_state", "architecture",
+                "distribution", "desktop", "geometry", "pci_devices"}
     if set(value) != required:
-        raise ValueError("Omarchy service configuration has unknown or missing fields")
+        raise ValueError("QMP VM service configuration has unknown or missing fields")
     root = Path(value["root"])
     if not root.is_absolute() or root.resolve() != root:
-        raise ValueError("Omarchy service root must be canonical")
+        raise ValueError("QMP VM service root must be canonical")
     for name in {"qmp", "pid_file", "disk", "state", "captures", "scratch",
                  "control_socket", "web_state"}:
         value[name] = str(_inside(value[name], root))
@@ -83,9 +84,19 @@ def load_config(path=DEFAULT_CONFIG):
     if value["origin"] != value["view_url"].rstrip("/"):
         raise ValueError("workbench origin must match its public view URL")
     if value["viewer"] != "snapshot":
-        raise ValueError("Omarchy uses the snapshot workbench")
+        raise ValueError("QMP VM uses the snapshot workbench")
     if not isinstance(value["view_secret"], str) or len(value["view_secret"]) < 32:
         raise ValueError("workbench secret is invalid")
+    if (value["architecture"] != "x86_64" or value["distribution"] != "debian"
+            or value["desktop"] != "hyprland" or value["geometry"] != list(SIZE)):
+        raise ValueError("guest identity must be x86_64 Debian with Hyprland at 1440x900")
+    devices = value["pci_devices"]
+    if (not isinstance(devices, list) or not 1 <= len(devices) <= 32
+            or any(not isinstance(item, list) or len(item) != 2
+                   or any(type(number) is not int or not 0 <= number <= 65535
+                          for number in item)
+                   for item in devices)):
+        raise ValueError("expected PCI device list is invalid")
     return value
 
 
@@ -220,11 +231,23 @@ class Capture:
                 path.unlink(missing_ok=True)
 
 
-def make_preflight(qmp, disk):
-    expected = sorted([(6966, 8), (6900, 4096), (6900, 4097), (6900, 4176),
-                       (6900, 4178), (6900, 4178), (6900, 4101), (6900, 4099)])
+def make_preflight(qmp, disk, architecture, pci_devices, capture):
+    if architecture != "x86_64":
+        raise ValueError("QMP preflight requires the fixed x86_64 target")
+    if (not isinstance(pci_devices, list) or not 1 <= len(pci_devices) <= 32
+            or any(not isinstance(item, list) or len(item) != 2
+                   or any(type(number) is not int or not 0 <= number <= 65535
+                          for number in item)
+                   for item in pci_devices)):
+        raise ValueError("QMP preflight expected PCI device list is invalid")
+    if not callable(capture):
+        raise ValueError("QMP preflight requires a guest capture source")
+    expected = sorted(tuple(item) for item in pci_devices)
 
     def check():
+        target = qmp("query-target")
+        if not isinstance(target, dict) or target.get("arch") != architecture:
+            raise ValueError("unexpected QEMU target architecture")
         devices = [device for bus in qmp("query-pci") for device in bus["devices"]]
         observed = sorted((device["id"]["vendor"], device["id"]["device"])
                           for device in devices)
@@ -243,6 +266,12 @@ def make_preflight(qmp, disk):
         mice = qmp("query-mice")
         if len(mice) != 1 or not mice[0].get("absolute"):
             raise ValueError("absolute guest pointer is unavailable")
+        frame = capture()
+        if (not isinstance(frame, bytes)
+                or frame[:16] != b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+                or int.from_bytes(frame[16:20], "big") != SIZE[0]
+                or int.from_bytes(frame[20:24], "big") != SIZE[1]):
+            raise ValueError("guest capture geometry is not exactly 1440x900")
     return check
 
 
@@ -261,15 +290,15 @@ def wait_for_framebuffer(qmp, capture, *, timeout=STARTUP_TIMEOUT,
             if status == "paused":
                 qmp("cont")
             elif status != "running":
-                raise ValueError("Omarchy guest is not running during first boot")
+                raise ValueError("QMP VM guest is not running during first boot")
             image = capture()
             if not framebuffer_visible(image):
-                raise ValueError("Omarchy framebuffer is still blank during first boot")
+                raise ValueError("QMP VM framebuffer is still blank during first boot")
             return image
         except (OSError, RuntimeError, TimeoutError, ValueError) as error:
             last = error
             sleep(0.5)
-    raise TimeoutError("Omarchy framebuffer did not become 1440x900 before timeout") from last
+    raise TimeoutError("QMP VM framebuffer did not become 1440x900 before timeout") from last
 
 
 def vm_generation(pid_file):
@@ -302,7 +331,7 @@ def remember_vm_generation(state, generation):
         temporary.unlink(missing_ok=True)
 
 
-class OmarchyComputer:
+class QmpComputer:
     def __init__(self, config, *, qmp=None, capture=None, check_vm=None):
         self.config = config
         pid = int(Path(config["pid_file"]).read_text().strip()) if qmp is None else None
@@ -311,7 +340,9 @@ class OmarchyComputer:
         startup_complete = False
         try:
             self.capture_source = capture or Capture(self.qmp, config["scratch"])
-            self.check_vm = check_vm or make_preflight(self.qmp, config["disk"])
+            self.check_vm = check_vm or make_preflight(
+                self.qmp, config["disk"], config["architecture"],
+                config["pci_devices"], self.capture_source)
             generation = vm_generation(config["pid_file"])
             marker = Path(config["state"]) / "vm-generation"
             remembered = marker.read_text(encoding="ascii").strip() if marker.exists() else ""
@@ -319,13 +350,13 @@ class OmarchyComputer:
             if first_boot:
                 self.check_vm()
                 wait_for_framebuffer(self.qmp, self.capture_source)
-            self.desktop = OfflineDesktop(
+            self.desktop = QmpInputAdapter(
                 root=config["state"], capture_root=config["captures"], capture_mode=0o640,
                 owner=config["owner"], qmp=self.qmp, capture=self.capture_source,
                 check_vm=self.check_vm)
             status = self.qmp("query-status")
             if not isinstance(status, dict) or status.get("status") != "paused":
-                raise ValueError("Omarchy guest did not pause during startup")
+                raise ValueError("QMP VM guest did not pause during startup")
             if first_boot:
                 remember_vm_generation(config["state"], generation)
             startup_complete = True
@@ -342,12 +373,12 @@ class OmarchyComputer:
                     status = self.qmp("query-status")
                 except Exception as error:
                     raise RuntimeError(
-                        "Omarchy guest could not be proven paused after startup failure"
+                        "QMP VM guest could not be proven paused after startup failure"
                     ) from error
                 if (stop_error is not None or not isinstance(status, dict)
                         or status.get("status") != "paused"):
                     raise RuntimeError(
-                        "Omarchy guest could not be proven paused after startup failure"
+                        "QMP VM guest could not be proven paused after startup failure"
                     ) from stop_error
         self.preview_lock = threading.Lock()
 
@@ -355,7 +386,9 @@ class OmarchyComputer:
         value = self.desktop.read({"op": "status"})
         value["vm"] = value["vm"]["status"]
         value.update(desktop=True, mode="desktop", viewer="snapshot",
-                     view_url=self.config["view_url"], routines=[])
+                     view_url=self.config["view_url"], routines=[],
+                     guest={name: self.config[name] for name in (
+                         "architecture", "distribution", "desktop", "geometry")})
         return value
 
     def preview(self):
@@ -421,7 +454,7 @@ class OmarchyComputer:
             return self.screenshot(args)
         if args.get("op") == "job":
             return self.desktop.read(args)
-        raise ValueError("Omarchy Computer does not expose host or guest files")
+        raise ValueError("QMP VM Computer does not expose host or guest files")
 
 
 class Handler(socketserver.StreamRequestHandler):
@@ -441,7 +474,7 @@ class SocketServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     daemon_threads = True
 
 
-def connect_computer(config, *, timeout=30, factory=OmarchyComputer,
+def connect_computer(config, *, timeout=30, factory=QmpComputer,
                      clock=time.monotonic, sleep=time.sleep):
     """Wait only for the fixed local QEMU socket; never retry a rejected peer/config."""
     deadline = clock() + timeout
@@ -452,11 +485,11 @@ def connect_computer(config, *, timeout=30, factory=OmarchyComputer,
         except (FileNotFoundError, ConnectionRefusedError) as error:
             last = error
             sleep(0.1)
-    raise TimeoutError("fixed Omarchy VM endpoint did not appear before timeout") from last
+    raise TimeoutError("fixed QMP VM endpoint did not appear before timeout") from last
 
 
 def main():
-    config_path = Path(os.environ.get("TALOS_OMARCHY_CONFIG", str(DEFAULT_CONFIG)))
+    config_path = Path(os.environ.get("TALOS_QMP_VM_CONFIG", str(DEFAULT_CONFIG)))
     config = load_config(config_path)
     computer = connect_computer(config)
     path = Path(config["control_socket"])

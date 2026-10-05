@@ -1,8 +1,8 @@
 {
   "version": "0.20.0-beta.4",
-  "release_state": "candidate",
-  "installer_version": "0.20.0-beta.3",
-  "tests": 3078,
+  "release_state": "released",
+  "installer_version": "0.20.0-beta.4",
+  "tests": 3215,
   "redteam_faelle": 263,
   "kernel_zeilen": 985,
   "werkzeuge": 33,

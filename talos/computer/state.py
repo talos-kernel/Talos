@@ -23,6 +23,7 @@ class Store:
                     created REAL NOT NULL, request TEXT NOT NULL);
             """)
             db.execute("INSERT OR IGNORE INTO settings VALUES ('control','paused')")
+            db.execute("INSERT OR IGNORE INTO settings VALUES ('pending_keys','[]')")
 
     def connect(self):
         db = sqlite3.connect(self.path, timeout=10)
@@ -42,6 +43,30 @@ class Store:
                     raise ValueError("invalid control state")
                 db.execute("UPDATE settings SET value=? WHERE key='control'", (value,))
             return db.execute("SELECT value FROM settings WHERE key='control'").fetchone()[0]
+
+    def pending_keys(self, value=None):
+        """Persist keys that may be down so a stopped restart can release them."""
+        with self.connect() as db:
+            if value is not None:
+                if (not isinstance(value, (list, tuple)) or len(value) > 8
+                        or any(not isinstance(key, str) or not key for key in value)
+                        or len(set(value)) != len(value)):
+                    raise ValueError("invalid pending keyboard state")
+                db.execute("UPDATE settings SET value=? WHERE key='pending_keys'",
+                           (json.dumps(list(value)),))
+            row = db.execute(
+                "SELECT value FROM settings WHERE key='pending_keys'").fetchone()
+        if row is None:
+            raise RuntimeError("pending keyboard state is unavailable")
+        try:
+            decoded = json.loads(row[0])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("invalid pending keyboard state") from exc
+        if (not isinstance(decoded, list) or len(decoded) > 8
+                or any(not isinstance(key, str) or not key for key in decoded)
+                or len(set(decoded)) != len(decoded)):
+            raise ValueError("invalid pending keyboard state")
+        return tuple(decoded)
 
     def begin(self, owner, args):
         encoded = json.dumps(args, sort_keys=True, ensure_ascii=False)

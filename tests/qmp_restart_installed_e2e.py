@@ -39,7 +39,7 @@ def main():
 
     def api_process():
         output = subprocess.run(
-            ["/bin/launchctl", "print", "system/org.talos.omarchy.api"],
+            ["/bin/launchctl", "print", "system/org.talos.qmp.api"],
             check=True, capture_output=True, text=True, timeout=10).stdout
         pid = re.search(r"^\s*pid = (\d+)$", output, re.MULTILINE)
         state = re.search(r"^\s*state = (\w+)$", output, re.MULTILINE)
@@ -53,7 +53,7 @@ def main():
         raise RuntimeError("restart E2E must begin fail-closed")
 
     apple_script = (
-        'do shell script "/bin/launchctl kickstart -k system/org.talos.omarchy.api" '
+        'do shell script "/bin/launchctl kickstart -k system/org.talos.qmp.api" '
         "with administrator privileges"
     )
     subprocess.run(["/usr/bin/osascript", "-e", apple_script], check=True, timeout=60)

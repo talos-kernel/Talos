@@ -4,9 +4,9 @@ import XCTest
 @testable import TalosApp
 
 final class LocalComputerLinkTests: XCTestCase {
-    func testLocalOmarchyReplacesRemoteComputerControls() throws {
+    func testLocalQmpReplacesRemoteComputerControls() throws {
         let local = try XCTUnwrap(URL(string: "http://127.0.0.1:8830/#token=abcdefghijklmnopqrstuvwxyz012345"))
-        XCTAssertEqual(ComputerViewBackend.select(localURL: local), .omarchy(local))
+        XCTAssertEqual(ComputerViewBackend.select(localURL: local), .qmp(local))
         XCTAssertEqual(ComputerViewBackend.select(localURL: nil), .remote)
     }
 

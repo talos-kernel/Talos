@@ -70,6 +70,57 @@ class ProviderRegistry:
         return ModelSelection(provider, model)
 
 
+def _with_active_selection(
+    registry: ProviderRegistry, selection: ModelSelection,
+) -> ProviderRegistry:
+    """Return a private compatibility view for an already-running model.
+
+    A provider's authoritative list controls future choices.  It does not get to
+    mutate a reasoner that Talos already built, so a background fork of that reasoner
+    must remain constructible even after the model disappears from the public list.
+    """
+    try:
+        registry.selection(selection.provider, selection.model)
+        return registry
+    except ValueError:
+        pass
+
+    providers = list(registry.providers)
+    for index, provider in enumerate(providers):
+        if provider.slug == selection.provider:
+            providers[index] = Provider(
+                provider.slug, provider.label, provider.models + (selection.model,)
+            )
+            break
+    else:
+        providers.append(Provider(selection.provider, selection.provider, (selection.model,)))
+    return ProviderRegistry(tuple(providers))
+
+
+def preserve_registry_additions(
+    previous: ProviderRegistry, candidate: ProviderRegistry,
+) -> ProviderRegistry:
+    """Accept additions from a catalogue that cannot prove complete removals.
+
+    Hermes/CLI/OAuth helpers expose useful live names but no atomic completeness
+    signal.  A transient empty provider result must therefore preserve the previous
+    provider and model names.  Provider-authoritative HTTP snapshots are applied later
+    by ``models.merged`` and can still replace the resulting superset exactly.
+    """
+    old = {provider.slug: provider for provider in previous.providers}
+    combined: list[Provider] = []
+    seen: set[str] = set()
+    for provider in candidate.providers:
+        before = old.get(provider.slug)
+        models = provider.models
+        if before is not None:
+            models += tuple(model for model in before.models if model not in models)
+        combined.append(Provider(provider.slug, provider.label, models))
+        seen.add(provider.slug)
+    combined.extend(provider for provider in previous.providers if provider.slug not in seen)
+    return ProviderRegistry(tuple(combined))
+
+
 @dataclass(frozen=True)
 class SwitchResult:
     ok: bool
@@ -130,10 +181,25 @@ class ModelRouter:
         self._reasoner = reasoner
 
     def replace_registry(self, registry: ProviderRegistry) -> None:
-        """Refresh allowed choices without changing the active reasoner or its log."""
+        """Refresh choices without changing the active reasoner; audit retirement."""
         if not isinstance(registry, ProviderRegistry):
             raise TypeError("expected a provider registry")
         with self._lock:
+            try:
+                self._registry.selection(self._current.provider, self._current.model)
+                was_known = True
+            except ValueError:
+                was_known = False
+            try:
+                registry.selection(self._current.provider, self._current.model)
+                is_known = True
+            except ValueError:
+                is_known = False
+            if was_known and not is_known:
+                self._log.append(Event(new_run_id(), "provider", "model.catalog_retired_active", {
+                    "provider": self._current.provider,
+                    "model": self._current.model,
+                }))
             self._registry = registry
 
     def _build_validated(self, selection: ModelSelection) -> object:
@@ -165,7 +231,14 @@ class ModelRouter:
                 raise RuntimeError("Model selection is changing; retry the background task afterwards.")
             selection, registry = self._current, self._registry
             failure, count, next_attempt = self._failure, self._failure_count, self._next_attempt
-        child = ModelRouter(registry, selection, self._build, self._log)
+        # An authoritative provider refresh may remove the model that this process
+        # already has open.  The refreshed registry must hide that retired name from
+        # every NEW selection, but catalogue metadata is not permission to silently
+        # replace an active model mid-conversation.  Give only this private child a
+        # compatibility view containing the already-active route; the public picker
+        # and the parent registry remain the provider's exact current catalogue.
+        child_registry = _with_active_selection(registry, selection)
+        child = ModelRouter(child_registry, selection, self._build, self._log)
         if failure is not None:
             child._failure, child._failure_count, child._next_attempt = failure, count, next_attempt
             child._ready = "unavailable"
@@ -583,20 +656,25 @@ class ModelPicker:
         self._lock = threading.Lock()
 
     def _refresh_catalog(self) -> None:
+        try:
+            self.refresh_catalog()
+        except Exception:
+            # Interactive picker refresh is fail-open for availability: the previous
+            # immutable menu and active reasoner stay usable.
+            return
+
+    def refresh_catalog(self) -> None:
+        """Publish one new registry, or raise without changing the last good one."""
         if self._refresh_registry is None:
             return
         # Helper imports and network I/O are serialized, outside the state lock.
-        # An outage must leave the last usable menu and active model intact.
         with self._refresh_lock:
-            try:
-                registry = self._refresh_registry()
-                if not isinstance(registry, ProviderRegistry):
-                    return
-                self.router.replace_registry(registry)
-                with self._lock:
-                    self.registry = registry
-            except Exception:
-                return
+            registry = self._refresh_registry()
+            if not isinstance(registry, ProviderRegistry):
+                raise TypeError("catalogue refresh did not return a provider registry")
+            self.router.replace_registry(registry)
+            with self._lock:
+                self.registry = registry
 
     def open(self, *, principal: Principal, conversation: str) -> StructuredMessage:
         self._refresh_catalog()

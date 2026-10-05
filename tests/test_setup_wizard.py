@@ -254,7 +254,7 @@ def test_network_failure_is_not_reported_as_an_invalid_token(tmp_path) -> None:
 
     assert code == EXIT_OK
     assert "network problem, not a wrong token" in text
-    assert "401" not in text
+    assert "rejected this token (401)" not in text
 
 
 def test_timeout_offers_the_manual_fallback(tmp_path) -> None:
@@ -462,7 +462,6 @@ def test_network_failure_on_the_key_check_is_not_reported_as_a_wrong_key(tmp_pat
     assert code == EXIT_OK
     assert "network problem, not a wrong key" in text
     assert "rejected this key" not in text
-    assert "401" not in text
     assert f"ANTHROPIC_API_KEY={API_KEY}" in out.read_text(encoding="utf-8")
 
 

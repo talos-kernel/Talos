@@ -195,11 +195,11 @@ def test_protocol_carries_the_scope_rule() -> None:
     assert "Scaling the work down is the operator's decision" in TOOL_PROTOCOL
 
 
-def test_omarchy_prompt_narrows_only_the_configured_computer_backend(monkeypatch) -> None:
+def test_qmp_prompt_narrows_only_the_configured_computer_backend(monkeypatch) -> None:
     monkeypatch.delenv("TALOS_COMPUTER_BACKEND", raising=False)
     assert configured_tool_protocol() == TOOL_PROTOCOL
-    monkeypatch.setenv("TALOS_COMPUTER_BACKEND", "omarchy")
+    monkeypatch.setenv("TALOS_COMPUTER_BACKEND", "qmp")
     prompt = configured_tool_protocol()
-    assert "Omarchy visual desktop with outbound NAT" in prompt
+    assert "QMP VM visual desktop with outbound NAT" in prompt
     assert "Do not request Computer exec, browser, files, routines or open" in prompt
     assert "click, type, key, scroll, pause, resume and stop" in prompt

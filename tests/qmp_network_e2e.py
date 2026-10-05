@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove installed Omarchy outbound HTTPS without opening a host TCP listener.
+"""Prove installed QMP VM outbound HTTPS without opening a host TCP listener.
 
 This macOS E2E drives the installed guest through Talos' bounded control socket,
 requires a success marker to appear as terminal output, checks the production
@@ -28,7 +28,7 @@ def profile_values(profile: Path) -> dict[str, str]:
             values[key] = value
     required = {"TALOS_COMPUTER_SOCKET", "TALOS_COMPUTER_OWNER_SHA256"}
     if not required <= values.keys():
-        raise RuntimeError("Talos profile does not contain the Omarchy binding")
+        raise RuntimeError("Talos profile does not contain the QMP VM binding")
     return values
 
 
@@ -115,8 +115,8 @@ def tcp_listeners(pid: int) -> str:
 
 def input_args(run: str, op: str, name: str, **extra) -> dict:
     return {
-        "op": op, "project": "omarchy-network-e2e", "key": f"{run}-{name}",
-        "title": "Installed Omarchy network proof", "checks": [], **extra,
+        "op": op, "project": "qmp-network-e2e", "key": f"{run}-{name}",
+        "title": "Installed QMP VM network proof", "checks": [], **extra,
     }
 
 
@@ -185,7 +185,7 @@ def main():
     parser.add_argument("--evidence-dir", type=Path, required=True)
     parser.add_argument(
         "--install-evidence", type=Path,
-        default=Path("/Library/Application Support/TalosOmarchy/install-evidence.json"))
+        default=Path("/Library/Application Support/TalosQmpVm/install-evidence.json"))
     parser.add_argument("--marker", default="TALOSNETOK")
     options = parser.parse_args()
 
@@ -241,18 +241,18 @@ def main():
         if occurrences < 2:
             raise RuntimeError("visible terminal did not prove outbound DNS and HTTPS")
 
-        vm_pid = launch_pid("org.talos.omarchy.vm")
+        vm_pid = launch_pid("org.talos.qmp.vm")
         vm_command = process_command(vm_pid)
-        if ("-netdev user,id=talos-omarchy-net,ipv6=off" not in vm_command
+        if ("-netdev user,id=talos-qmp-net,ipv6=off" not in vm_command
                 or "hostfwd" in vm_command or "-nic none" in vm_command):
             raise RuntimeError("installed QEMU command violates the NAT boundary")
-        retired_label = "org.talos.omarchy.network"
+        retired_label = "org.talos.qmp.network"
         if (not launchd_label_is_absent(retired_label)
                 or Path("/Library/LaunchDaemons",
                         retired_label + ".plist").exists()):
             raise RuntimeError("retired root network helper is still installed")
         if tcp_listeners(vm_pid):
-            raise RuntimeError("Omarchy opened an unexpected host TCP listener")
+            raise RuntimeError("QMP VM opened an unexpected host TCP listener")
         client.action(input_args(run, "key", "close-terminal", keys="super+W"))
         result = {
             "ok": True, "dns_https_visible": True, "host_tcp_listeners": 0,

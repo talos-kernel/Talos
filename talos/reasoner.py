@@ -315,8 +315,8 @@ TOOL_PROTOCOL = (
     "within the same authorized scope; never repeat a failed call unchanged or bypass a denial."
 )
 
-OMARCHY_TOOL_PROTOCOL = (
-    "\n\nConfigured Computer backend: Omarchy visual desktop with outbound NAT. "
+QMP_TOOL_PROTOCOL = (
+    "\n\nConfigured Computer backend: QMP VM visual desktop with outbound NAT. "
     "For this backend, computer_status supports only status, screenshot and job. "
     "computer_run supports only click, type, key, scroll, pause, resume and stop. "
     "Do not request Computer exec, browser, files, routines or open operations: they "
@@ -332,8 +332,8 @@ def configured_tool_protocol() -> str:
     model from proposing Linux-only Computer operations to a visual-only backend; it
     does not grant or execute anything.
     """
-    if os.environ.get("TALOS_COMPUTER_BACKEND") == "omarchy":
-        return TOOL_PROTOCOL + OMARCHY_TOOL_PROTOCOL
+    if os.environ.get("TALOS_COMPUTER_BACKEND") == "qmp":
+        return TOOL_PROTOCOL + QMP_TOOL_PROTOCOL
     return TOOL_PROTOCOL
 
 # Die Ankuendigung steht am ENDE, nicht mitten im Protokoll — und ihre Laenge ist ein

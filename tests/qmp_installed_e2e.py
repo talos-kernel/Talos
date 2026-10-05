@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Browser E2E against the installed service-account Omarchy Computer."""
+"""Browser E2E against the installed service-account QMP VM Computer."""
 from __future__ import annotations
 
 import argparse
@@ -22,12 +22,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "macos"))
 
 from playwright.sync_api import expect, sync_playwright
 from talos.configcli import read_file
-from talos.computer.omarchy_service import framebuffer_visible
+from talos.computer.qmp_service import framebuffer_visible
 
 VISION_OCR_SCRIPT = Path(__file__).with_name("vision_ocr.swift")
 TOKEN_FRAGMENT = re.compile(r"#token=[A-Z0-9._~%+/=-]*", re.IGNORECASE)
 TOKEN_REDACTION = "#token=<redacted>"
 OCR_PROOF_GRACE_S = 10.0
+TYPE_TRANSPORT_TIMEOUT_S = 10
+TYPE_PROOF_TIMEOUT_S = 20
+TERMINAL_OPEN_TIMEOUT_S = 25
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PNG_WIDTH = 1440
+PNG_HEIGHT = 900
+PNG_STRIDE = PNG_WIDTH * 3
+PNG_DECOMPRESSED_SIZE = (PNG_STRIDE + 1) * PNG_HEIGHT
+PNG_MAX_COMPRESSED_SIZE = 5 * 1024 * 1024
+PNG_MAX_FILE_SIZE = 8 * 1024 * 1024
+TERMINAL_EXIT_INPUTS = (
+    {"op": "click", "x": 320, "y": 420, "button": 1},
+    {"op": "type", "text": "exit"},
+    {"op": "key", "keys": "Return"},
+)
 
 
 def sanitize_evidence(value, *, token=None):
@@ -53,34 +68,104 @@ def write_evidence_json(path, value, *, token=None):
         encoding="utf-8")
 
 
-def pixels(path):
-    raw = Path(path).read_bytes()
-    position, width, height, payload = 8, None, None, []
-    if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise RuntimeError("capture is not PNG")
+def decode_png_pixels(raw, name="capture"):
+    """Strictly decode one bounded RGB8 framebuffer PNG."""
+    if len(raw) > PNG_MAX_FILE_SIZE:
+        raise RuntimeError(f"{name} exceeds the PNG size limit")
+    if raw[:len(PNG_SIGNATURE)] != PNG_SIGNATURE:
+        raise RuntimeError(f"{name} is not a PNG")
+    position = len(PNG_SIGNATURE)
+    chunk_index = 0
+    seen_ihdr = False
+    seen_idat = False
+    idat_ended = False
+    seen_iend = False
+    compressed = bytearray()
     while position < len(raw):
+        if len(raw) - position < 12:
+            raise RuntimeError(f"{name} has a truncated PNG chunk")
         size = struct.unpack(">I", raw[position:position + 4])[0]
-        name = raw[position + 4:position + 8]
+        chunk_end = position + 12 + size
+        if chunk_end > len(raw):
+            raise RuntimeError(f"{name} has a truncated PNG chunk")
+        kind = raw[position + 4:position + 8]
         value = raw[position + 8:position + 8 + size]
-        position += 12 + size
-        if name == b"IHDR":
-            width, height = struct.unpack(">II", value[:8])
-        elif name == b"IDAT":
-            payload.append(value)
-        elif name == b"IEND":
+        expected_crc = struct.unpack(">I", raw[position + 8 + size:chunk_end])[0]
+        actual_crc = zlib.crc32(value, zlib.crc32(kind)) & 0xffffffff
+        if expected_crc != actual_crc:
+            raise RuntimeError(f"{name} has an invalid PNG CRC")
+        if len(kind) != 4 or not all(
+                65 <= byte <= 90 or 97 <= byte <= 122 for byte in kind):
+            raise RuntimeError(f"{name} has an invalid PNG chunk type")
+        if chunk_index == 0 and kind != b"IHDR":
+            raise RuntimeError(f"{name} PNG does not begin with IHDR")
+        if kind == b"IHDR":
+            if seen_ihdr or chunk_index != 0 or size != 13:
+                raise RuntimeError(f"{name} has an invalid PNG IHDR")
+            values = struct.unpack(">IIBBBBB", value)
+            if values != (PNG_WIDTH, PNG_HEIGHT, 8, 2, 0, 0, 0):
+                raise RuntimeError(f"{name} is not a fixed RGB8 framebuffer PNG")
+            seen_ihdr = True
+        elif kind == b"IDAT":
+            if not seen_ihdr or idat_ended or seen_iend:
+                raise RuntimeError(f"{name} has out-of-order PNG IDAT chunks")
+            if len(compressed) + size > PNG_MAX_COMPRESSED_SIZE:
+                raise RuntimeError(f"{name} exceeds the compressed PNG size limit")
+            compressed.extend(value)
+            seen_idat = True
+        elif kind == b"IEND":
+            if (not seen_ihdr or not seen_idat or seen_iend or size != 0):
+                raise RuntimeError(f"{name} has an invalid PNG IEND")
+            seen_iend = True
+            position = chunk_end
+            if position != len(raw):
+                raise RuntimeError(f"{name} has trailing bytes after PNG IEND")
             break
-    if (width, height) != (1440, 900):
-        raise RuntimeError("installed desktop geometry changed")
-    rows, stride, result = zlib.decompress(b"".join(payload)), width * 3, bytearray()
-    for offset in range(0, len(rows), stride + 1):
+        else:
+            if not seen_ihdr or seen_iend:
+                raise RuntimeError(f"{name} has an out-of-order PNG chunk")
+            if kind[0] & 0x20 == 0:
+                raise RuntimeError(f"{name} has an unsupported critical PNG chunk")
+            if seen_idat:
+                idat_ended = True
+        position = chunk_end
+        chunk_index += 1
+    if not seen_iend:
+        raise RuntimeError(f"{name} PNG is missing IEND")
+    decompressor = zlib.decompressobj()
+    try:
+        rows = decompressor.decompress(
+            bytes(compressed), PNG_DECOMPRESSED_SIZE + 1)
+        if len(rows) > PNG_DECOMPRESSED_SIZE or decompressor.unconsumed_tail:
+            raise RuntimeError(f"{name} exceeds the decompressed PNG size limit")
+        rows += decompressor.flush(PNG_DECOMPRESSED_SIZE + 1 - len(rows))
+    except zlib.error as error:
+        raise RuntimeError(f"{name} has invalid PNG compression") from error
+    if (len(rows) != PNG_DECOMPRESSED_SIZE or not decompressor.eof
+            or decompressor.unused_data):
+        raise RuntimeError(f"{name} has invalid decompressed PNG data")
+    result = bytearray()
+    for offset in range(0, len(rows), PNG_STRIDE + 1):
         if rows[offset] != 0:
-            raise RuntimeError("unexpected PNG row filter")
-        result.extend(rows[offset + 1:offset + stride + 1])
+            raise RuntimeError(f"{name} uses an unsupported PNG row filter")
+        result.extend(rows[offset + 1:offset + PNG_STRIDE + 1])
     return result
 
 
-def region_changes(before, after, *, x0=0, y0=36, x1=1440, y1=900):
-    """Compare the whole workspace below Omarchy's persistent top bar."""
+def pixels(path):
+    path = Path(path)
+    try:
+        if path.stat().st_size > PNG_MAX_FILE_SIZE:
+            raise RuntimeError("capture exceeds the PNG size limit")
+        with path.open("rb") as stream:
+            raw = stream.read(PNG_MAX_FILE_SIZE + 1)
+    except OSError as error:
+        raise RuntimeError("capture PNG is unavailable") from error
+    return decode_png_pixels(raw)
+
+
+def region_changes(before, after, *, x0=16, y0=36, x1=1424, y1=884):
+    """Compare workspace content, excluding compositor chrome at the edges."""
     if len(before) != len(after):
         raise RuntimeError("framebuffer byte count changed")
     changed = 0
@@ -92,16 +177,49 @@ def region_changes(before, after, *, x0=0, y0=36, x1=1440, y1=900):
     return changed
 
 
+def normalize_ocr(value):
+    """Remove intra-observation whitespace while preserving Vision line boundaries."""
+    return "\n".join(
+        compact for line in value.splitlines()
+        if (compact := "".join(line.split())))
+
+
+def ocr_has_echo_command(value, marker):
+    """Recognize the complete command before Enter, including a cursor artifact."""
+    lines = [line.casefold() for line in value.splitlines() if line]
+    marker = marker.casefold()
+    expected = "echo" + marker
+    return any(
+        line == expected or (
+            line in {"echo", "echo|"} and index + 1 < len(lines)
+            and lines[index + 1] == marker)
+        for index, line in enumerate(lines))
+
+
+def ocr_has_echo_output(value, marker):
+    """Require an exact command followed later by its exact terminal output."""
+    lines = [line.casefold() for line in value.splitlines() if line]
+    marker = marker.casefold()
+    expected = "echo" + marker
+    command_ends = []
+    for index, line in enumerate(lines):
+        if line == expected:
+            command_ends.append(index)
+        elif line == "echo" and index + 1 < len(lines) and lines[index + 1] == marker:
+            command_ends.append(index + 1)
+    return any(marker in lines[end + 1:] for end in command_ends)
+
+
 def vision_ocr(path, deadline, script=VISION_OCR_SCRIPT):
     """Run Vision only inside the caller's wall-clock semantic deadline."""
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise TimeoutError("Vision OCR deadline expired")
     try:
-        return subprocess.run(
+        return normalize_ocr(subprocess.run(
             ["/usr/bin/swift", str(script), str(path)],
             check=True, capture_output=True, text=True,
-            timeout=remaining).stdout.replace(" ", "")
+            timeout=remaining).stdout)
     except subprocess.TimeoutExpired as error:
         raise TimeoutError("Vision OCR exceeded the semantic deadline") from error
 
@@ -120,6 +238,92 @@ def capture_semantic_frame(rpc, question, deadline):
     return candidate, captured_at
 
 
+def capture_semantic_probe(rpc, question, deadline, started_at, timeline):
+    """Treat a transient capture timeout as a missed, never successful, probe."""
+    try:
+        return capture_semantic_frame(rpc, question, deadline)
+    except TimeoutError:
+        timeline.append({
+            "elapsed_ms": round((time.monotonic() - started_at) * 1000),
+            "capture_timeout": True,
+        })
+        return None
+
+
+def terminal_launch_deadline(started_at):
+    """Keep the launch bound absolute from the pre-dispatch timestamp."""
+    return started_at + TERMINAL_OPEN_TIMEOUT_S
+
+
+def poll_cleanup_visual_state(rpc, baseline, marker, wait, *, timeout=8,
+                              question="terminal cleanup verification"):
+    """Poll post-Return frames until the recorded workspace is visibly restored."""
+    started_at = time.monotonic()
+    deadline = started_at + timeout
+    observations = []
+    last = None
+    while time.monotonic() < deadline:
+        probe = capture_semantic_probe(
+            rpc, question, deadline, started_at, observations)
+        if probe is None:
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                wait(min(0.25, remaining))
+            continue
+        candidate, captured_at = probe
+        changed = region_changes(pixels(baseline), pixels(candidate))
+        try:
+            candidate_ocr = vision_ocr(candidate, deadline)
+        except TimeoutError:
+            observations.append({
+                "elapsed_ms": round((captured_at - started_at) * 1000),
+                "changed_pixels": changed,
+                "ocr_timeout": True,
+            })
+            break
+        marker_count = candidate_ocr.casefold().count(marker.casefold())
+        digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+        public = {
+            "elapsed_ms": round((captured_at - started_at) * 1000),
+            "sha256": digest,
+            "marker_count": marker_count,
+            "changed_pixels": changed,
+        }
+        observations.append(public)
+        last = {
+            "frame": candidate,
+            "observation": public,
+            "restored": marker_count == 0 and changed < 5000,
+            "observations": observations,
+        }
+        if last["restored"]:
+            return last
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            wait(min(0.5, remaining))
+    if last is None:
+        return {"frame": None, "observation": None, "restored": False,
+                "observations": observations}
+    return last
+
+
+def dispatch_cleanup_and_verify(page, initial_inputs, receipts, observe,
+                                record_receipt=None):
+    """Dispatch cleanup once, record each receipt, then require visual restoration."""
+    for cleanup_input in initial_inputs:
+        receipt = browser_input(page, cleanup_input)
+        receipts.append({"request": cleanup_input, **receipt})
+        if record_receipt is not None:
+            record_receipt()
+        if receipt != {"status": 200,
+                       "body": {"input": "dispatched", "control": "human"}}:
+            raise RuntimeError("desktop cleanup transport changed")
+    state = observe("after-exit")
+    if not state["restored"]:
+        raise RuntimeError("terminal exit did not restore the recorded baseline")
+    return state
+
+
 def wait_for_visible_desktop(rpc, wait, *, timeout=35):
     """Accept framebuffer readiness only when validated inside one deadline."""
     deadline = time.monotonic() + timeout
@@ -135,6 +339,8 @@ def wait_for_visible_desktop(rpc, wait, *, timeout=35):
                          "question": "installed desktop readiness"},
                 timeout=remaining)["image_path"])
             visible = framebuffer_visible(ready.read_bytes())
+        except TimeoutError:
+            visible = False
         except RuntimeError as error:
             if str(error) != "QMP framebuffer must be 1440x900 RGB":
                 raise
@@ -163,9 +369,24 @@ def browser_input(page, input_value, *, timeout_ms=5000):
     }""", {"input": input_value, "timeoutMs": timeout_ms})
 
 
-def recover_failure_with_workbench(link, browser_path, inputs):
+def prove_recovery_guest_output(page):
+    """Cross the resume barrier before any failure-recovery input is allowed."""
+    page.wait_for_timeout(1000)
+    status = page.evaluate("""async () => {
+      const response=await fetch('/api/screen',{cache:'no-store',
+        signal:AbortSignal.timeout(16000)});
+      await response.arrayBuffer();
+      return response.status;
+    }""")
+    if status != 200:
+        raise RuntimeError("failure cleanup could not prove resumed guest output")
+
+
+def recover_failure_with_workbench(link, browser_path, inputs, observe=None,
+                                   receipts=None, record_receipt=None):
     """Use the authenticated workbench for bounded cleanup, then prove it paused."""
-    receipts = []
+    if receipts is None:
+        receipts = []
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(
             headless=True, executable_path=str(browser_path))
@@ -187,15 +408,17 @@ def recover_failure_with_workbench(link, browser_path, inputs):
                 page.locator("#takeover").click()
                 expect(control).to_have_text("You have control", timeout=30000)
                 state = "You have control"
-            for cleanup_input in inputs:
-                receipt = browser_input(page, cleanup_input)
-                if receipt != {"status": 200,
-                                "body": {"input": "dispatched",
-                                         "control": "human"}}:
-                    raise RuntimeError("failure cleanup transport changed")
-                receipts.append({"request": cleanup_input, "receipt": receipt})
             if inputs:
-                page.wait_for_timeout(1800)
+                # QMP ``cont`` is an acknowledgement, not proof that the guest
+                # has resumed consuming virtio-input reports.  Give the fixed
+                # VM one bounded resume interval, then require one fresh QMP
+                # framebuffer before the first recovery key.
+                prove_recovery_guest_output(page)
+            if inputs:
+                if observe is None:
+                    raise RuntimeError("failure cleanup has no visual-state observer")
+                dispatch_cleanup_and_verify(
+                    page, inputs, receipts, observe, record_receipt)
             if state != "Computer paused":
                 page.locator("#pause").click()
             expect(control).to_have_text("Computer paused", timeout=10000)
@@ -289,8 +512,28 @@ def main():
             return all(sample["marker_count"] == 0
                        and sample["changed_pixels"] < 5000 for sample in samples)
 
+        def observe_failure_cleanup(label):
+            baseline = terminal_state.get("baseline")
+            if not baseline:
+                raise RuntimeError("failure cleanup has no recorded workspace baseline")
+            state = poll_cleanup_visual_state(
+                rpc, Path(baseline), options.marker, time.sleep,
+                question=f"failure cleanup {label}")
+            result[f"failure_{label}_timeline"] = state["observations"]
+            if state["frame"] is not None:
+                target = evidence / f"failure-{label}-decision.png"
+                shutil.copy2(state["frame"], target)
+                state["observation"] = {
+                    **state["observation"], "evidence": target.name}
+                result[f"failure_{label}_decision"] = state["observation"]
+            return state
+
         cleanup = []
         result["failure_terminal_cleanup"] = cleanup
+        def record_failure_cleanup_receipt():
+            write_evidence_json(
+                evidence / "failure-cleanup-transport.json", cleanup,
+                token=workbench_token)
         try:
             status = rpc("read", {"op": "status"}, timeout=5)
             if terminal_state["may_be_open"]:
@@ -303,16 +546,22 @@ def main():
                     terminal_state["cleanup_proven"] = False
             if (terminal_state["may_be_open"]
                     and not terminal_state["cleanup_proven"]):
+                if terminal_state["cleanup_attempted"]:
+                    raise RuntimeError(
+                        "terminal cleanup was already dispatched; refusing to retry")
                 if terminal_state["failure_recovery_attempted"]:
                     raise RuntimeError("failure recovery sequence was already attempted")
                 terminal_state["failure_recovery_attempted"] = True
                 result["failure_recovery_attempted"] = True
                 cleanup_inputs = (
+                    TERMINAL_EXIT_INPUTS[0],
                     {"op": "key", "keys": "ctrl+c"},
-                    {"op": "key", "keys": "super+W"},
+                    *TERMINAL_EXIT_INPUTS[1:],
                 )
-                cleanup.extend(recover_failure_with_workbench(
-                    link, options.browser, cleanup_inputs))
+                recover_failure_with_workbench(
+                    link, options.browser, cleanup_inputs,
+                    observe_failure_cleanup, receipts=cleanup,
+                    record_receipt=record_failure_cleanup_receipt)
                 terminal_state["cleanup_proven"] = workspace_restored("recovery")
             result["failure_terminal_cleanup_proven"] = terminal_state["cleanup_proven"]
             if terminal_state["cleanup_proven"]:
@@ -396,17 +645,18 @@ def main():
                 f"workbench preview requests did not drain: {len(pending)}")
         # Establish a visual workspace baseline so this trial can prove that the
         # terminal it opens later disappears again.
-        setup_inputs = (
+        terminal_launch_inputs = (
             # Workspace 5 is reserved for qualification. This installed image
             # visibly binds its terminal to Super+Return; Super+Space is its launcher.
             {"op": "click", "x": 130, "y": 13, "button": 1},
             {"op": "key", "keys": "super+Return"},
-            {"op": "click", "x": 320, "y": 420, "button": 1},
         )
         empty_workspace = None
-        for index, input_value in enumerate(setup_inputs):
+        terminal_launch_started = None
+        for index, input_value in enumerate(terminal_launch_inputs):
             if index == 1:
                 terminal_state["may_be_open"] = True
+                terminal_launch_started = time.monotonic()
             receipt = browser_input(page, input_value)
             if receipt != {"status": 200, "body": {"input": "dispatched", "control": "human"}}:
                 raise RuntimeError(f"desktop setup transport changed: {receipt}")
@@ -431,24 +681,79 @@ def main():
                 if baseline_marker_count:
                     raise RuntimeError(
                         "qualification marker was already visible in the baseline")
-        page.wait_for_timeout(4500)
+        terminal_open_deadline = terminal_launch_deadline(
+            terminal_launch_started)
+        terminal_open_frame = None
+        terminal_open_changed = -1
+        while time.monotonic() < terminal_open_deadline:
+            try:
+                candidate, captured_at = capture_semantic_frame(
+                    rpc, "waiting for installed terminal", terminal_open_deadline)
+            except TimeoutError:
+                continue
+            terminal_open_changed = region_changes(
+                pixels(empty_workspace), pixels(candidate))
+            if terminal_open_changed >= 50000:
+                terminal_open_frame = candidate
+                result["terminal_launch_latency_ms"] = round(
+                    (captured_at - terminal_launch_started) * 1000)
+                break
+            remaining_ms = int(max(
+                0, (terminal_open_deadline - time.monotonic()) * 1000))
+            if remaining_ms:
+                page.wait_for_timeout(min(250, remaining_ms))
+        if terminal_open_frame is None:
+            raise RuntimeError(
+                "installed terminal was not visibly open within 25 seconds")
+        terminal_open_target = evidence / "00-terminal-open.png"
+        shutil.copy2(terminal_open_frame, terminal_open_target)
+        result.update(
+            terminal_open_changed_pixels=terminal_open_changed,
+            terminal_open_sha256=hashlib.sha256(
+                terminal_open_frame.read_bytes()).hexdigest(),
+        )
+        focus_input = {"op": "click", "x": 320, "y": 420, "button": 1}
+        focus_receipt = browser_input(page, focus_input)
+        if focus_receipt != {"status": 200,
+                             "body": {"input": "dispatched", "control": "human"}}:
+            raise RuntimeError(f"desktop focus transport changed: {focus_receipt}")
+        terminal_open_inputs = (*terminal_launch_inputs, focus_input)
+        # QMP VM's first shell can remain in startup with only its window frame
+        # visible. One bounded interrupt produces the prompt without executing
+        # content, and its receipt remains part of the audited setup sequence.
+        prompt_input = {"op": "key", "keys": "ctrl+c"}
+        prompt_receipt = browser_input(page, prompt_input)
+        if prompt_receipt != {"status": 200,
+                              "body": {"input": "dispatched",
+                                       "control": "human"}}:
+            raise RuntimeError(f"desktop prompt transport changed: {prompt_receipt}")
+        setup_inputs = (*terminal_open_inputs, prompt_input)
+        page.wait_for_timeout(1500)
         focused = Path(rpc("read", {"op": "screenshot",
                                      "question": "focused terminal before typing"})["image_path"])
-        shutil.copy2(focused, evidence / "00-focused-terminal.png")
-        terminal_open_changed = region_changes(pixels(empty_workspace), pixels(focused))
-        if terminal_open_changed < 50000:
+        focused_target = evidence / "00-focused-terminal.png"
+        shutil.copy2(focused, focused_target)
+        focused_terminal_changed = region_changes(
+            pixels(empty_workspace), pixels(focused))
+        if focused_terminal_changed < 50000:
             raise RuntimeError(
-                f"opened terminal did not differ sufficiently from baseline ({terminal_open_changed} pixels)")
-        result["terminal_open_changed_pixels"] = terminal_open_changed
+                "opened terminal did not differ sufficiently from baseline "
+                f"({focused_terminal_changed} pixels)")
+        result.update(
+            focused_terminal_changed_pixels=focused_terminal_changed,
+            focused_terminal_sha256=hashlib.sha256(
+                focused.read_bytes()).hexdigest(),
+        )
         page.locator("#keyboard-toggle").click()
         typed_text = "echo " + options.marker
         page.locator("#keyboard-text").fill(typed_text)
         result["phase"] = "type_transport"
         type_started = time.monotonic()
-        type_deadline = type_started + 5
+        type_deadline = type_started + TYPE_PROOF_TIMEOUT_S
         with page.expect_response(
                 lambda response: response.url.endswith("/api/input")
-                and response.request.method == "POST", timeout=5000) as type_info:
+                and response.request.method == "POST",
+                timeout=TYPE_TRANSPORT_TIMEOUT_S * 1000) as type_info:
             page.locator("#keyboard-send").click()
         type_response = type_info.value
         type_receipt = {
@@ -472,8 +777,16 @@ def main():
         typed, typed_ocr, timeline, last_candidate = None, "", [], None
         last_hash = None
         while time.monotonic() < type_deadline:
-            candidate, captured_at = capture_semantic_frame(
-                rpc, "before installed Enter", type_deadline)
+            probe = capture_semantic_probe(
+                rpc, "before installed Enter", type_deadline,
+                type_started, timeline)
+            if probe is None:
+                remaining_ms = int(max(
+                    0, (type_deadline - time.monotonic()) * 1000))
+                if remaining_ms:
+                    page.wait_for_timeout(min(250, remaining_ms))
+                continue
+            candidate, captured_at = probe
             last_candidate = candidate
             if not timeline:
                 shutil.copy2(candidate, evidence / "01-type-immediate.png")
@@ -490,7 +803,8 @@ def main():
                 sample = evidence / f"01-type-sample-{len(timeline):02d}.png"
                 shutil.copy2(candidate, sample)
                 marker_count = candidate_ocr.casefold().count(options.marker.casefold())
-                command_complete = ("echo" + options.marker).casefold() in candidate_ocr.casefold()
+                command_complete = ocr_has_echo_command(
+                    candidate_ocr, options.marker)
                 elapsed_ms = round((captured_at - type_started) * 1000)
                 timeline.append({"elapsed_ms": elapsed_ms, "evidence": sample.name,
                                  "sha256": digest, "marker_count": marker_count,
@@ -511,7 +825,9 @@ def main():
             shutil.copy2(typed, evidence / "01-before-enter.png")
         (evidence / "typed-ocr.txt").write_text(typed_ocr, encoding="utf-8")
         if typed is None:
-            message = "complete marker was not visible within five seconds after type dispatch"
+            message = (
+                "complete marker was not visible within "
+                f"{TYPE_PROOF_TIMEOUT_S} seconds after type dispatch")
             result.update(phase="type_semantics_failed", error=message,
                           marker_count_before=max((entry.get("marker_count", 0) for entry in timeline),
                                                   default=0), type_timeline=timeline,
@@ -561,8 +877,12 @@ def main():
             remaining = semantic_deadline - time.monotonic()
             if remaining <= 0:
                 break
-            candidate, captured_at = capture_semantic_frame(
-                rpc, "after installed Enter", semantic_deadline)
+            probe = capture_semantic_probe(
+                rpc, "after installed Enter", semantic_deadline,
+                return_started, return_timeline)
+            if probe is None:
+                continue
+            candidate, captured_at = probe
             after = pixels(candidate)
             candidate_changed = sum(before[index:index + 3] != after[index:index + 3]
                                     for index in range(0, len(before), 3))
@@ -585,9 +905,11 @@ def main():
                     break
                 ocr_sample = candidate
                 entry["marker_count"] = ocr.casefold().count(options.marker.casefold())
+                entry["output_complete"] = ocr_has_echo_output(
+                    ocr, options.marker)
                 entry["elapsed_ms"] = round(
                     (captured_at - return_started) * 1000)
-                if entry["marker_count"] >= 2:
+                if entry["output_complete"]:
                     changed = candidate_changed
                     shutil.copy2(candidate, entered)
                     return_succeeded = True
@@ -625,31 +947,56 @@ def main():
         # Clean only after the tested command is proven to have completed. Each
         # cleanup action is still sent once and checked; it never retries an
         # uncertain Return from the trial itself.
-        cleanup_inputs = ({"op": "key", "keys": "super+W"},)
-        cleanup_receipts = []
+        # Exit only the proven disposable shell. If that does not visibly restore
+        # the recorded workspace, fail without sending any compositor close key.
+        cleanup_inputs = TERMINAL_EXIT_INPUTS
         terminal_state["cleanup_attempted"] = True
-        for cleanup_input in cleanup_inputs:
-            cleanup_receipt = browser_input(page, cleanup_input)
-            if cleanup_receipt != {"status": 200,
-                                    "body": {"input": "dispatched", "control": "human"}}:
-                raise RuntimeError(f"desktop cleanup transport changed: {cleanup_receipt}")
-            cleanup_receipts.append({"request": cleanup_input, **cleanup_receipt})
-        write_evidence_json(evidence / "cleanup-transport.json", cleanup_receipts,
-                            token=workbench_token)
-        if input_posts != [*setup_inputs, expected_type, expected_return, *cleanup_inputs]:
+        cleanup_decisions = []
+        cleanup_receipts = []
+        result["cleanup_transport_receipts"] = cleanup_receipts
+        result["cleanup_decisions"] = cleanup_decisions
+        def record_success_cleanup_receipt():
+            write_evidence_json(
+                evidence / "cleanup-transport.json", cleanup_receipts,
+                token=workbench_token)
+        def observe_success_cleanup(label):
+            state = poll_cleanup_visual_state(
+                rpc, empty_workspace, options.marker,
+                lambda delay: page.wait_for_timeout(delay * 1000),
+                question=f"installed E2E cleanup {label}")
+            if state["frame"] is not None:
+                target = evidence / f"05-cleanup-{label}.png"
+                shutil.copy2(state["frame"], target)
+                state["observation"] = {
+                    **state["observation"], "evidence": target.name}
+            cleanup_decisions.append({
+                "stage": label,
+                "restored": state["restored"],
+                "observation": state["observation"],
+                "samples": state["observations"],
+            })
+            write_evidence_json(evidence / "cleanup-decision-timeline.json",
+                                cleanup_decisions, token=workbench_token)
+            return state
+        dispatch_cleanup_and_verify(
+            page, cleanup_inputs, cleanup_receipts, observe_success_cleanup,
+            record_success_cleanup_receipt)
+        complete_cleanup_inputs = tuple(
+            receipt["request"] for receipt in cleanup_receipts)
+        if input_posts != [*setup_inputs, expected_type, expected_return,
+                           *complete_cleanup_inputs]:
             raise RuntimeError(f"installed cleanup request sequence changed: {input_posts}")
         cleanup_samples = []
-        page.wait_for_timeout(1800)
         for index in range(2):
             cleaned = Path(rpc("read", {"op": "screenshot",
                                         "question": "installed E2E cleanup"},
                                timeout=5)["image_path"])
             target = evidence / f"05-cleanup-{index + 1}.png"
             shutil.copy2(cleaned, target)
-            cleaned_ocr = subprocess.run(
+            cleaned_ocr = normalize_ocr(subprocess.run(
                 ["/usr/bin/swift", str(VISION_OCR_SCRIPT), str(cleaned)],
                 check=True, capture_output=True, text=True,
-                timeout=10).stdout.replace(" ", "")
+                timeout=10).stdout)
             (evidence / f"cleanup-ocr-{index + 1}.txt").write_text(
                 cleaned_ocr, encoding="utf-8")
             cleanup_changed = region_changes(pixels(empty_workspace), pixels(cleaned))

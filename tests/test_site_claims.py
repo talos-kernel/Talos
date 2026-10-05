@@ -305,6 +305,19 @@ def test_the_published_guidance_does_not_name_the_private_repository() -> None:
             )
 
 
+def test_public_sync_uses_one_null_terminated_tar_archive() -> None:
+    """A growing tree must not split the transfer or hide a producer pipe failure."""
+    script = (Path(__file__).resolve().parent.parent / "scripts" / "sync-public.sh").read_text(
+        encoding="utf-8"
+    )
+    transfer = next(
+        line for line in script.splitlines() if "git -C" in line and "ls-files -z" in line
+    )
+    assert "xargs" not in transfer
+    assert 'tar --null -T - -cf "$ARCHIV"' in transfer
+    assert "| tar xf -" not in transfer
+
+
 # --- SECURITY.md muss stimmen, sonst ist sie schlimmer als keine --------------------
 
 

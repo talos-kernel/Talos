@@ -118,11 +118,11 @@ enum LocalComputerLink {
 }
 
 enum ComputerViewBackend: Equatable {
-    case omarchy(URL)
+    case qmp(URL)
     case remote
 
     static func select(localURL: URL?) -> Self {
-        localURL.map(Self.omarchy) ?? .remote
+        localURL.map(Self.qmp) ?? .remote
     }
 }
 
@@ -138,24 +138,24 @@ struct ComputerView: View {
             Image(systemName: "desktopcomputer").font(.system(size: 40, weight: .light)).foregroundStyle(Palette.bronze)
             Text("Room to do more.").font(.system(size: 34, weight: .medium, design: .rounded)).tracking(-0.9)
             Text(localURL == nil
-                 ? "Connect a private Linux Computer, or install the Omarchy desktop on this Mac."
-                 : "Use the Omarchy desktop installed on this Mac.")
+                 ? "Connect a private Linux Computer. The local QMP VM target is still being qualified."
+                 : "Use the separately installed QMP VM desktop on this Mac.")
                 .foregroundStyle(Palette.muted).font(.system(size: 15)).lineSpacing(6)
             switch ComputerViewBackend.select(localURL: localURL) {
-            case let .omarchy(localURL):
+            case let .qmp(localURL):
                 VStack(alignment: .leading, spacing: 12) {
-                    Label("Omarchy Computer · this Mac", systemImage: "shield.lefthalf.filled")
+                    Label("QMP VM Computer · this Mac", systemImage: "shield.lefthalf.filled")
                         .font(.system(size: 16, weight: .medium)).foregroundStyle(Palette.bronze)
                     Text("A visual desktop with outbound NAT and human takeover. It accepts no inbound forwarding and shares no Mac files, clipboard or credentials.")
                         .font(.system(size: 13)).foregroundStyle(Palette.muted).lineSpacing(4)
-                    Button("Open Omarchy Computer") { NSWorkspace.shared.open(localURL) }
+                    Button("Open QMP VM Computer") { NSWorkspace.shared.open(localURL) }
                         .buttonStyle(BronzeButtonStyle()).controlSize(.large)
                 }.padding(24).background(Palette.panel, in: RoundedRectangle(cornerRadius: 14))
                     .overlay(RoundedRectangle(cornerRadius: 14).stroke(Palette.line))
-                Text("Omarchy is the active Computer on this Mac. Remote Computer URLs are not shown or used while this private local link remains valid.")
+                Text("QMP VM is the active Computer on this Mac. Remote Computer URLs are not shown or used while this private local link remains valid.")
                     .font(.system(size: 11)).foregroundStyle(Palette.muted).lineSpacing(4)
             case .remote:
-                Text("The local Omarchy Computer is not installed or its private link failed validation.")
+                Text("No qualified local QMP VM Computer link is available.")
                     .font(.system(size: 12)).foregroundStyle(Palette.muted)
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Talos Computer").font(.system(size: 12, weight: .medium))

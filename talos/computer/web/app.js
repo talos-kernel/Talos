@@ -94,7 +94,7 @@ async function sendText(){
  const plain="`1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./ ";
  const reportEvents=chars.reduce((count,char)=>count+(plain.includes(char)?2:4),0);
  if(snapshotViewer()&&reportEvents>63){
-  notice("This text is too long for one bounded keyboard batch. Send a shorter part.");return;
+  notice("This text exceeds the bounded keyboard action. Send a shorter part.");return;
  }
  modifiers.clear();
  if(snapshotViewer()){if(!await sendSnapshot({op:"type",text}))return;}
@@ -270,11 +270,11 @@ async function refresh(){
   if(controlChanging||epoch!==desktopEpoch)return;
   state=next;
   show("login",false);show("workspace",true);
-  const omarchy=state.backend==="omarchy";
-  $("intro-copy").textContent=omarchy
+  const qmp=state.backend==="qmp";
+  $("intro-copy").textContent=qmp
    ?"A visual desktop with outbound NAT, pause and human takeover. No inbound forwarding, host files, clipboard or credentials."
    :"Code, project files and a clear record of every job. An optional desktop when your work needs one.";
-  show("bottom-grid",!omarchy);
+  show("bottom-grid",!qmp);
   $("connection").textContent="Connected";
   $("control-state").textContent=controlLabels[state.control]||state.control;
   $("screen-note").textContent=state.vm==="running"?"":"· paused";

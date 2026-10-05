@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Run repeatable, unprivileged Omarchy installed-hardware qualification.
+"""Run repeatable, unprivileged QMP VM installed-hardware qualification.
 
 This orchestrator only reads host/install identity and invokes
-``omarchy_installed_e2e.py``.  It deliberately has no service-control or
+``qmp_installed_e2e.py``.  It deliberately has no service-control or
 administrator path.  One explicit chain root owns numbered append-only
 generation records and their evidence.  The final summary is created atomically
 once.
@@ -10,7 +10,6 @@ once.
 from __future__ import annotations
 
 import argparse
-import base64
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -22,31 +21,57 @@ import re
 import secrets
 import socket
 import stat
+import struct
 import subprocess
 import sys
 from typing import Any
 import uuid
+import zlib
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-HARNESS_RELATIVE = Path("tests/omarchy_installed_e2e.py")
-DEFAULT_RUNTIME = Path("/Library/Application Support/TalosOmarchy/runtime/current")
+HARNESS_RELATIVE = Path("tests/qmp_installed_e2e.py")
+DEFAULT_RUNTIME = Path("/Library/Application Support/TalosQmpVm/runtime/current")
 DEFAULT_INSTALL_EVIDENCE = Path(
-    "/Library/Application Support/TalosOmarchy/install-evidence.json")
+    "/Library/Application Support/TalosQmpVm/install-evidence.json")
 LAUNCHD_LABELS = {
-    "web": "org.talos.omarchy.web",
-    "api": "org.talos.omarchy.api",
-    "vm": "org.talos.omarchy.vm",
+    "web": "org.talos.qmp.web",
+    "api": "org.talos.qmp.api",
+    "vm": "org.talos.qmp.vm",
 }
 SHA256 = re.compile(r"[0-9a-fA-F]{64}\Z")
+LOWER_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+Q35_MACHINE = re.compile(r"pc-q35-[1-9][0-9]*\.[0-9]+\Z")
 GENERATION = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
-SCHEMA = "talos.omarchy.hardware-qualification/v2"
-CHAIN_ROOT_SCHEMA = "talos.omarchy.hardware-qualification-chain-root/v1"
-CHAIN_ENTRY_SCHEMA = "talos.omarchy.hardware-qualification-chain-entry/v1"
+INSTALL_EVIDENCE_FIELDS = frozenset({
+    "release", "network", "host_forwards", "host_shares", "clipboard",
+    "manifest", "qemu", "kernel", "initrd", "disk", "machine",
+    "accelerator", "cpu", "architecture", "distribution", "desktop",
+    "geometry", "pci_devices",
+})
+BUNDLE_MANIFEST_FIELDS = frozenset({
+    "schema", "guestArchitecture", "guestDistribution", "guestDesktop", "geometry",
+    "qemuBinary", "qemuSha256", "qemuMachine", "qemuCpu", "kernel",
+    "kernelSha256", "initrd", "initrdSha256", "kernelCommandLine", "diskFormat",
+    "diskBytes", "diskSha256", "pciDevices",
+})
+EXPECTED_VIRTIO_NIC = [0x1AF4, 0x1000]
+MAX_INSTALL_EVIDENCE_BYTES = 65_536
+MAX_PCI_DEVICES = 32
+SCHEMA = "talos.qmp.hardware-qualification/v2"
+CHAIN_ROOT_SCHEMA = "talos.qmp.hardware-qualification-chain-root/v1"
+CHAIN_ENTRY_SCHEMA = "talos.qmp.hardware-qualification-chain-entry/v1"
 CHAIN_ROOT_RECORD = "chain-root.json"
 CHAIN_ENTRIES_DIRECTORY = "entries"
 CHAIN_EVIDENCE_DIRECTORY = "generations"
 CONTROL_RESPONSE_LIMIT = 1024 * 1024
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PNG_WIDTH = 1440
+PNG_HEIGHT = 900
+PNG_STRIDE = PNG_WIDTH * 3
+PNG_DECOMPRESSED_SIZE = (PNG_STRIDE + 1) * PNG_HEIGHT
+PNG_MAX_COMPRESSED_SIZE = 5 * 1024 * 1024
+PNG_MAX_FILE_SIZE = 8 * 1024 * 1024
 
 
 class QualificationError(RuntimeError):
@@ -79,7 +104,7 @@ def canonical_hash(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def regular_file_bytes(path: Path) -> bytes:
+def regular_file_bytes(path: Path, *, maximum: int | None = None) -> bytes:
     try:
         if stat.S_ISLNK(path.lstat().st_mode):
             raise QualificationError(f"required evidence path is a symlink: {path}")
@@ -91,12 +116,18 @@ def regular_file_bytes(path: Path) -> bytes:
     except OSError as error:
         raise QualificationError(f"required evidence file is unavailable: {path}") from error
     try:
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
             raise QualificationError(
                 f"required evidence path is not a regular file: {path}")
+        if maximum is not None and metadata.st_size > maximum:
+            raise QualificationError(f"required evidence file is too large: {path}")
         with os.fdopen(descriptor, "rb") as stream:
             descriptor = -1
-            return stream.read()
+            raw = stream.read() if maximum is None else stream.read(maximum + 1)
+            if maximum is not None and len(raw) > maximum:
+                raise QualificationError(f"required evidence file is too large: {path}")
+            return raw
     except OSError as error:
         raise QualificationError(f"required evidence file cannot be read: {path}") from error
     finally:
@@ -262,6 +293,13 @@ def runtime_identity(target: Path) -> dict[str, str]:
         release = target.resolve(strict=True)
     except OSError as error:
         raise QualificationError("installed runtime target cannot be resolved") from error
+    try:
+        runtime_root = target.parent.resolve(strict=True)
+    except OSError as error:
+        raise QualificationError("installed runtime directory cannot be resolved") from error
+    if release.parent != runtime_root or release.name == "current":
+        raise QualificationError(
+            "installed runtime/current must target one sibling release")
     backend = release / "backend/talos"
     return {
         "target": str(target),
@@ -271,15 +309,202 @@ def runtime_identity(target: Path) -> dict[str, str]:
     }
 
 
-def install_identity(path: Path, runtime: dict[str, str]) -> dict[str, str]:
-    raw = regular_file_bytes(path)
+def install_record(value: Any, description: str, *, root: Path,
+                   filename: str | None = None) -> dict[str, str]:
+    if not isinstance(value, dict) or set(value) != {"path", "sha256"}:
+        raise QualificationError(f"install evidence {description} record is invalid")
+    raw_path = value.get("path")
+    digest = value.get("sha256")
+    if (not isinstance(raw_path, str) or not raw_path or len(raw_path) > 4096
+            or "\0" in raw_path):
+        raise QualificationError(f"install evidence {description} path is invalid")
+    target = Path(raw_path)
+    if (not target.is_absolute() or str(target) != raw_path
+            or any(part in {".", ".."} for part in target.parts)):
+        raise QualificationError(f"install evidence {description} path is invalid")
+    try:
+        relative = target.relative_to(root)
+    except ValueError as error:
+        raise QualificationError(
+            f"install evidence {description} path is outside the installed release"
+        ) from error
+    if not relative.parts or (filename is not None and target.name != filename):
+        raise QualificationError(f"install evidence {description} target is invalid")
+    if not isinstance(digest, str) or not LOWER_SHA256.fullmatch(digest):
+        raise QualificationError(f"install evidence {description} hash is invalid")
+    return {"path": raw_path, "sha256": digest}
+
+
+def verify_installed_file(record: dict[str, str], description: str, *,
+                          expected_bytes: int | None = None,
+                          capture_limit: int | None = None) -> bytes | None:
+    """Hash one installed regular file through a no-follow descriptor."""
+    path = Path(record["path"])
+    try:
+        if stat.S_ISLNK(path.lstat().st_mode):
+            raise QualificationError(
+                f"installed {description} is a symbolic link")
+    except OSError as error:
+        raise QualificationError(f"installed {description} is unavailable") from error
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError as error:
+        raise QualificationError(f"installed {description} is unavailable") from error
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise QualificationError(f"installed {description} is not a regular file")
+        if expected_bytes is not None and before.st_size != expected_bytes:
+            raise QualificationError(f"installed {description} byte count does not match evidence")
+        if capture_limit is not None and before.st_size > capture_limit:
+            raise QualificationError(f"installed {description} exceeds its size bound")
+        digest = hashlib.sha256()
+        captured = bytearray() if capture_limit is not None else None
+        with os.fdopen(descriptor, "rb") as stream:
+            descriptor = -1
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+                if captured is not None:
+                    captured.extend(block)
+                    if len(captured) > capture_limit:
+                        raise QualificationError(
+                            f"installed {description} exceeds its size bound")
+            after = os.fstat(stream.fileno())
+        if (after.st_size != before.st_size
+                or after.st_mtime_ns != before.st_mtime_ns):
+            raise QualificationError(f"installed {description} changed while hashing")
+    except OSError as error:
+        raise QualificationError(f"installed {description} cannot be read") from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    if digest.hexdigest() != record["sha256"]:
+        raise QualificationError(f"installed {description} hash does not match evidence")
+    return bytes(captured) if captured is not None else None
+
+
+def install_identity(path: Path, runtime: dict[str, str]) -> dict[str, Any]:
+    raw = regular_file_bytes(path, maximum=MAX_INSTALL_EVIDENCE_BYTES)
     raw_hash = hashlib.sha256(raw).hexdigest()
     parsed = strict_json_bytes(raw, "install evidence")
-    if not isinstance(parsed, dict) or not isinstance(parsed.get("release"), str):
-        raise QualificationError("install evidence has no release identity")
-    if parsed["release"] != runtime["release_name"]:
+    if not isinstance(parsed, dict) or set(parsed) != INSTALL_EVIDENCE_FIELDS:
+        raise QualificationError("install evidence has unknown or missing fields")
+    release_name = runtime.get("release_name")
+    release_value = runtime.get("release")
+    target_value = runtime.get("target")
+    if (not isinstance(release_name, str) or not release_name
+            or not isinstance(release_value, str)
+            or not isinstance(target_value, str)):
+        raise QualificationError("runtime identity cannot bind install evidence")
+    if parsed["release"] != release_name:
         raise QualificationError("install evidence release does not match runtime/current")
-    return {"path": str(path), "sha256": raw_hash, "release": parsed["release"]}
+    release = Path(release_value)
+    runtime_target = Path(target_value)
+    if (not release.is_absolute() or str(release) != release_value
+            or not runtime_target.is_absolute() or str(runtime_target) != target_value
+            or runtime_target.name != "current" or runtime_target.parent.name != "runtime"):
+        raise QualificationError("runtime identity paths cannot bind install evidence")
+
+    manifest = install_record(
+        parsed["manifest"], "manifest", root=release / "guest",
+        filename="manifest.json")
+    if Path(manifest["path"]) != release / "guest/manifest.json":
+        raise QualificationError("install evidence manifest target is invalid")
+    qemu = install_record(
+        parsed["qemu"], "QEMU", root=release / "vm-runtime",
+        filename="qemu-system-x86_64")
+    kernel = install_record(parsed["kernel"], "kernel", root=release / "guest")
+    initrd = install_record(parsed["initrd"], "initrd", root=release / "guest")
+    if kernel["path"] == initrd["path"]:
+        raise QualificationError("install evidence kernel and initrd targets are identical")
+
+    disk = parsed["disk"]
+    expected_disk = runtime_target.parent.parent / "vm/rootfs.ext4"
+    if (not isinstance(disk, dict)
+            or set(disk) != {"path", "sha256", "bytes", "format"}
+            or disk.get("path") != str(expected_disk)
+            or not isinstance(disk.get("sha256"), str)
+            or not LOWER_SHA256.fullmatch(disk["sha256"])
+            or type(disk.get("bytes")) is not int or disk["bytes"] <= 0
+            or disk.get("format") not in {"raw", "qcow2"}):
+        raise QualificationError("install evidence disk identity is invalid")
+
+    devices = parsed["pci_devices"]
+    if (not isinstance(devices, list) or not 1 <= len(devices) <= MAX_PCI_DEVICES
+            or any(not isinstance(item, list) or len(item) != 2
+                   or any(type(number) is not int or not 0 <= number <= 0xffff
+                          for number in item)
+                   for item in devices)):
+        raise QualificationError("install evidence expected PCI device list is invalid")
+    if devices.count(EXPECTED_VIRTIO_NIC) != 1:
+        raise QualificationError(
+            "install evidence must contain exactly one expected virtio NIC")
+    if (parsed["architecture"] != "x86_64"
+            or parsed["distribution"] != "debian"
+            or parsed["desktop"] != "hyprland"
+            or parsed["geometry"] != [1440, 900]
+            or parsed["cpu"] != "max"
+            or not isinstance(parsed["machine"], str)
+            or not Q35_MACHINE.fullmatch(parsed["machine"])):
+        raise QualificationError("install evidence fixed guest identity is invalid")
+    if (parsed["network"] != "qemu-user-nat"
+            or parsed["host_forwards"] != []
+            or parsed["host_shares"] is not False
+            or parsed["clipboard"] is not False
+            or parsed["accelerator"] != "tcg,thread=multi"):
+        raise QualificationError("install evidence outbound-only TCG identity is invalid")
+
+    manifest_raw = verify_installed_file(
+        manifest, "bundle manifest", capture_limit=MAX_INSTALL_EVIDENCE_BYTES)
+    verify_installed_file(qemu, "QEMU binary")
+    verify_installed_file(kernel, "guest kernel")
+    verify_installed_file(initrd, "guest initrd")
+    verify_installed_file(
+        {"path": disk["path"], "sha256": disk["sha256"]},
+        "guest disk", expected_bytes=disk["bytes"])
+    installed_manifest = strict_json_bytes(manifest_raw, "installed bundle manifest")
+    qemu_relative = Path(qemu["path"]).relative_to(release / "vm-runtime").as_posix()
+    kernel_relative = Path(kernel["path"]).relative_to(release / "guest").as_posix()
+    initrd_relative = Path(initrd["path"]).relative_to(release / "guest").as_posix()
+    commandline = (installed_manifest.get("kernelCommandLine")
+                   if isinstance(installed_manifest, dict) else None)
+    if (not isinstance(installed_manifest, dict)
+            or set(installed_manifest) != BUNDLE_MANIFEST_FIELDS
+            or installed_manifest.get("schema") != "talos.qmp-vm/v1"
+            or installed_manifest.get("guestArchitecture") != parsed["architecture"]
+            or installed_manifest.get("guestDistribution") != parsed["distribution"]
+            or installed_manifest.get("guestDesktop") != parsed["desktop"]
+            or installed_manifest.get("geometry") != parsed["geometry"]
+            or installed_manifest.get("qemuBinary") != qemu_relative
+            or installed_manifest.get("qemuSha256") != qemu["sha256"]
+            or installed_manifest.get("qemuMachine") != parsed["machine"]
+            or installed_manifest.get("qemuCpu") != parsed["cpu"]
+            or installed_manifest.get("kernel") != kernel_relative
+            or installed_manifest.get("kernelSha256") != kernel["sha256"]
+            or installed_manifest.get("initrd") != initrd_relative
+            or installed_manifest.get("initrdSha256") != initrd["sha256"]
+            or not isinstance(commandline, str) or not commandline.strip()
+            or commandline != commandline.strip()
+            or any(character in commandline for character in "\r\n\0")
+            or installed_manifest.get("diskFormat") != disk["format"]
+            or installed_manifest.get("diskBytes") != disk["bytes"]
+            or installed_manifest.get("diskSha256") != disk["sha256"]
+            or installed_manifest.get("pciDevices") != devices):
+        raise QualificationError(
+            "installed bundle manifest does not match install evidence")
+
+    return {
+        "path": str(path), "sha256": raw_hash, "release": parsed["release"],
+        "architecture": parsed["architecture"],
+        "distribution": parsed["distribution"], "desktop": parsed["desktop"],
+        "geometry": list(parsed["geometry"]), "manifest": manifest, "qemu": qemu,
+        "machine": parsed["machine"], "accelerator": parsed["accelerator"],
+        "cpu": parsed["cpu"], "kernel": kernel, "initrd": initrd,
+        "disk": dict(disk),
+        "pci_devices": [list(item) for item in devices],
+        "network": parsed["network"], "host_forwards": [],
+        "host_shares": False, "clipboard": False,
+    }
 
 
 def collect_static_binding(config: Configuration) -> dict[str, Any]:
@@ -328,17 +553,122 @@ def launchd_processes() -> dict[str, dict[str, Any]]:
 
 
 def make_marker() -> str:
-    # Lowercase preserves 80 random bits while keeping ``echo <marker>`` below
-    # the guest's 63-event keyboard report cap (uppercase needs Shift events).
-    entropy = base64.b32encode(secrets.token_bytes(10)).decode("ascii").rstrip("=")
-    return "tq" + entropy.lower()
+    # One safe base-16 symbol per nibble preserves all 80 random bits. A fixed
+    # uppercase prefix also exercises modifier delivery; 21 marker characters
+    # still need only 54 events with ``echo `` and avoid OCR-ambiguous 0/1/q.
+    alphabet = "23456789abcdefgh"
+    return "X" + "".join(alphabet[int(nibble, 16)]
+                         for nibble in secrets.token_bytes(10).hex())
 
 
 def artifact_bytes(evidence: Path, name: str, *, png: bool = False) -> bytes:
-    raw = regular_file_bytes(evidence / name)
-    if png and not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+    raw = regular_file_bytes(
+        evidence / name, maximum=PNG_MAX_FILE_SIZE if png else None)
+    if png and not raw.startswith(PNG_SIGNATURE):
         raise QualificationError(f"E2E evidence is not a PNG: {name}")
     return raw
+
+
+def png_pixels(raw: bytes, name: str) -> bytearray:
+    """Strictly decode one bounded RGB8 framebuffer PNG."""
+    if len(raw) > PNG_MAX_FILE_SIZE:
+        raise QualificationError(f"E2E evidence PNG is too large: {name}")
+    if raw[:len(PNG_SIGNATURE)] != PNG_SIGNATURE:
+        raise QualificationError(f"E2E evidence is not a PNG: {name}")
+    position = len(PNG_SIGNATURE)
+    chunk_index = 0
+    seen_ihdr = False
+    seen_idat = False
+    idat_ended = False
+    seen_iend = False
+    compressed = bytearray()
+    while position < len(raw):
+        if len(raw) - position < 12:
+            raise QualificationError(f"E2E evidence PNG chunk is truncated: {name}")
+        size = struct.unpack(">I", raw[position:position + 4])[0]
+        chunk_end = position + 12 + size
+        if chunk_end > len(raw):
+            raise QualificationError(f"E2E evidence PNG chunk is truncated: {name}")
+        kind = raw[position + 4:position + 8]
+        value = raw[position + 8:position + 8 + size]
+        expected_crc = struct.unpack(">I", raw[position + 8 + size:chunk_end])[0]
+        actual_crc = zlib.crc32(value, zlib.crc32(kind)) & 0xffffffff
+        if expected_crc != actual_crc:
+            raise QualificationError(f"E2E evidence PNG CRC is invalid: {name}")
+        if len(kind) != 4 or not all(
+                65 <= byte <= 90 or 97 <= byte <= 122 for byte in kind):
+            raise QualificationError(f"E2E evidence PNG chunk type is invalid: {name}")
+        if chunk_index == 0 and kind != b"IHDR":
+            raise QualificationError(f"E2E evidence PNG does not begin with IHDR: {name}")
+        if kind == b"IHDR":
+            if seen_ihdr or chunk_index != 0 or size != 13:
+                raise QualificationError(f"E2E evidence PNG IHDR is invalid: {name}")
+            values = struct.unpack(">IIBBBBB", value)
+            if values != (PNG_WIDTH, PNG_HEIGHT, 8, 2, 0, 0, 0):
+                raise QualificationError(
+                    f"E2E evidence is not a fixed RGB8 framebuffer PNG: {name}")
+            seen_ihdr = True
+        elif kind == b"IDAT":
+            if not seen_ihdr or idat_ended or seen_iend:
+                raise QualificationError(
+                    f"E2E evidence PNG IDAT order is invalid: {name}")
+            if len(compressed) + size > PNG_MAX_COMPRESSED_SIZE:
+                raise QualificationError(
+                    f"E2E evidence compressed PNG data is too large: {name}")
+            compressed.extend(value)
+            seen_idat = True
+        elif kind == b"IEND":
+            if (not seen_ihdr or not seen_idat or seen_iend or size != 0):
+                raise QualificationError(f"E2E evidence PNG IEND is invalid: {name}")
+            seen_iend = True
+            position = chunk_end
+            if position != len(raw):
+                raise QualificationError(
+                    f"E2E evidence PNG has trailing bytes: {name}")
+            break
+        else:
+            if not seen_ihdr or seen_iend:
+                raise QualificationError(f"E2E evidence PNG chunk order is invalid: {name}")
+            if kind[0] & 0x20 == 0:
+                raise QualificationError(
+                    f"E2E evidence PNG has an unsupported critical chunk: {name}")
+            if seen_idat:
+                idat_ended = True
+        position = chunk_end
+        chunk_index += 1
+    if not seen_iend:
+        raise QualificationError(f"E2E evidence PNG is missing IEND: {name}")
+    decompressor = zlib.decompressobj()
+    try:
+        rows = decompressor.decompress(
+            bytes(compressed), PNG_DECOMPRESSED_SIZE + 1)
+        if len(rows) > PNG_DECOMPRESSED_SIZE or decompressor.unconsumed_tail:
+            raise QualificationError(
+                f"E2E evidence decompressed PNG data is too large: {name}")
+        rows += decompressor.flush(PNG_DECOMPRESSED_SIZE + 1 - len(rows))
+    except zlib.error as error:
+        raise QualificationError(f"E2E evidence PNG compression is invalid: {name}") from error
+    if (len(rows) != PNG_DECOMPRESSED_SIZE or not decompressor.eof
+            or decompressor.unused_data):
+        raise QualificationError(f"E2E evidence decompressed PNG data is invalid: {name}")
+    result = bytearray()
+    for offset in range(0, len(rows), PNG_STRIDE + 1):
+        if rows[offset] != 0:
+            raise QualificationError(f"E2E evidence PNG filter is unsupported: {name}")
+        result.extend(rows[offset + 1:offset + PNG_STRIDE + 1])
+    return result
+
+
+def workspace_changes(before: bytearray, after: bytearray) -> int:
+    if len(before) != len(after):
+        raise QualificationError("E2E evidence framebuffer sizes differ")
+    changed = 0
+    for y in range(36, 884):
+        start = (y * 1440 + 16) * 3
+        end = (y * 1440 + 1424) * 3
+        for index in range(start, end, 3):
+            changed += before[index:index + 3] != after[index:index + 3]
+    return changed
 
 
 def validate_result(result: Any, marker: str, evidence: Path) -> None:
@@ -371,7 +701,9 @@ def validate_result(result: Any, marker: str, evidence: Path) -> None:
     for key, minimum, maximum in (
             ("visible_changed_pixels", 150, None),
             ("terminal_open_changed_pixels", 50000, None),
-            ("type_latency_ms", 0, 5000),
+            ("focused_terminal_changed_pixels", 50000, None),
+            ("terminal_launch_latency_ms", 0, 25000),
+            ("type_latency_ms", 0, 20000),
             ("return_latency_ms", 0, 15000),
             ("final_job_count", 0, None)):
         value = result.get(key)
@@ -387,6 +719,12 @@ def validate_result(result: Any, marker: str, evidence: Path) -> None:
     if (not isinstance(initial_hash, str) or not SHA256.fullmatch(initial_hash)
             or final_hash != initial_hash):
         raise QualificationError("E2E result durable job hashes are invalid")
+    baseline_raw = artifact_bytes(evidence, "00-empty-workspace.png", png=True)
+    baseline_hash = result.get("baseline_sha256")
+    if (not isinstance(baseline_hash, str) or not SHA256.fullmatch(baseline_hash)
+            or baseline_hash != hashlib.sha256(baseline_raw).hexdigest()):
+        raise QualificationError("E2E baseline PNG hash does not match its evidence")
+    baseline_pixels = png_pixels(baseline_raw, "00-empty-workspace.png")
     cleanup = result.get("cleanup_samples")
     if not isinstance(cleanup, list) or len(cleanup) != 2:
         raise QualificationError("E2E result cleanup sample shape is invalid")
@@ -400,35 +738,54 @@ def validate_result(result: Any, marker: str, evidence: Path) -> None:
                 or not isinstance(sample.get("sha256"), str)
                 or not SHA256.fullmatch(sample["sha256"])):
             raise QualificationError("E2E result cleanup proof is invalid")
-        actual_hash = hashlib.sha256(
-            artifact_bytes(evidence, expected_name, png=True)).hexdigest()
+        cleanup_raw = artifact_bytes(evidence, expected_name, png=True)
+        actual_hash = hashlib.sha256(cleanup_raw).hexdigest()
         if sample["sha256"] != actual_hash:
             raise QualificationError("E2E cleanup PNG hash does not match its evidence")
-
-    baseline_hash = result.get("baseline_sha256")
-    if (not isinstance(baseline_hash, str) or not SHA256.fullmatch(baseline_hash)
-            or baseline_hash != hashlib.sha256(artifact_bytes(
-                evidence, "00-empty-workspace.png", png=True)).hexdigest()):
-        raise QualificationError("E2E baseline PNG hash does not match its evidence")
+        actual_delta = workspace_changes(
+            baseline_pixels, png_pixels(cleanup_raw, expected_name))
+        if sample["changed_pixels"] != actual_delta:
+            raise QualificationError(
+                "E2E cleanup PNG delta does not match its evidence")
+    for name, hash_field, delta_field in (
+            ("00-terminal-open.png", "terminal_open_sha256",
+             "terminal_open_changed_pixels"),
+            ("00-focused-terminal.png", "focused_terminal_sha256",
+             "focused_terminal_changed_pixels")):
+        raw = artifact_bytes(evidence, name, png=True)
+        expected_hash = result.get(hash_field)
+        if (not isinstance(expected_hash, str) or not SHA256.fullmatch(expected_hash)
+                or expected_hash != hashlib.sha256(raw).hexdigest()):
+            raise QualificationError(
+                f"E2E terminal PNG hash does not match its evidence: {name}")
+        actual_delta = workspace_changes(baseline_pixels, png_pixels(raw, name))
+        if result.get(delta_field) != actual_delta:
+            raise QualificationError(
+                f"E2E terminal PNG delta does not match its evidence: {name}")
+    return_raw = artifact_bytes(evidence, "02-ocr-frame.png", png=True)
     return_hash = result.get("return_ocr_frame_sha256")
     if (not isinstance(return_hash, str) or not SHA256.fullmatch(return_hash)
-            or return_hash != hashlib.sha256(artifact_bytes(
-                evidence, "02-ocr-frame.png", png=True)).hexdigest()):
+            or return_hash != hashlib.sha256(return_raw).hexdigest()):
         raise QualificationError("E2E return OCR frame hash does not match its evidence")
+    png_pixels(return_raw, "02-ocr-frame.png")
 
     setup = [
         {"op": "click", "x": 130, "y": 13, "button": 1},
         {"op": "key", "keys": "super+Return"},
         {"op": "click", "x": 320, "y": 420, "button": 1},
+        {"op": "key", "keys": "ctrl+c"},
     ]
     typed = {"op": "type", "text": "echo " + marker}
     returned = {"op": "key", "keys": "Return"}
-    cleanup_inputs = [{"op": "key", "keys": "super+W"}]
+    cleanup_inputs = [
+        {"op": "click", "x": 320, "y": 420, "button": 1},
+        {"op": "type", "text": "exit"},
+        {"op": "key", "keys": "Return"},
+    ]
     trial_inputs = [*setup, typed, returned]
-    all_inputs = [*trial_inputs, *cleanup_inputs]
     if result.get("trial_input_requests") != trial_inputs:
         raise QualificationError("E2E trial input request sequence is invalid")
-    if result.get("input_requests") != all_inputs:
+    if result.get("input_requests") != [*trial_inputs, *cleanup_inputs]:
         raise QualificationError("E2E complete input request sequence is invalid")
 
     dispatch = {"input": "dispatched", "control": "human"}
@@ -438,6 +795,8 @@ def validate_result(result: Any, marker: str, evidence: Path) -> None:
         {"request": request, "status": 200, "body": dispatch}
         for request in cleanup_inputs
     ]
+    if result.get("cleanup_transport_receipts") != expected_cleanup_transport:
+        raise QualificationError("E2E cleanup transport receipt list is invalid")
     if result.get("type_transport") != expected_type_transport:
         raise QualificationError("E2E type transport receipt is invalid")
     if result.get("return_transport") != expected_return_transport:

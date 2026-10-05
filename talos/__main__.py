@@ -42,6 +42,7 @@ from .eventlog import Event, EventLog, new_run_id
 from .executor import Executor
 from .fallback import FallbackReasoner, parse_chain
 from .memory import Memory
+from .model_catalog_sync import ModelCatalogSync, refresh_configured
 from .intelligence import EntityRegistry, IntelligenceLayer, make_entity_status_runner
 from .fast_eval import FastEvalEngine
 from .mcpservers import McpServerRegistry
@@ -58,6 +59,7 @@ from .provider import (
     ModelRouter,
     ProviderRegistry,
     ModelSelection,
+    preserve_registry_additions,
     resolve_fallback,
     restore_selection,
     with_local_provider,
@@ -215,10 +217,10 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
             Event(new_run_id(), "usage", "model.usage", usage_event_payload(run))
         )
     )
-    # Der kuratierte Katalog, ergaenzt um die zuletzt live geholten Namen. Gelesen wird
-    # nur von der Platte: ein Netzaufruf beim Hochfahren machte aus einer Stoerung beim
-    # Anbieter eine Stoerung hier. Gefuellt wird der Zwischenspeicher mit
-    # `talos models --refresh`.
+    # Der kuratierte Katalog, ergaenzt oder — nur nach einer vollstaendigen, erfolgreichen
+    # Provider-Antwort — ersetzt durch den letzten belegten Live-Stand. Der Start selbst
+    # liest nur von der Platte. Der Netzabgleich beginnt spaeter in einem Daemon-Thread,
+    # damit weder Hochfahren noch Antworten auf einen Provider warten.
     # Der Hermes-Katalog ist ein ZUSATZ: ohne Hermes-Checkout gibt es ihn nicht, und
     # dann bleiben die eingebauten Wege (`safe_talos_registry`) plus der eingestellte
     # lokale Anbieter (`with_local_provider`). Nur eine vom Betreiber GESETZTE
@@ -310,6 +312,8 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     reasoner = FallbackReasoner(
         reasoner, parse_chain(config.model_fallbacks), build_reasoner, log
     )
+    published_model_registry = [model_registry]
+
     def refresh_model_registry() -> ProviderRegistry:
         """Liest den Hermes-Katalog NEU — `/model --refresh` haengt daran.
 
@@ -319,17 +323,32 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
         """
         latest = (hermes_catalog.load() if config.hermes_catalog_configured
                   else hermes_catalog.load_if_present())
-        return models.merged(
-            with_custom_providers(
-                with_local_provider(safe_talos_registry(latest), wanted_selection),
-                eigene_anbieter,
-            ),
+        candidate = with_custom_providers(
+            with_local_provider(safe_talos_registry(latest), wanted_selection),
+            eigene_anbieter,
+        )
+        # Hermes/CLI/OAuth has no complete-snapshot marker. It may add immediately,
+        # but an empty/transient helper result cannot delete an existing provider or
+        # model. Exact removals remain possible below through provider-authoritative
+        # HTTP cache entries.
+        conservative = preserve_registry_additions(
+            published_model_registry[0], candidate,
+        )
+        refreshed = models.merged(
+            conservative,
             models.load_cache(Path(MODEL_CACHE)),
         )
+        published_model_registry[0] = refreshed
+        return refreshed
 
     model_picker = ModelPicker(
         model_registry, reasoner, can_select=reasoner.can_select,
         refresh_registry=refresh_model_registry,
+    )
+    model_catalog_sync = ModelCatalogSync(
+        lambda: refresh_configured(config.api_credentials, Path(MODEL_CACHE)),
+        model_picker.refresh_catalog,
+        log,
     )
     kernel = PolicyKernel(
         manifest=tools.default_manifest(agy_backend=config.agy_backend,
@@ -819,6 +838,11 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
                 questions.cancel(conversation)
             worker.stop()
 
+    # Nur der langlebige Dienst synchronisiert automatisch. `ask`, `chat` und `--once`
+    # bleiben deterministisch und oeffnen keinen zusaetzlichen Netzweg. Der erste Lauf
+    # geschieht im Hintergrund sofort, danach hoechstens taeglich.
+    if not once:
+        model_catalog_sync.start()
     print(f"Talos is running (bot @{config.bot_username}). Ctrl-C to stop.")
     try:
         while True:
@@ -855,6 +879,7 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
             if once:
                 return
     finally:
+        model_catalog_sync.stop()
         # Erst die offenen Rückfragen beenden, dann den Worker einsammeln: wartet er in
         # `desk.wait()`, kommt er sonst bis zum Zeitlimit nicht an den Stop-Marker.
         for conversation in conductor.ask_contexts.conversations():

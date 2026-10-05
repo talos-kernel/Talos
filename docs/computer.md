@@ -1,21 +1,24 @@
 # Talos Computer (experimental)
 
-Talos supports two deliberately different Computer installations. The Mac app
-selects exactly one: a valid local Omarchy link replaces the remote URL controls;
-without Omarchy, the app can connect to a remote Linux Computer.
+Talos has two deliberately different Computer designs:
 
-- **Local Omarchy on Apple silicon macOS:** a visual desktop with outbound Internet
-  access through unprivileged QEMU user-mode NAT and no inbound forwarding or bridged interface.
-  When separately installed, the Mac app uses its private loopback link as the Computer
-  and hides the remote field. It supports screenshots,
-  click, type, bounded keys, scroll and explicit pause/takeover; it does not expose a
-  shell, browser protocol, guest files or routines. See the
-  [Omarchy boundary and installer](omarchy-experiment.md).
-- **Remote ARM64 Linux/KVM:** the full project, shell, semantic-browser, file and
-  routine backend documented below.
+- **Planned local QMP VM on Apple silicon macOS:** the reusable component is the
+  guest-agnostic `QmpInputAdapter`, which accepts only a pinned QMP transport and a
+  guest-only capture source. The deployment contract is fixed separately to an
+  **x86_64 Debian guest with Hyprland**, run through QEMU **TCG**, not HVF. It is a
+  visual-only path for screenshots and bounded input; shell, browser protocol, guest
+  files and routines are outside the boundary. This deployment is not yet
+  hardware-qualified or presented as an available Mac Computer. See the
+  [planned QMP VM boundary](qmp-debian-vm.md).
+- **Remote ARM64 Linux/KVM:** the project, shell, semantic-browser, file and routine
+  backend documented below.
 
-Neither backend bypasses the Talos kernel. Unsupported Omarchy operations fail
-explicitly and never fall through to the Mac or to a remote backend.
+The planned QMP deployment requires a signed, operator-supplied VM bundle and a
+matching pre-provisioned disk. Neither QEMU nor the disk is bundled with or downloaded
+by Talos. Qualification must start again against the fixed guest and exact supplied
+artifacts; evidence from an earlier guest prototype is not reusable. Neither design
+bypasses the Talos kernel, and unsupported local operations must fail rather than fall
+through to the Mac or remote backend.
 
 ## Linux/KVM backend
 

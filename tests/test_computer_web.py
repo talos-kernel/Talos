@@ -186,10 +186,10 @@ def test_snapshot_frontend_serializes_input_and_is_valid_javascript():
     text = source.read_text()
     assert "snapshotInputQueue=result.then" in text
     assert 'api("/api/input",input)' in text
-    assert "reportEvents>63" in text and "one bounded keyboard batch" in text
+    assert "reportEvents>63" in text and "bounded keyboard action" in text
     assert "response.status===204" in text
     assert "snapshotViewer()||(desktopConnected&&rfb)" in text
-    assert 'state.backend==="omarchy"' in text
+    assert 'state.backend==="qmp"' in text
     assert "No inbound forwarding, host files, clipboard or credentials." in text
     html = source.with_name("index.html").read_text()
     assert 'id="intro-copy"' in html and 'id="bottom-grid"' in html

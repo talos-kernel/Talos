@@ -117,13 +117,13 @@ def test_environment_loads_only_private_computer_capabilities(runtime, monkeypat
     desktop.provision(bundle, profile)
     config = profile / "talos.env"
     config.write_text(
-        "TALOS_COMPUTER_BACKEND=omarchy\n"
-        "TALOS_COMPUTER_SOCKET=/Library/Application Support/TalosOmarchy/run/control.sock\n"
+        "TALOS_COMPUTER_BACKEND=qmp\n"
+        "TALOS_COMPUTER_SOCKET=/Library/Application Support/TalosQmpVm/run/control.sock\n"
         "UNREVIEWED_VARIABLE=must-not-import\n"
     )
     config.chmod(0o600)
     env = desktop.clean_environment(profile, bundle / "backend", bundle / "packages")
-    assert env["TALOS_COMPUTER_BACKEND"] == "omarchy"
+    assert env["TALOS_COMPUTER_BACKEND"] == "qmp"
     assert env["TALOS_COMPUTER_SOCKET"].endswith("/run/control.sock")
     assert "UNREVIEWED_VARIABLE" not in env
     config.chmod(0o644)

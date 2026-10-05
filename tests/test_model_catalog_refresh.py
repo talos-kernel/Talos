@@ -4,7 +4,10 @@ import threading
 
 from talos.channel import Principal
 from talos.eventlog import EventLog
-from talos.provider import ModelPicker, ModelRouter, ModelSelection, Provider, ProviderRegistry
+from talos.provider import (
+    ModelPicker, ModelRouter, ModelSelection, Provider, ProviderRegistry,
+    preserve_registry_additions,
+)
 
 OWNER = Principal('telegram', '7')
 CHAT = 'telegram:7'
@@ -86,6 +89,44 @@ def test_refresh_failure_keeps_last_catalogue_and_current_reasoner(tmp_path):
     assert router.reason('proof') == 'active'
     page = handle(picker, button(top, ':p:0'))
     assert 'switched' in handle(picker, button(page, ':m:1')).text
+
+
+def test_authoritative_removal_hides_model_without_breaking_active_reasoner_or_fork(tmp_path):
+    """A catalogue may retire the active model without rewriting a running turn.
+
+    The retired name must disappear from future selections, while the already-built
+    reasoner and background forks remain usable until the operator selects another
+    model or restarts.  Catalogue refresh is metadata, not permission to silently
+    replace the model that is thinking.
+    """
+    initial = reg(('oauth', ['retired', 'replacement']))
+    picker, router, log = build(tmp_path, initial, lambda: reg(('oauth', ['replacement'])))
+
+    top = open_picker(picker)
+    page = handle(picker, button(top, ':p:0'))
+
+    assert [item.label for row in page.keyboard for item in row if ':m:' in item.data] == [
+        'replacement'
+    ]
+    assert router.reason('proof') == 'retired'
+    assert router.fork().reason('background proof') == 'retired'
+    assert not router.select('oauth', 'retired', principal=OWNER).ok
+    assert router.current == ModelSelection('oauth', 'retired')
+    assert not log.recent(10, ('model.selected',))
+    retired = log.recent(10, ('model.catalog_retired_active',))
+    assert retired[0]['payload'] == {'provider': 'oauth', 'model': 'retired'}
+
+
+def test_incomplete_hermes_refresh_is_additive_and_preserves_missing_provider():
+    previous = reg(('alpha', ['old']), ('temporarily-empty', ['still-valid']))
+    candidate = reg(('alpha', ['new']))
+
+    merged = preserve_registry_additions(previous, candidate)
+
+    assert [(p.slug, p.models) for p in merged.providers] == [
+        ('alpha', ('new', 'old')),
+        ('temporarily-empty', ('still-valid',)),
+    ]
 
 def test_refresh_does_not_hold_picker_lock_during_network_io(tmp_path):
     initial = reg(('oauth', ['active', 'other']))

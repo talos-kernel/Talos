@@ -7,7 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The 0.20.0 beta line follows the frozen operator contract; earlier alpha releases
 remain historical snapshots. Beta does not mean error-free operation.
 
-## [Unreleased — 0.20.0-beta.4 candidate]
+## [0.20.0-beta.4] — 2026-10-05
 
 ### Security
 
@@ -25,71 +25,45 @@ remain historical snapshots. Beta does not mean error-free operation.
   creating trusted error guidance.
 - Run Swift release builds with an explicit minimal environment so unrelated operator
   credentials cannot be copied into generated plugin caches.
-- Give the separately installed Omarchy Computer outbound access through one fixed,
-  unprivileged QEMU user-mode NAT device. Keep inbound forwarding, bridged or tap
-  networking, host folders, clipboard sharing, host credentials and root network
-  helpers absent.
+- Define the planned Mac QMP deployment as one fixed x86_64 Debian/Hyprland guest
+  under QEMU TCG on Apple silicon, explicitly excluding HVF, inbound forwarding,
+  bridged or tap networking, host folders, clipboard sharing and host credentials.
+  Keep the reusable `QmpInputAdapter` independent of that guest contract.
+- Refresh configured provider model catalogues outside the startup and reply paths.
+  Only complete, validated provider snapshots may remove retired models; pagination,
+  CLI/OAuth catalogues and other incomplete listings are additive. Provider failures
+  preserve the last good cache, keys remain bound to their existing routes, and a
+  retired active model is never replaced silently.
 
 ### Fixed
 
-- Bind Omarchy startup validation to the concrete QEMU process generation so a new
-  VM passes the framebuffer gate before its initial pause while an API-only restart
-  does not repeat the boot sequence.
-- Fail closed during first-boot initialization: re-pause after any startup error,
-  verify the paused state, and persist the process-generation marker only afterwards.
-- Prove the retired root network helper is absent after every unload attempt before
-  removing its launchd file or starting the unprivileged replacement services.
+- Replace inherited guest packaging assumptions with a signed, operator-supplied VM
+  bundle plus a matching pre-provisioned disk. Talos bundles and downloads neither
+  QEMU nor the disk.
 - Return `Retry-After` on every Workbench login throttle response, using the same
   60-second window that enforces the limit.
-- Submit each keyboard action once as one bounded QMP event batch, reject oversized
-  text before any input, never replay uncertainty, and distinguish dispatch from guest
-  delivery in receipts. Queue capacity and delivery remain unconfirmed.
-- Terminate the local Computer API session on an uncertain QMP response. launchd then
-  creates a fresh peer-pinned session that recovers unfinished jobs and proves the VM
-  paused before the control socket becomes available again.
+- Mark the fixed guest contract as not yet hardware-qualified. Qualification must use
+  the exact supplied artifacts; evidence from an earlier guest prototype is not
+  reusable.
 - Assemble the final-answer protocol for the Claude CLI route as well as API routes.
+- Serialize model-cache read/merge/write transactions so manual and automatic refreshes
+  cannot lose each other's provider updates.
 
 ### App
 
-- Prepare macOS App 0.3.5 build 11 with this beta core and the current Omarchy boundary.
+- Keep the planned QMP VM outside the Mac app's supported Computer options until the
+  fixed guest contract is hardware-qualified.
 
 ## [0.20.0-beta.3] — 2026-10-02
 
-### Security
+### QMP prototype note
 
-- Add an explicit Apple-silicon Omarchy Computer installer with a hidden non-admin,
-  no-login service identity, no virtual NIC, host share or clipboard bridge, and
-  operator-inaccessible raw disk/QMP transport. The authenticated workbench binds
-  only to loopback and removes its one-use fragment token from browser history.
-- Accept the local Computer link in the Mac app only from an operator-owned regular
-  file with mode 0600 and an exact loopback origin. Import only the exact Computer
-  capability keys into the desktop runtime; never persist the local access token in
-  app preferences.
-- Verify source app signatures before installation, verify copied QEMU before an
-  atomic immutable-runtime switch, and fail closed on a partial or weakened service
-  identity. Publication does not change or restart an existing Pi installation.
-
-### Added
-
-- Add the offline, visual-only Omarchy backend: screenshot, status, bounded click,
-  type, key, scroll, pause, resume, stop and explicit human takeover. Shell, browser
-  protocol, guest files and routines fail instead of falling through to the Mac.
-- Add App 0.3.4 build 8 with a primary local Omarchy card and the existing remote
-  Linux Computer as the explicit full-featured fallback.
-- Add installed browser/OCR and API-restart E2E gates. The visual gate requires two
-  consecutive terminal commands whose typed marker and resulting output are both
-  visible, plus clean browser health, token removal, mobile layout and final pause.
-
-### Fixed
-
-- Use explicit bounded key-down/key-up events, with a short printable-key hold and a
-  separate special-key hold, preventing observed repeating letters and swallowed
-  Return events without replaying uncertain input.
-- Hide Linux-only project and routine panels in the Omarchy workbench and describe
-  the offline visual boundary directly.
-- Strip local build paths and generated console entry points from signed Mac app
-  bundles; the builder now refuses any remaining home, repository, Python-root or
-  temporary build path before signing.
+- Introduce the generic `QmpInputAdapter` boundary for bounded visual input and
+  explicit operator handover. The adapter is not a guest distribution or packaging
+  contract.
+- Retire the prototype guest assumptions from the current plan. The replacement
+  x86_64 Debian/Hyprland guest, TCG launch contract and operator-supplied artifacts
+  require fresh hardware qualification; prototype evidence does not carry forward.
 
 ## [0.20.0-beta.2] — 2026-10-02
 

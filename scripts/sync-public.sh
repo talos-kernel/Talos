@@ -17,6 +17,14 @@ set -euo pipefail
 
 QUELLE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ZIEL="${1:-}"
+ARCHIV=""
+
+cleanup() {
+  if [ -n "$ARCHIV" ]; then
+    rm -f "$ARCHIV"
+  fi
+}
+trap cleanup EXIT
 
 if [ -z "$ZIEL" ] || [ ! -d "$ZIEL/.git" ]; then
   echo "usage: scripts/sync-public.sh <clone-of-talos-kernel/talos>" >&2
@@ -26,8 +34,16 @@ fi
 # Alles ausser .git weg: sonst bleiben Dateien liegen, die es in der Quelle nicht mehr gibt.
 find "$ZIEL" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
 
-# Die Quelle absolut, damit kein vorheriges `cd` mitredet.
-git -C "$QUELLE" ls-files -z | (cd "$QUELLE" && xargs -0 tar cf -) | tar xf - -C "$ZIEL"
+# Die Quelle absolut, damit kein vorheriges `cd` mitredet. Die Dateiliste geht in
+# EINEN tar-Prozess. `xargs tar` teilt einen grossen Baum in mehrere Archive. Ein
+# direkter bsdtar->bsdtar-Stream ist auf macOS ebenfalls kein ehrlicher Beweis: der
+# Leser kann nach dem Endmarker sauber schliessen, waehrend der Schreiber noch seinen
+# letzten Block sendet und deshalb mit "Write error" endet. Das temporaere Archiv
+# trennt Erzeugung und Extraktion, sodass beide Schritte ihren eigenen Exit-Status
+# liefern. Sichtbar geworden ist das erst bei 505 Dateien.
+ARCHIV="$(mktemp "${TMPDIR:-/tmp}/talos-public-sync.XXXXXX.tar")"
+git -C "$QUELLE" ls-files -z | (cd "$QUELLE" && tar --null -T - -cf "$ARCHIV")
+tar xf "$ARCHIV" -C "$ZIEL"
 
 quelle_n=$(git -C "$QUELLE" ls-files | wc -l | tr -d ' ')
 ziel_n=$(find "$ZIEL" -path "$ZIEL/.git" -prune -o -type f -print | wc -l | tr -d ' ')
