@@ -8,20 +8,20 @@
 
 <!--
   Die Doku wohnt unter /docs. /setup bleibt bestehen, weil der Weg bereits verlinkt
-  und verschickt wurde — eine tote Adresse ist schlimmer als eine knappe ehrliche
+  und verschickt wurde  ·  eine tote Adresse ist schlimmer als eine knappe ehrliche
   Seite. Zwei Kopien derselben Anleitung waeren die schlechtere Loesung: sie laufen
   auseinander. Deshalb kein Redirect mehr, sondern ein klarer Wegweiser im selben
   CRT-Kleid wie der Rest der Site: gleiche Tokens, gleiche Nav, gleicher Footer.
 -->
-<title>Talos — this address moved to the field manual</title>
+<title>Talos  ·  this address moved to the field manual</title>
 <meta name="description" content="The setup guide that lived here grew into the field manual under /docs/: install, identity, model, operation. This page stays so the old address keeps working.">
 <link rel="canonical" href="https://talos-agent.ch/docs/">
-<meta name="robots" content="noindex">
+
 <meta name="theme-color" content="#17140F">
 <script>document.documentElement.classList.add('js')</script>
 
 <style>
-/* ── fonts (local, no third party) — /setup/ liegt eine Ebene tiefer ───────── */
+/* ── fonts (local, no third party)  ·  /setup/ liegt eine Ebene tiefer ───────── */
 @font-face { font-family: "VT323"; src: url("../fonts/vt323.woff2") format("woff2");
              font-weight: 400; font-display: swap; }
 @font-face { font-family: "Sometype Mono"; src: url("../fonts/sometype-mono-var.woff2") format("woff2");
@@ -29,7 +29,7 @@
 @font-face { font-family: "Sometype Mono"; src: url("../fonts/sometype-mono-italic.woff2") format("woff2");
              font-weight: 400; font-style: italic; font-display: swap; }
 
-/* Dieselben Tokens wie überall — ein System, ein Look. */
+/* Dieselben Tokens wie überall  ·  ein System, ein Look. */
 :root{
   --bg:    oklch(0.115 0.012 75);
   --bg2:   oklch(0.145 0.016 78);
@@ -123,7 +123,7 @@ footer .sp{flex:1}
   background:var(--amber);box-shadow:0 0 12px oklch(0.8 0.155 80/.55);
   transform:scaleX(0);transform-origin:0 50%}
 
-/* reveals — hinter dem js-Gate: ohne JS steht alles da */
+/* reveals  ·  hinter dem js-Gate: ohne JS steht alles da */
 html.js .rv{opacity:0;transform:translateY(20px);transition:opacity .8s cubic-bezier(.19,1,.22,1),transform .8s cubic-bezier(.19,1,.22,1)}
 html.js .rv.in{opacity:1;transform:none}
 
@@ -137,33 +137,22 @@ html.js .rv.in{opacity:1;transform:none}
   .rule{display:none}
 }
 </style>
-<link rel="stylesheet" href="/interface.css">
-<script src="/interface.js" defer></script>
-</head>
-<body>
+<link rel="stylesheet" href="/marble-base.css?v=20261006">
+<script src="/marble-demo.js?v=20261006" defer></script>
+<link rel="stylesheet" href="/marble.css?v=20261006"><script src="/marble.js?v=20261006" defer></script></head>
+<body class="marble-document">
 
 <div class="rule" id="rule" aria-hidden="true"></div>
 <div class="crt-fx" aria-hidden="true"></div>
 
-<nav>
-  <div class="wrap">
-    <a class="brand" href="/"><img class="mark" src="../brand/sigil-78.png" alt="" width="26" height="26">TALOS</a>
-    <a class="lnk" href="/">Keep</a>
-    <a class="lnk" href="/#kernel">Kernel</a>
-    <a class="lnk" href="/#ledger">Ledger</a>
-    <a class="lnk" href="/docs/">Codex</a>
-    <a class="lnk" href="/vergleich/">Weigh the Orders</a>
-    <a class="lnk" href="/console.html">Command Hall</a>
-    <a class="lnk" href="https://github.com/talos-kernel/talos">Source</a>
-    <span class="sp"></span>
-    <span class="status"><i>●</i> MOVED · THE MANUAL CARRIES IT NOW</span>
-  </div>
-</nav>
+<a class="skip-link" href="#main-content">Skip to content</a>
+<nav class="marble-nav" aria-label="Main navigation"><a class="marble-brand" href="/">TALOS<span>THE OPERATOR'S AGENT</span></a><div class="marble-links" id="marble-links"><a href="/#kernel">Kernel</a><a href="/#grants">Grants</a><a href="/docs/">Codex</a><a href="/console.html">Command Hall</a><details class="explore"><summary>Explore</summary><div><a href="/#chronicle">Chronicle</a><a href="/#does">Deeds</a><a href="/#tools">Arsenal</a><a href="/#nail">The Nail</a><a href="/#ledger">Ledger</a><a href="/#limits">Bounds</a><a href="/#numbers">Proof</a><a href="/registry/">Roll of Arms</a><a href="/vergleich/">Weigh the Orders</a><a href="/redteam/">Adversarial trials</a><a href="/watcher/">The Watcher</a></div></details><a class="nav-cta" href="/#install">Raise the keep ↗</a></div><button class="mobile-menu" aria-expanded="false" aria-controls="marble-links">Menu</button></nav>
+
 
 <header class="hero" id="top">
   <div class="wrap">
     <p class="sys rv">setup · an old address, kept alive</p>
-    <h1 class="rv">This address moved.</h1>
+    <h1 id="main-content" tabindex="-1" class="rv">This address moved.</h1>
     <p class="lede rv">The setup guide that used to live here grew into the
     <strong>field manual</strong>: install, identity, model, operation. Twelve sections,
     plus the commands it deliberately leaves out. One manual, not two copies that
@@ -184,7 +173,7 @@ html.js .rv.in{opacity:1;transform:none}
 
 <footer>
   <div class="wrap">
-    <a href="https://talos-agent.ch">talos-agent.ch</a>
+    <a href="/">talos-agent.ch</a>
     <a href="/docs/">Codex</a>
     <a href="/#ledger">Ledger</a>
     <a href="/vergleich/">Weigh the Orders</a>
@@ -218,7 +207,7 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   }, {passive: true});
 })();
 
-/* Reveals + number settle — rein kosmetisch, ohne JS steht alles da. */
+/* Reveals + number settle  ·  rein kosmetisch, ohne JS steht alles da. */
 (() => {
   const io = new IntersectionObserver(es => es.forEach(e => {
     if (!e.isIntersecting) return;

@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>TALOS — The MCP registry</title>
-<meta name="description" content="How Talos runs MCP servers: no marketplace, no third-party code in the agent process — an operator-owned registry behind a double gate, inside a UID-separated worker.">
+<title>TALOS  ·  The MCP registry</title>
+<meta name="description" content="How Talos runs MCP servers: no marketplace, no third-party code in the agent process  ·  an operator-owned registry behind a double gate, inside a UID-separated worker.">
 <link rel="icon" href="../brand/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="../brand/apple-touch-icon.png">
-<meta property="og:title" content="TALOS — The MCP registry">
+<meta property="og:title" content="TALOS  ·  The MCP registry">
 <meta property="og:description" content="No marketplace. An operator-owned registry, a double gate, and MCP servers that live only inside the confined worker.">
 <meta property="og:image" content="https://talos-agent.ch/brand/og-logo.png">
 <meta property="og:url" content="https://talos-agent.ch/registry/">
@@ -15,7 +15,7 @@
 <meta name="theme-color" content="#17140F">
 <script>document.documentElement.classList.add('js')</script>
 <style>
-/* ── fonts (lokal, kein Drittanbieter) — docs/ liegt eine Ebene tiefer ─────── */
+/* ── fonts (lokal, kein Drittanbieter)  ·  docs/ liegt eine Ebene tiefer ─────── */
 @font-face { font-family:"VT323"; src:url("../fonts/vt323.woff2") format("woff2");
              font-weight:400; font-display:swap; }
 @font-face { font-family:"Sometype Mono"; src:url("../fonts/sometype-mono-var.woff2") format("woff2");
@@ -23,7 +23,7 @@
 @font-face { font-family:"Sometype Mono"; src:url("../fonts/sometype-mono-italic.woff2") format("woff2");
              font-weight:400; font-style:italic; font-display:swap; }
 
-/* Dieselben Tokens wie die Hauptseite — ein System, ein Look. */
+/* Dieselben Tokens wie die Hauptseite  ·  ein System, ein Look. */
 :root{
   --bg:    oklch(0.115 0.012 75);
   --bg2:   oklch(0.145 0.016 78);
@@ -48,7 +48,7 @@ body{
 a{color:var(--hot)}
 
 /* ── CRT-Overlay: nur dezente Scanlines + leichte Vignette.
-   Das Manual ist lang — Lesbarkeit schlaegt Effekt, deshalb bewusst
+   Das Manual ist lang  ·  Lesbarkeit schlaegt Effekt, deshalb bewusst
    schwaecher dosiert als auf der Hauptseite und ohne Rain/Boot. ── */
 .crt-fx{position:fixed; inset:0; pointer-events:none; z-index:90}
 .crt-fx::before{
@@ -133,7 +133,7 @@ a{color:var(--hot); text-decoration-color:var(--line); text-underline-offset:3px
 a:hover{text-decoration-color:var(--hot)}
 ul{max-width:66ch; margin:11px 0; padding-left:0; list-style:none}
 li{margin:5px 0; padding-left:18px; position:relative}
-li::before{content:"—"; position:absolute; left:0; color:var(--faint)}
+li::before{content:" · "; position:absolute; left:0; color:var(--faint)}
 
 /* ── code ─────────────────────────────────────────────────── */
 pre{background:oklch(0.09 0.01 75); border:1px solid var(--line); padding:16px 18px;
@@ -191,7 +191,7 @@ footer .sp{flex:1}
   background:var(--amber); box-shadow:0 0 12px oklch(0.8 0.155 80/.55);
   transform:scaleX(0); transform-origin:0 50%}
 
-/* reveals — hinter dem js-Gate: ohne JS steht das ganze Manual da */
+/* reveals  ·  hinter dem js-Gate: ohne JS steht das ganze Manual da */
 html.js .rv{opacity:0; transform:translateY(20px);
   transition:opacity .8s cubic-bezier(.19,1,.22,1), transform .8s cubic-bezier(.19,1,.22,1)}
 html.js .rv.in{opacity:1; transform:none}
@@ -207,29 +207,17 @@ html.js .rv.in{opacity:1; transform:none}
   html{scroll-behavior:auto}
 }
 </style>
-<link rel="stylesheet" href="/interface.css">
-<script src="/interface.js" defer></script>
-</head>
-<body>
+<link rel="stylesheet" href="/marble-base.css?v=20261006">
+<script src="/marble-demo.js?v=20261006" defer></script>
+<link rel="stylesheet" href="/marble.css?v=20261006"><script src="/marble.js?v=20261006" defer></script></head>
+<body class="marble-document">
 
 <div class="rule" id="rule" aria-hidden="true"></div>
 <div class="crt-fx" aria-hidden="true"></div>
 
-<nav>
-  <div class="wrap">
-    <a class="brand" href="/"><img class="mark" src="../brand/sigil-78.png" alt="" width="26" height="26">TALOS</a>
-    <a class="lnk" href="/">Keep</a>
-    <a class="lnk" href="/#kernel">Kernel</a>
-    <a class="lnk" href="/#ledger">Ledger</a>
-    <a class="lnk" href="/docs/">Codex</a>
-    <a class="lnk on" href="/registry/" aria-current="page">Roll of Arms</a>
-    <a class="lnk" href="/vergleich/">Weigh the Orders</a>
-    <a class="lnk" href="/console.html">Command Hall</a>
-    <a class="lnk" href="https://github.com/talos-kernel/talos">Source</a>
-    <span class="sp"></span>
-    <span class="status"><i>●</i> MCP REGISTRY · REV 0.19.21-ALPHA</span>
-  </div>
-</nav>
+<a class="skip-link" href="#main-content">Skip to content</a>
+<nav class="marble-nav" aria-label="Main navigation"><a class="marble-brand" href="/">TALOS<span>THE OPERATOR'S AGENT</span></a><div class="marble-links" id="marble-links"><a href="/#kernel">Kernel</a><a href="/#grants">Grants</a><a href="/docs/">Codex</a><a href="/console.html">Command Hall</a><details class="explore"><summary>Explore</summary><div><a href="/#chronicle">Chronicle</a><a href="/#does">Deeds</a><a href="/#tools">Arsenal</a><a href="/#nail">The Nail</a><a href="/#ledger">Ledger</a><a href="/#limits">Bounds</a><a href="/#numbers">Proof</a><a href="/registry/">Roll of Arms</a><a href="/vergleich/">Weigh the Orders</a><a href="/redteam/">Adversarial trials</a><a href="/watcher/">The Watcher</a></div></details><a class="nav-cta" href="/#install">Raise the keep ↗</a></div><button class="mobile-menu" aria-expanded="false" aria-controls="marble-links">Menu</button></nav>
+
 
 <main>
 <div class="wrap">
@@ -240,7 +228,7 @@ html.js .rv.in{opacity:1; transform:none}
       <span>Classification · Public</span>
       <span>Subject · MCP without a marketplace</span>
     </div>
-    <h1>The MCP registry</h1>
+    <h1 id="main-content" tabindex="-1">The MCP registry</h1>
     <p class="lede">Most agent ecosystems answer "what may the agent do?" with a
     marketplace. Browse a catalogue, install a stranger's code, hand it the process.
     I didn't want that on my machines. Talos answers with a <strong>file the operator
@@ -281,7 +269,7 @@ html.js .rv.in{opacity:1; transform:none}
     <div class="note">
       <b>Why not the agent process</b>
       <p>An MCP server is somebody else's code with a tool list. Load it into the agent
-      and it stands next to the kernel with rights of its own — exactly the second
+      and it stands next to the kernel with rights of its own  ·  exactly the second
       source of permission I built the gate to remove. Inside the worker it is a guest
       in a cell. The confinement form is the boundary. The agent only ever sees names
       and results.</p>
@@ -300,9 +288,9 @@ html.js .rv.in{opacity:1; transform:none}
       registry. No error, no guessed partial state.</li>
       <li>An invalid entry falls out <strong>on its own</strong>. Its neighbours stay
       readable. One bad entry does not take the good ones with it.</li>
-      <li>Names must match <code>[a-z0-9-]{1,32}</code> — they become tool prefixes
+      <li>Names must match <code>[a-z0-9-]{1,32}</code>  ·  they become tool prefixes
       (<code>mcp__&lt;name&gt;</code>) and file components.</li>
-      <li><code>command</code> must be an <strong>absolute</strong> path — or empty, in
+      <li><code>command</code> must be an <strong>absolute</strong> path  ·  or empty, in
       which case <code>npx &lt;package&gt;</code> starts the server. A relative command
       would resolve against the job's workspace and could be swapped from there.</li>
       <li><code>args</code> is a capped string list. Sixteen servers at most.</li>
@@ -348,7 +336,7 @@ html.js .rv.in{opacity:1; transform:none}
       "name": "filesystem",
       "command": "/usr/local/bin/npx",
       "args": ["@modelcontextprotocol/server-filesystem", "/var/lib/talos/claude-jobs"],
-      "description": "File access rooted at the worker root — never wider"
+      "description": "File access rooted at the worker root  ·  never wider"
     }
   ]
 }</pre>
@@ -378,7 +366,7 @@ html.js .rv.in{opacity:1; transform:none}
 
 <footer>
   <div class="wrap">
-    <a href="https://talos-agent.ch">talos-agent.ch</a>
+    <a href="/">talos-agent.ch</a>
     <a href="/docs/">Codex</a>
     <a href="/registry/">Roll of Arms</a>
     <a href="/#ledger">Ledger</a>
@@ -413,7 +401,7 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   }, {passive: true});
 })();
 
-/* Reveals + number settle — rein kosmetisch, ohne JS steht das ganze Manual da. */
+/* Reveals + number settle  ·  rein kosmetisch, ohne JS steht das ganze Manual da. */
 (() => {
   const io = new IntersectionObserver(es => es.forEach(e => {
     if (!e.isIntersecting) return;
@@ -428,7 +416,7 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 })();
 
 /* Scroll-Spy: markiert im Inhaltsverzeichnis den Abschnitt, der gerade gelesen wird.
-   Rein kosmetisch — ohne Beobachter bleibt die Liste einfach eine Liste. */
+   Rein kosmetisch  ·  ohne Beobachter bleibt die Liste einfach eine Liste. */
 (function(){
   var links = Array.prototype.slice.call(document.querySelectorAll(".index a"));
   var ziele = links.map(function(a){

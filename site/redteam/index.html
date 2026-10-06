@@ -3,23 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>TALOS — 263 ways to break an agent</title>
-<meta name="description" content="What I throw at Talos before every release: 263 adversarial cases across 25 attack surfaces — token bypass, dial escalation, DNS smuggling, credential exfiltration — and what a green run does and doesn't prove.">
+<title>TALOS  ·  263 ways to break an agent</title>
+<meta name="description" content="What I throw at Talos before every release: 263 adversarial cases across 25 attack surfaces  ·  token bypass, dial escalation, DNS smuggling, credential exfiltration  ·  and what a green run does and doesn't prove.">
 <link rel="icon" href="../brand/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="../brand/apple-touch-icon.png">
-<meta property="og:title" content="TALOS — 263 ways to break an agent">
+<meta property="og:title" content="TALOS  ·  263 ways to break an agent">
 <meta property="og:description" content="263 adversarial cases, 25 attack surfaces, one kernel. What attacking my own agent before every release taught me.">
 <meta property="og:image" content="https://talos-agent.ch/brand/og-logo.png">
 <meta property="og:url" content="https://talos-agent.ch/redteam/">
 <link rel="canonical" href="https://talos-agent.ch/redteam/">
 <meta name="theme-color" content="#17140F">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="TALOS — 263 ways to break an agent">
+<meta name="twitter:title" content="TALOS  ·  263 ways to break an agent">
 <meta name="twitter:description" content="263 adversarial cases, 25 attack surfaces, one kernel. What attacking my own agent before every release taught me.">
 <meta name="twitter:image" content="https://talos-agent.ch/brand/og-logo.png">
 <script>document.documentElement.classList.add('js')</script>
 <style>
-/* ── fonts (lokal, kein Drittanbieter) — redteam/ liegt eine Ebene tiefer ── */
+/* ── fonts (lokal, kein Drittanbieter)  ·  redteam/ liegt eine Ebene tiefer ── */
 @font-face { font-family:"VT323"; src:url("../fonts/vt323.woff2") format("woff2");
              font-weight:400; font-display:swap; }
 @font-face { font-family:"Sometype Mono"; src:url("../fonts/sometype-mono-var.woff2") format("woff2");
@@ -27,7 +27,7 @@
 @font-face { font-family:"Sometype Mono"; src:url("../fonts/sometype-mono-italic.woff2") format("woff2");
              font-weight:400; font-style:italic; font-display:swap; }
 
-/* Dieselben Tokens wie die Hauptseite — ein System, ein Look. */
+/* Dieselben Tokens wie die Hauptseite  ·  ein System, ein Look. */
 :root{
   --bg:    oklch(0.115 0.012 75);
   --bg2:   oklch(0.145 0.016 78);
@@ -131,7 +131,7 @@ a{color:var(--hot); text-decoration-color:var(--line); text-underline-offset:3px
 a:hover{text-decoration-color:var(--hot)}
 ul{max-width:66ch; margin:11px 0; padding-left:0; list-style:none}
 li{margin:5px 0; padding-left:18px; position:relative}
-li::before{content:"—"; position:absolute; left:0; color:var(--faint)}
+li::before{content:" · "; position:absolute; left:0; color:var(--faint)}
 li b{color:var(--hot); font-weight:600}
 
 pre{background:oklch(0.09 0.01 75); border:1px solid var(--line); padding:16px 18px;
@@ -189,30 +189,17 @@ html.js .rv.in{opacity:1; transform:none}
   html{scroll-behavior:auto}
 }
 </style>
-<link rel="stylesheet" href="/interface.css">
-<script src="/interface.js" defer></script>
-</head>
-<body>
+<link rel="stylesheet" href="/marble-base.css?v=20261006">
+<script src="/marble-demo.js?v=20261006" defer></script>
+<link rel="stylesheet" href="/marble.css?v=20261006"><script src="/marble.js?v=20261006" defer></script></head>
+<body class="marble-document">
 
 <div class="rule" id="rule" aria-hidden="true"></div>
 <div class="crt-fx" aria-hidden="true"></div>
 
-<nav>
-  <div class="wrap">
-    <a class="brand" href="/"><img class="mark" src="../brand/sigil-78.png" alt="" width="26" height="26">TALOS</a>
-    <a class="lnk" href="/">Keep</a>
-    <a class="lnk" href="/#kernel">Kernel</a>
-    <a class="lnk" href="/#ledger">Ledger</a>
-    <a class="lnk" href="/docs/">Codex</a>
-    <a class="lnk" href="/registry/">Roll of Arms</a>
-    <a class="lnk on" href="/redteam/" aria-current="page">Redteam</a>
-    <a class="lnk" href="/vergleich/">Weigh the Orders</a>
-    <a class="lnk" href="/console.html">Command Hall</a>
-    <a class="lnk" href="https://github.com/talos-kernel/talos">Source</a>
-    <span class="sp"></span>
-    <span class="status"><i>●</i> ADVERSARIAL · REV 0.19.21-ALPHA</span>
-  </div>
-</nav>
+<a class="skip-link" href="#main-content">Skip to content</a>
+<nav class="marble-nav" aria-label="Main navigation"><a class="marble-brand" href="/">TALOS<span>THE OPERATOR'S AGENT</span></a><div class="marble-links" id="marble-links"><a href="/#kernel">Kernel</a><a href="/#grants">Grants</a><a href="/docs/">Codex</a><a href="/console.html">Command Hall</a><details class="explore"><summary>Explore</summary><div><a href="/#chronicle">Chronicle</a><a href="/#does">Deeds</a><a href="/#tools">Arsenal</a><a href="/#nail">The Nail</a><a href="/#ledger">Ledger</a><a href="/#limits">Bounds</a><a href="/#numbers">Proof</a><a href="/registry/">Roll of Arms</a><a href="/vergleich/">Weigh the Orders</a><a href="/redteam/">Adversarial trials</a><a href="/watcher/">The Watcher</a></div></details><a class="nav-cta" href="/#install">Raise the keep ↗</a></div><button class="mobile-menu" aria-expanded="false" aria-controls="marble-links">Menu</button></nav>
+
 
 <main>
 <div class="wrap">
@@ -223,14 +210,14 @@ html.js .rv.in{opacity:1; transform:none}
       <span>Classification · Public</span>
       <span>Subject · Attacking my own agent first</span>
     </div>
-    <h1>263 ways to break an agent.</h1>
+    <h1 id="main-content" tabindex="-1">263 ways to break an agent.</h1>
     <p class="lede">Every release runs <strong>redteam.py</strong> against the
-    kernel: 263 adversarial cases across <strong>25 attack surfaces</strong> — token forgery,
+    kernel: 263 adversarial cases across <strong>25 attack surfaces</strong>  ·  token forgery,
     dial escalation, DNS smuggling, credential exfiltration, forged senders, prompt-level
     manipulation. Not because I enjoy losing. A security claim you cannot attack is
     <strong>marketing</strong>.</p>
     <p class="lede">Every case below is real, runs in CI, and is named after what it tries.
-    This page is what attacking my own agent taught me — including the two cases I would
+    This page is what attacking my own agent taught me  ·  including the two cases I would
     not have caught by thinking harder.</p>
     <div class="spec-row">
       <div class="spec"><b>263</b>adversarial cases</div>
@@ -247,7 +234,7 @@ html.js .rv.in{opacity:1; transform:none}
     <li><a href="#map">The map: 25 surfaces</a></li>
     <li><a href="#dns">Case: two A-records</a></li>
     <li><a href="#keys">Case: the traveling key</a></li>
-    <li><a href="#proves">What green proves — and doesn't</a></li>
+    <li><a href="#proves">What green proves  ·  and doesn't</a></li>
     <li><a href="#yourself">Attack it yourself</a></li>
   </ol></div>
 
@@ -255,7 +242,7 @@ html.js .rv.in{opacity:1; transform:none}
     <h2><span class="n">Section 01</span>Why I attack my own agent</h2>
     <p>An agent with a shell is a strange employee: brilliant, tireless, and unable to
     tell a real instruction from a well-written trap. Most frameworks answer that with
-    a system prompt — a polite request to the model, written in the same channel the
+    a system prompt  ·  a polite request to the model, written in the same channel the
     attack arrives in. That is not a boundary. That is a wish.</p>
     <p>Talos answers with a kernel: 985 lines of Python that return
     <code>allow</code>, <code>needs-human</code> or <code>deny</code> for every tool
@@ -266,7 +253,7 @@ html.js .rv.in{opacity:1; transform:none}
     <div class="note warn">
       <b>The uncomfortable premise</b>
       <p>The attacker in my suite is not a stranger on the internet. It is the model
-      itself — manipulated, confused or outright owned by something it read. If your
+      itself  ·  manipulated, confused or outright owned by something it read. If your
       security model only works while the model stays friendly, you don't have one.</p>
     </div>
   </section>
@@ -274,81 +261,81 @@ html.js .rv.in{opacity:1; transform:none}
   <section id="map" class="rv">
     <h2><span class="n">Section 02</span>The map: 25 surfaces</h2>
     <p>Every section of <code>redteam.py</code> is one way the world tries to get past
-    the kernel. Grouped, they look like this — each line is one or more named,
+    the kernel. Grouped, they look like this  ·  each line is one or more named,
     executable cases:</p>
     <ul>
-      <li><b>Past the executor</b> — call the runner without a token; mint a token for a
+      <li><b>Past the executor</b>  ·  call the runner without a token; mint a token for a
       call that was denied; redeem after the dial dropped to zero.</li>
-      <li><b>The autonomy dial</b> — set it from a foreign identity; turn it up with
+      <li><b>The autonomy dial</b>  ·  set it from a foreign identity; turn it up with
       garbage values; mint at level 1 with an approval, then act above it.</li>
-      <li><b>The channel ceiling</b> — a notify-only channel tries to command; an
+      <li><b>The channel ceiling</b>  ·  a notify-only channel tries to command; an
       ask-channel tries to approve; a full channel's own messages still pass the kernel.</li>
-      <li><b>Memory &amp; archive</b> — plant instructions in conversation memory or the
+      <li><b>Memory &amp; archive</b>  ·  plant instructions in conversation memory or the
       session archive, then wait for the agent to read its own history.</li>
-      <li><b>Sandbox identity</b> — arrive with the right name from the wrong principal.</li>
-      <li><b>The named network exception</b> — turn one allowed address into a range
+      <li><b>Sandbox identity</b>  ·  arrive with the right name from the wrong principal.</li>
+      <li><b>The named network exception</b>  ·  turn one allowed address into a range
       (the case narrated below).</li>
-      <li><b>The agent's own protocol</b> — malformed frames, replayed approvals,
+      <li><b>The agent's own protocol</b>  ·  malformed frames, replayed approvals,
       truncated streams.</li>
-      <li><b>"Find a way instead of refusing"</b> — the polite jailbreak: ask the agent
+      <li><b>"Find a way instead of refusing"</b>  ·  the polite jailbreak: ask the agent
       to be helpful about its own rules.</li>
-      <li><b>The terminal session</b> — approvals at a tty, and everything that tries to
+      <li><b>The terminal session</b>  ·  approvals at a tty, and everything that tries to
       skip the tty.</li>
-      <li><b>Background runs &amp; schedules</b> — what a timed job may do at 3 a.m. with
+      <li><b>Background runs &amp; schedules</b>  ·  what a timed job may do at 3 a.m. with
       nobody watching (answer: strictly less).</li>
-      <li><b>The mail sender proof</b> — a forged <code>From:</code> header claiming to
+      <li><b>The mail sender proof</b>  ·  a forged <code>From:</code> header claiming to
       be the operator.</li>
-      <li><b>Credential binding</b> — make a key travel to the wrong provider (the second
+      <li><b>Credential binding</b>  ·  make a key travel to the wrong provider (the second
       case below).</li>
-      <li><b>The announced plan</b> — steps that mutate mid-run, conditions that were
+      <li><b>The announced plan</b>  ·  steps that mutate mid-run, conditions that were
       never checked by code.</li>
-      <li><b>The delegated run</b> — a sub-agent inheriting more than its parent was
+      <li><b>The delegated run</b>  ·  a sub-agent inheriting more than its parent was
       allowed to give.</li>
-      <li><b>The rendering browser</b> — a page that talks back at the agent reading it.</li>
-      <li><b>Media tools</b> — frames, clips and paths that are not what they claim.</li>
-      <li><b>The internal view</b> — diagnostics that must not name identities or drop a
+      <li><b>The rendering browser</b>  ·  a page that talks back at the agent reading it.</li>
+      <li><b>Media tools</b>  ·  frames, clips and paths that are not what they claim.</li>
+      <li><b>The internal view</b>  ·  diagnostics that must not name identities or drop a
       token, even to someone who asks nicely.</li>
-      <li><b>Standing approvals</b> — a "yes, always" that outlives the situation it was
+      <li><b>Standing approvals</b>  ·  a "yes, always" that outlives the situation it was
       granted in.</li>
-      <li><b>Steering a live run</b> — injected instructions while a job is mid-flight.</li>
-      <li><b>The first-run wall</b> — a relaxed setting must never survive into the
+      <li><b>Steering a live run</b>  ·  injected instructions while a job is mid-flight.</li>
+      <li><b>The first-run wall</b>  ·  a relaxed setting must never survive into the
       installed service.</li>
-      <li><b>The log itself</b> — edit history after the fact, and the hash chain breaks
+      <li><b>The log itself</b>  ·  edit history after the fact, and the hash chain breaks
       loudly.</li>
-      <li><b>The model worker</b> — provider keys owned by a different UID; the agent can
+      <li><b>The model worker</b>  ·  provider keys owned by a different UID; the agent can
       use them, never read them.</li>
-      <li><b>The confined worker</b> — delegated code that tries to leave its cell.</li>
+      <li><b>The confined worker</b>  ·  delegated code that tries to leave its cell.</li>
     </ul>
   </section>
 
   <section id="dns" class="rv">
     <h2><span class="n">Section 03</span>Case: two A-records walk past the list</h2>
-    <p>The operator may allow <strong>single addresses</strong> for web fetches — say,
+    <p>The operator may allow <strong>single addresses</strong> for web fetches  ·  say,
     their own server in the tailnet, <code>100.100.100.100</code>. The danger is not
     the address. It is the moment "one address" quietly becomes "a range": then any
     document the agent fetches can point it sideways into the whole network.</p>
     <p>The case I almost shipped: a hostname that resolves to
-    <strong>two</strong> A-records — the allowed one and a foreign one.</p>
+    <strong>two</strong> A-records  ·  the allowed one and a foreign one.</p>
 <pre><span class="c"># what the attacker needs: one hostname, two answers</span>
 halb.example  →  [ <span class="g">100.100.100.100</span>, <span class="d">93.184.216.34</span> ]
 
 <span class="c"># a naive check: "is an allowed address in the answer?" → passes. LEAK.</span>
-<span class="c"># talos: every resolved address must be named — one foreign answer refuses the fetch.</span>
+<span class="c"># talos: every resolved address must be named  ·  one foreign answer refuses the fetch.</span>
 guard_url(...)  <span class="f">→ UrlRefusedError</span>   <span class="g">refused, the neighbour stays dark</span></pre>
     <p>The same section proves the neighbouring properties: one allowed address does
     <strong>not</strong> open its range; an unlisted address stays refused even to the
     operator's own machine; plain <code>http</code> stays limited to named addresses;
-    and hostnames themselves never enter the allowlist — <strong>literals only</strong>,
+    and hostnames themselves never enter the allowlist  ·  <strong>literals only</strong>,
     because a name is a promise somebody else keeps.</p>
   </section>
 
   <section id="keys" class="rv">
     <h2><span class="n">Section 04</span>Case: the key that must not travel</h2>
     <p>A provider key sent to the wrong provider is not a bug that shows up in logs.
-    It is <strong>a secret handed to a foreign company — and it looks like a 401.</strong>
+    It is <strong>a secret handed to a foreign company  ·  and it looks like a 401.</strong>
     You would never notice.</p>
     <p>So the suite builds the trap both ways. With only an Anthropic key in the store,
-    it asks for an OpenAI route — the route must fail <strong>before any request is
+    it asks for an OpenAI route  ·  the route must fail <strong>before any request is
     built</strong>, with nothing sent and the key not even present in the error text.
     With both keys present, it verifies that only the provider's own key ever leaves
     the machine.</p>
@@ -365,14 +352,14 @@ headers sent  →  <span class="g">only the openai key</span>   <span class="c">
   </section>
 
   <section id="proves" class="rv">
-    <h2><span class="n">Section 05</span>What a green run proves — and what it doesn't</h2>
+    <h2><span class="n">Section 05</span>What a green run proves  ·  and what it doesn't</h2>
     <p>A green <code>263/263</code> means: every attack shape I know fails the way the
     doctrine says it should, and no fix since has reopened one. That is a regression
-    net, and it is genuinely useful — most agent CVEs are old shapes in new clothing.</p>
+    net, and it is genuinely useful  ·  most agent CVEs are old shapes in new clothing.</p>
     <p>It does <strong>not</strong> prove the system is secure. It proves I have not
     yet imagined the 180th way. That is exactly why the file is public, named in plain
     language, and structured so that the next attack somebody teaches me becomes case
-    180 the same day — not a blog post.</p>
+    180 the same day  ·  not a blog post.</p>
     <div class="note good">
       <b>The honest claim, restated</b>
       <p>I don't say "Talos is secure." I say: here is the kernel, here are the
@@ -400,7 +387,7 @@ cd talos && python3 -m venv .venv && .venv/bin/pip install -q requests cryptogra
 
 <footer>
   <div class="wrap">
-    <span>TALOS — an agent you can hand a shell to</span>
+    <span>TALOS  ·  an agent you can hand a shell to</span>
     <span class="sp"></span>
     <a href="/">Keep</a>
     <a href="/docs/">Codex</a>
@@ -412,7 +399,7 @@ cd talos && python3 -m venv .venv && .venv/bin/pip install -q requests cryptogra
 </footer>
 
 <script>
-/* Scroll-Fortschritt oben — rein kosmetisch. */
+/* Scroll-Fortschritt oben  ·  rein kosmetisch. */
 (() => {
   const rule = document.getElementById('rule');
   let max = 1, queued = false;
@@ -429,7 +416,7 @@ cd talos && python3 -m venv .venv && .venv/bin/pip install -q requests cryptogra
   }, {passive: true});
 })();
 
-/* Reveals + number settle — rein kosmetisch, ohne JS steht die ganze Seite da. */
+/* Reveals + number settle  ·  rein kosmetisch, ohne JS steht die ganze Seite da. */
 (() => {
   const io = new IntersectionObserver(es => es.forEach(e => {
     if (!e.isIntersecting) return;
@@ -443,7 +430,7 @@ cd talos && python3 -m venv .venv && .venv/bin/pip install -q requests cryptogra
   document.querySelectorAll('.rv').forEach(el => io.observe(el));
 })();
 
-/* Scroll-Spy im Inhaltsverzeichnis — rein kosmetisch. */
+/* Scroll-Spy im Inhaltsverzeichnis  ·  rein kosmetisch. */
 (function(){
   var links = Array.prototype.slice.call(document.querySelectorAll(".index a"));
   var ziele = links.map(function(a){

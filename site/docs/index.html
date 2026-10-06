@@ -3,25 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Talos AI Agent Docs — Install, Models &amp; Telegram</title>
+<title>Talos AI Agent Docs  ·  Install, Models &amp; Telegram</title>
 <meta name="description" content="Install the self-hosted Talos AI agent on macOS or Linux. Set up Ollama or Claude, terminal chat, Telegram and scoped approvals with the Talos field manual.">
 <link rel="icon" href="../brand/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="../brand/apple-touch-icon.png">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Talos">
-<meta property="og:title" content="Talos AI Agent Docs — Install, Models &amp; Telegram">
+<meta property="og:title" content="Talos AI Agent Docs  ·  Install, Models &amp; Telegram">
 <meta property="og:description" content="The field manual: install Talos on macOS or Linux, choose Ollama or Claude, and set up terminal chat, Telegram and scoped approvals.">
 <meta property="og:image" content="https://talos-agent.ch/brand/og-logo.png">
 <meta property="og:url" content="https://talos-agent.ch/docs/">
 <link rel="canonical" href="https://talos-agent.ch/docs/">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Talos AI Agent Docs — Install, Models &amp; Telegram">
+<meta name="twitter:title" content="Talos AI Agent Docs  ·  Install, Models &amp; Telegram">
 <meta name="twitter:description" content="Install Talos on macOS or Linux. Choose a model, set up Telegram and learn how scoped approvals work.">
 <meta name="twitter:image" content="https://talos-agent.ch/brand/og-logo.png">
 <meta name="theme-color" content="#17140F">
 <script>document.documentElement.classList.add('js')</script>
 <style>
-/* ── fonts (lokal, kein Drittanbieter) — docs/ liegt eine Ebene tiefer ─────── */
+/* ── fonts (lokal, kein Drittanbieter)  ·  docs/ liegt eine Ebene tiefer ─────── */
 @font-face { font-family:"VT323"; src:url("../fonts/vt323.woff2") format("woff2");
              font-weight:400; font-display:swap; }
 @font-face { font-family:"Sometype Mono"; src:url("../fonts/sometype-mono-var.woff2") format("woff2");
@@ -29,7 +29,7 @@
 @font-face { font-family:"Sometype Mono"; src:url("../fonts/sometype-mono-italic.woff2") format("woff2");
              font-weight:400; font-style:italic; font-display:swap; }
 
-/* Dieselben Tokens wie die Hauptseite — ein System, ein Look. */
+/* Dieselben Tokens wie die Hauptseite  ·  ein System, ein Look. */
 :root{
   --bg:    oklch(0.115 0.012 75);
   --bg2:   oklch(0.145 0.016 78);
@@ -54,7 +54,7 @@ body{
 a{color:var(--hot)}
 
 /* ── CRT-Overlay: nur dezente Scanlines + leichte Vignette.
-   Das Manual ist lang — Lesbarkeit schlaegt Effekt, deshalb bewusst
+   Das Manual ist lang  ·  Lesbarkeit schlaegt Effekt, deshalb bewusst
    schwaecher dosiert als auf der Hauptseite und ohne Rain/Boot. ── */
 .crt-fx{position:fixed; inset:0; pointer-events:none; z-index:90}
 .crt-fx::before{
@@ -139,7 +139,7 @@ a{color:var(--hot); text-decoration-color:var(--line); text-underline-offset:3px
 a:hover{text-decoration-color:var(--hot)}
 ul{max-width:66ch; margin:11px 0; padding-left:0; list-style:none}
 li{margin:5px 0; padding-left:18px; position:relative}
-li::before{content:"—"; position:absolute; left:0; color:var(--faint)}
+li::before{content:" · "; position:absolute; left:0; color:var(--faint)}
 
 /* ── code ─────────────────────────────────────────────────── */
 pre{background:oklch(0.09 0.01 75); border:1px solid var(--line); padding:16px 18px;
@@ -197,7 +197,7 @@ footer .sp{flex:1}
   background:var(--amber); box-shadow:0 0 12px oklch(0.8 0.155 80/.55);
   transform:scaleX(0); transform-origin:0 50%}
 
-/* reveals — hinter dem js-Gate: ohne JS steht das ganze Manual da */
+/* reveals  ·  hinter dem js-Gate: ohne JS steht das ganze Manual da */
 html.js .rv{opacity:0; transform:translateY(20px);
   transition:opacity .8s cubic-bezier(.19,1,.22,1), transform .8s cubic-bezier(.19,1,.22,1)}
 html.js .rv.in{opacity:1; transform:none}
@@ -213,29 +213,17 @@ html.js .rv.in{opacity:1; transform:none}
   html{scroll-behavior:auto}
 }
 </style>
-<link rel="stylesheet" href="/interface.css">
-<script src="/interface.js" defer></script>
-</head>
-<body>
+<link rel="stylesheet" href="/marble-base.css?v=20261006">
+<script src="/marble-demo.js?v=20261006" defer></script>
+<link rel="stylesheet" href="/marble.css?v=20261006"><script src="/marble.js?v=20261006" defer></script></head>
+<body class="marble-document">
 
 <div class="rule" id="rule" aria-hidden="true"></div>
 <div class="crt-fx" aria-hidden="true"></div>
 
-<nav>
-  <div class="wrap">
-    <a class="brand" href="/"><img class="mark" src="../brand/sigil-78.png" alt="" width="26" height="26">TALOS</a>
-    <a class="lnk" href="/">Keep</a>
-    <a class="lnk" href="/#kernel">Kernel</a>
-    <a class="lnk" href="/#ledger">Ledger</a>
-    <a class="lnk on" href="/docs/" aria-current="page">Codex</a>
-    <a class="lnk" href="/registry/">Roll of Arms</a>
-    <a class="lnk" href="/vergleich/">Weigh the Orders</a>
-    <a class="lnk" href="/console.html">Command Hall</a>
-    <a class="lnk" href="https://github.com/talos-kernel/talos">Source</a>
-    <span class="sp"></span>
-    <span class="status"><i>●</i> FIELD MANUAL · REV 0.19.21-ALPHA</span>
-  </div>
-</nav>
+<a class="skip-link" href="#main-content">Skip to content</a>
+<nav class="marble-nav" aria-label="Main navigation"><a class="marble-brand" href="/">TALOS<span>THE OPERATOR'S AGENT</span></a><div class="marble-links" id="marble-links"><a href="/#kernel">Kernel</a><a href="/#grants">Grants</a><a href="/docs/">Codex</a><a href="/console.html">Command Hall</a><details class="explore"><summary>Explore</summary><div><a href="/#chronicle">Chronicle</a><a href="/#does">Deeds</a><a href="/#tools">Arsenal</a><a href="/#nail">The Nail</a><a href="/#ledger">Ledger</a><a href="/#limits">Bounds</a><a href="/#numbers">Proof</a><a href="/registry/">Roll of Arms</a><a href="/vergleich/">Weigh the Orders</a><a href="/redteam/">Adversarial trials</a><a href="/watcher/">The Watcher</a></div></details><a class="nav-cta" href="/#install">Raise the keep ↗</a></div><button class="mobile-menu" aria-expanded="false" aria-controls="marble-links">Menu</button></nav>
+
 
 <main>
 <div class="wrap">
@@ -246,7 +234,7 @@ html.js .rv.in{opacity:1; transform:none}
       <span>Classification · Public</span>
       <span>Subject · An agent you can hand a shell to</span>
     </div>
-    <h1>Talos AI agent: the field manual</h1>
+    <h1 id="main-content" tabindex="-1">Talos AI agent: the field manual</h1>
     <p class="lede">Talos is a self-hosted AI agent for terminal and Telegram. It reasons with a language
     model, and runs tools: a real shell, a confined Claude worker, a browser on request.
     No tool runs until a deterministic kernel has ruled on the
@@ -281,8 +269,8 @@ html.js .rv.in{opacity:1; transform:none}
   <section id="install" class="rv">
     <h2><span class="n">Section 01</span>Install</h2>
     <p>One line. It downloads the signed public release selected by the installer, verifies the signature and the
-    checksum, runs the full test suite — and then <em>stops</em>.</p>
-<pre><span class="c"># read it first — it is served as plain text on purpose</span>
+    checksum, runs the full test suite  ·  and then <em>stops</em>.</p>
+<pre><span class="c"># read it first  ·  it is served as plain text on purpose</span>
 curl -fsSL https://talos-agent.ch/install.sh | less
 
 <span class="c"># then run it</span>
@@ -297,7 +285,7 @@ python -m pytest tests/ -q</pre>
       <b>The installer starts nothing</b>
       <p>It proves the build and hands you back your shell. Nothing starts listening
       until you say so. I didn't want an installer that quietly launches a process
-      holding a shell tool — that thing would be running before you ever reviewed
+      holding a shell tool  ·  that thing would be running before you ever reviewed
       its configuration or its state.</p>
     </div>
     <p>Python 3.11 or newer, Linux or macOS. The shell tool needs
@@ -333,10 +321,10 @@ python -m talos chat</pre>
     Approval prompts show the exact command, and stored approvals apply only to the
     action you approved.</p>
     <p>An identity is <strong>channel-qualified</strong>. The same number on a different
-    channel is a different identity — so a Telegram account that may command Talos grants
+    channel is a different identity  ·  so a Telegram account that may command Talos grants
     nothing to an email address spelling the same name.</p>
-    <p>The command line is a channel like any other. On a fresh install — allowlist still
-    empty — the local caller is admitted as <code>cli:&lt;uid&gt;</code> automatically, so the
+    <p>The command line is a channel like any other. On a fresh install  ·  allowlist still
+    empty  ·  the local caller is admitted as <code>cli:&lt;uid&gt;</code> automatically, so the
     first run works. The moment the list names one identity it becomes exhaustive: add a
     Telegram account and your uid must appear as <code>cli:&lt;uid&gt;</code> too, or
     <code>talos chat</code> and <code>talos ask</code> fall silent. A shell next to the
@@ -347,7 +335,7 @@ python -m talos chat</pre>
       allowlist. It is Tier A in the kernel's own floor: reading is refused, writing needs
       a human. Otherwise the kernel would stay intact while the list of who may command it
       came from a file the agent could rewrite.</p>
-      <p>On a real deployment, hand it to another user entirely — <code>root:agent</code>,
+      <p>On a real deployment, hand it to another user entirely  ·  <code>root:agent</code>,
       mode <code>640</code>, directory owned by root too. <code>doctor</code> treats that
       as the <em>better</em> state, not a finding.</p>
     </div>
@@ -355,7 +343,7 @@ python -m talos chat</pre>
 
   <section id="model" class="rv">
     <h2><span class="n">Section 03</span>Give it a mind</h2>
-    <p>Talos does not ship a model. It talks to one — through an API key, or through a
+    <p>Talos does not ship a model. It talks to one  ·  through an API key, or through a
     CLI you already have installed and logged in. Use local models with Ollama,
     Claude through the Claude Code CLI, or a configured API provider. Self-hosting
     Talos does not make a cloud model local; your provider's charges and terms still apply.</p>
@@ -381,7 +369,7 @@ python -m talos help setup</pre>
       <p>Until 2026-08-05 a single value served every provider, so selecting an
       OpenAI-shaped route sent an <em>Anthropic</em> key to OpenAI as a bearer token.
       Tests with identical placeholder keys cannot see that bug. Switching to a provider
-      whose key is missing now fails the <em>switch</em> — the previous provider stays
+      whose key is missing now fails the <em>switch</em>  ·  the previous provider stays
       active instead of a conversation dying mid-turn.</p>
     </div>
   </section>
@@ -418,7 +406,7 @@ python -m talos help setup</pre>
     <h2><span class="n">Section 05</span>The terminal session</h2>
 <pre>$ talos chat
 Talos 0.20.0-beta.4  ·  anthropic-api/claude-opus-4-8  ·  autonomy 3
-speaking as cli:1000  ·  approvals possible — you are at a terminal
+speaking as cli:1000  ·  approvals possible  ·  you are at a terminal
 /help for commands, `exit` to leave
 
 › what changed in the log today?</pre>
@@ -433,7 +421,7 @@ speaking as cli:1000  ·  approvals possible — you are at a terminal
     <div class="tw"><table>
       <thead><tr><th>How you started it</th><th>What happens when a human is needed</th></tr></thead>
       <tbody>
-      <tr><td>talos chat</td><td class="d">A person is there — you are asked, and you answer with the next line.</td></tr>
+      <tr><td>talos chat</td><td class="d">A person is there  ·  you are asked, and you answer with the next line.</td></tr>
       <tr><td>talos chat &lt; jobs.txt</td><td class="d">No terminal → refused, with the reason stated.</td></tr>
       <tr><td>talos chat &gt; out.log</td><td class="d">Nobody would read the question → refused.</td></tr>
       <tr><td>talos ask "…"</td><td class="d">Always refused. A one-liner waits for nothing.</td></tr>
@@ -448,7 +436,7 @@ speaking as cli:1000  ·  approvals possible — you are at a terminal
       <tbody>
       <tr><td><code>Allow once</code></td><td class="d">One approval for one exact action. It is consumed when used.</td></tr>
       <tr><td><code>Allow this task</code></td><td class="d">All approval-required actions in this present foreground task until it ends or you stop it. A new task asks again. Kernel denials still stand.</td></tr>
-      <tr><td><code>Always allow</code></td><td class="d">A standing rule for the exact action fingerprint — its command or kernel-derived target — never the tool in general. It can be revoked later.</td></tr>
+      <tr><td><code>Always allow</code></td><td class="d">A standing rule for the exact action fingerprint  ·  its command or kernel-derived target  ·  never the tool in general. It can be revoked later.</td></tr>
       <tr><td><code>Deny</code></td><td class="d">The writ closes. Nothing runs, and the denial never becomes permission.</td></tr>
       </tbody>
     </table></div>
@@ -480,7 +468,7 @@ Background #1 started: go through /var/log and summarise today's…
       run: anything that would need a human becomes a refusal. A question dropped into
       a chat where another conversation is running is the most reliable way to get a
       “yes” on the wrong thing.</p>
-      <p>Its context is <strong>empty</strong> — it gets the task and nothing else. Two
+      <p>Its context is <strong>empty</strong>  ·  it gets the task and nothing else. Two
       runs sharing one history write into each other, and afterwards nobody can say which
       of them said what. The result does not go back into the history either.</p>
     </div>
@@ -490,7 +478,7 @@ Background #1 started: go through /var/log and summarise today's…
 
   <section id="memory" class="rv">
     <h2><span class="n">Section 07</span>What it remembers</h2>
-    <p>The conversation is kept per channel, in memory only, and it is bounded twice — by
+    <p>The conversation is kept per channel, in memory only, and it is bounded twice  ·  by
     turns and by characters. An unbounded history is an unbounded prompt (cost, latency,
     drift) and an unbounded leak: what was said three weeks ago would go out to the model
     again today.</p>
@@ -498,33 +486,33 @@ Background #1 started: go through /var/log and summarise today's…
     verbatim. The head usually carries the actual task; the tail carries whatever “and
     that too” refers to.</p>
 <pre>You:                  set up the backup for the NAS
-Agent:                done — see /etc/backup.d
+Agent:                done  ·  see /etc/backup.d
 <span class="c">Earlier (summarised): discussed retention, settled on 30 days; the
                       NFS mount needed the hard option</span>
 You:                  and add the offsite copy</pre>
     <div class="note">
       <b>A summary is labelled as one</b>
       <p>It is never disguised as a verbatim turn. A summary that looks like something
-      actually said is a claim about words nobody used — and the model could quote it back
+      actually said is a claim about words nobody used  ·  and the model could quote it back
       as if it were.</p>
       <p>If summarising fails, the oldest turns are dropped as before. The <em>bound</em>
       is not a comfort feature: a history that kept growing after a failed summary would
       turn a cost question into a leak.</p>
     </div>
     <p><code>/new</code> clears the active context, summary included. The event log and
-    the searchable archive stay — “forgotten” here means precisely: out of the prompt.</p>
+    the searchable archive stay  ·  “forgotten” here means precisely: out of the prompt.</p>
 
     <h3>Skills it writes for itself</h3>
     <p>Longest-lived memory of all: a skill on disk is read into <em>every</em> prompt
     from the next turn on. So the one write path into the skills directory,
-    <code>skill_write</code>, is declared irreversible — the kernel answers
+    <code>skill_write</code>, is declared irreversible  ·  the kernel answers
     <code>NEEDS_HUMAN</code> without exception, and an unattended run gets a
     <code>DENY</code>. It creates only: never overwrites (atomically, not by looking
     first), never writes <code>allowed-tools</code>, never anything that looks like a
     credential, never outside the skills root. Improving a skill means the operator
     deletes it first. The weekly <code>skill-distillation</code> blueprint (“every sunday
     20:15”) turns the week's event log into at most one candidate and takes exactly this
-    path — or parks the candidate as a vault note when nobody is there to approve.</p>
+    path  ·  or parks the candidate as a vault note when nobody is there to approve.</p>
   </section>
 
   <section id="commands" class="rv">
@@ -541,11 +529,11 @@ You:                  and add the offsite copy</pre>
       <tr><td>config</td><td class="d">What's in there, and how do I change it.</td></tr>
       <tr><td>models</td><td class="d">What can it think with.</td></tr>
       <tr><td>status</td><td class="d">What did it do last.</td></tr>
-      <tr><td>health [--json]</td><td class="d">Is it well — runs, errors, schedules, anchor.</td></tr>
-      <tr><td>events</td><td class="d">What happened — filter by run, type or tool.</td></tr>
+      <tr><td>health [--json]</td><td class="d">Is it well  ·  runs, errors, schedules, anchor.</td></tr>
+      <tr><td>events</td><td class="d">What happened  ·  filter by run, type or tool.</td></tr>
       <tr><td>why &lt;id&gt;</td><td class="d">Why was <em>that</em> allowed or refused, and what came of it.</td></tr>
       <tr><td>verify</td><td class="d">Prove the log was not edited after the fact.</td></tr>
-      <tr><td>anchor [--send]</td><td class="d">Pin the chain head — catches tail truncation.</td></tr>
+      <tr><td>anchor [--send]</td><td class="d">Pin the chain head  ·  catches tail truncation.</td></tr>
       <tr><td>report</td><td class="d">The log as a record someone else can read, with a chain digest.</td></tr>
       <tr><td>review</td><td class="d">What this installation should change about itself.</td></tr>
       <tr><td>update</td><td class="d">New version beside the old one; signature checked, tests first.</td></tr>
@@ -562,13 +550,13 @@ You:                  and add the offsite copy</pre>
 
   <section id="slash" class="rv">
     <h2><span class="n">Section 09</span>In-session commands</h2>
-    <p>The same set in the terminal and in the messenger — one command centre, not two.
+    <p>The same set in the terminal and in the messenger  ·  one command centre, not two.
     There is deliberately no separate vocabulary for the CLI.</p>
     <div class="tw"><table>
       <thead><tr><th>Command</th><th>What it does</th></tr></thead>
       <tbody>
       <tr><td>/help</td><td class="d">What this installation understands.</td></tr>
-      <tr><td>/policy &lt;path|cmd&gt;</td><td class="d">What the kernel <em>would</em> decide — without doing it.</td></tr>
+      <tr><td>/policy &lt;path|cmd&gt;</td><td class="d">What the kernel <em>would</em> decide  ·  without doing it.</td></tr>
       <tr><td>/background &lt;task&gt;</td><td class="d">Run it beside this conversation, unattended.</td></tr>
       <tr><td>/autonomy [0-5]</td><td class="d">Show or tighten the dial. It can only ever narrow what the kernel allows.</td></tr>
       <tr><td>/undo</td><td class="d">Reverse the last write, from the snapshot the executor took.</td></tr>
@@ -576,7 +564,7 @@ You:                  and add the offsite copy</pre>
       <tr><td>/log</td><td class="d">The recent events, in the chat.</td></tr>
       <tr><td>/revoke &lt;n&gt;</td><td class="d">Drop a standing approval, by its number from /allowed.</td></tr>
       <tr><td>/stop</td><td class="d">End the running task, including any open question. A parked approval outlives it until its TTL (5 min).</td></tr>
-      <tr><td>/stopall</td><td class="d">Stop everything stoppable: thought, queue, background tasks, pending approvals — discarded, never approved. Timed runs stay.</td></tr>
+      <tr><td>/stopall</td><td class="d">Stop everything stoppable: thought, queue, background tasks, pending approvals  ·  discarded, never approved. Timed runs stay.</td></tr>
       </tbody>
     </table></div>
     <p>Every verdict the kernel can return:</p>
@@ -586,7 +574,7 @@ You:                  and add the offsite copy</pre>
     </div>
     <div class="stamps">
       <span class="vs h">Needs human</span>
-      <p>You are asked — with the kernel's facts, not the model's description of itself.</p>
+      <p>You are asked  ·  with the kernel's facts, not the model's description of itself.</p>
     </div>
     <div class="stamps">
       <span class="vs d">Deny</span>
@@ -596,7 +584,7 @@ You:                  and add the offsite copy</pre>
 
   <section id="stuck" class="rv">
     <h2><span class="n">Section 10</span>When something won't work</h2>
-    <p>Start with the doctor. It reads, counts and looks — it creates no directory,
+    <p>Start with the doctor. It reads, counts and looks  ·  it creates no directory,
     writes no file, starts no service, and shows no secret.</p>
 <pre>python -m talos doctor</pre>
     <p>Every finding carries its remedy in its own text, because the agent reads these
@@ -604,12 +592,12 @@ You:                  and add the offsite copy</pre>
     useless.</p>
 <pre>capabilities
   <span class="c">ok</span>   grab_frame (ffmpeg)   /usr/bin/ffmpeg
-  <span class="c">·</span>    web_search (ddgs)     missing — `pip install ddgs`, no key needed</pre>
+  <span class="c">·</span>    web_search (ddgs)     missing  ·  `pip install ddgs`, no key needed</pre>
 
     <h3>Why did it refuse that?</h3>
 <pre>talos events --tool run_shell     <span class="c"># find the id</span>
 talos why 4831                    <span class="c"># the verdict, the rule, and what followed</span></pre>
-    <p><code>why</code> names the rule that applied and the targets it applied to — and
+    <p><code>why</code> names the rule that applied and the targets it applied to  ·  and
     says out loud that those targets were <em>derived from the real arguments</em>, never
     taken from what the model wrote. Then it shows the rest of the same run, because
     “refused, and then?” is the question that makes people stop reading logs.</p>
@@ -625,7 +613,7 @@ talos why 4831                    <span class="c"># the verdict, the rule, and w
       <b>Proposals only</b>
       <p>The review never applies anything and has no function that could. A standing rule
       created out of “you approved this three times” would be a second source of
-      permission built from the agent's own history — the exact thing capability tokens
+      permission built from the agent's own history  ·  the exact thing capability tokens
       exist to prevent.</p>
     </div>
   </section>
@@ -643,11 +631,11 @@ talos why 4831                    <span class="c"># the verdict, the rule, and w
     a persisted byte cursor: first run at end-of-file, cursor never advanced by a failed
     poll. Replies go back through the broker's send script. The sender number comes out
     of the operator's own WhatsApp account, so this variant carries
-    <code>Trust.FULL</code> — conversations live in the same
+    <code>Trust.FULL</code>  ·  conversations live in the same
     <code>whatsapp:&lt;number&gt;</code> namespace either way. Off by default:
     <code>TALOS_WA_BROKER_SSH</code> (the SSH target),
     <code>TALOS_WA_BROKER_QUEUE</code>, <code>TALOS_WA_BROKER_CLI_DIR</code>. Configured,
-    the broker wins over the Cloud API — the registry demands unique names, and this is
+    the broker wins over the Cloud API  ·  the registry demands unique names, and this is
     the one that fetches.</p>
     <div class="tw"><table>
       <thead><tr><th>Channel</th><th>Trust</th><th>Notes</th></tr></thead>
@@ -655,7 +643,7 @@ talos why 4831                    <span class="c"># the verdict, the rule, and w
       <tr><td>telegram</td><td class="d">FULL</td><td class="d">Buttons for approvals, live status, images in.</td></tr>
       <tr><td>cli</td><td class="d">FULL</td><td class="d"><code>chat</code> and <code>ask</code>. Approvals only at a terminal.</td></tr>
       <tr><td>mail</td><td class="d">ASK</td><td class="d">Sender proven from the receiving server's <code>Authentication-Results</code>, fail-closed.</td></tr>
-      <tr><td>whatsapp</td><td class="d">FULL · NOTIFY</td><td class="d">Broker over SSH pull (FULL) — or Cloud API, outbound only (NOTIFY).</td></tr>
+      <tr><td>whatsapp</td><td class="d">FULL · NOTIFY</td><td class="d">Broker over SSH pull (FULL)  ·  or Cloud API, outbound only (NOTIFY).</td></tr>
       </tbody>
     </table></div>
     <div class="note warn">
@@ -663,7 +651,7 @@ talos why 4831                    <span class="c"># the verdict, the rule, and w
       <p>It is chosen by the sender and IMAP verifies nothing, so an allowlist keyed on it
       is bypassed by one line of text. Talos trusts only an
       <code>Authentication-Results</code> header stamped by the
-      <code>TALOS_MAIL_AUTHSERV_ID</code> it is configured to expect — and without that
+      <code>TALOS_MAIL_AUTHSERV_ID</code> it is configured to expect  ·  and without that
       configuration the sender stays unproven, fail-closed.</p>
     </div>
   </section>
@@ -676,7 +664,7 @@ talos why 4831                    <span class="c"># the verdict, the rule, and w
       <thead><tr><th>Not here</th><th>Why not</th></tr></thead>
       <tbody>
       <tr><td>gateway</td><td class="d">A gateway terminates foreign identities and then <em>claims</em> <code>channel:id</code> to the kernel instead of proving it. Identity checking would hang on a component outside the kernel.</td></tr>
-      <tr><td>setup --portal</td><td class="d">A web portal is a network service with its own authentication — by definition a second source of permission beside the allowlist.</td></tr>
+      <tr><td>setup --portal</td><td class="d">A web portal is a network service with its own authentication  ·  by definition a second source of permission beside the allowlist.</td></tr>
       <tr><td>config.yaml</td><td class="d">The config carries the allowlist, and the path floor protects that exact file. Two places means two truths about who may command it.</td></tr>
       <tr><td>--tui</td><td class="d">Pure surface. It buys optics and costs a render path plus test surface; the kernel decisions are already printed.</td></tr>
       <tr><td>tool calling</td><td class="d">The API request carries no <code>tools</code> field. Provider-side tool calling would let the model reach an executor the kernel never saw.</td></tr>
@@ -687,7 +675,7 @@ talos why 4831                    <span class="c"># the verdict, the rule, and w
       <b>The rule behind all of them</b>
       <p>Many views are fine. There may be exactly one dispatcher, one path from arguments
       to targets, and one source of permission. What weakens a guardian is not the number
-      of commands — it is a second way in.</p>
+      of commands  ·  it is a second way in.</p>
     </div>
   </section>
 
@@ -716,7 +704,7 @@ TALOS_CLAUDE_WORKER_CODEX_HOME=/var/lib/talos/codex-home</code></pre>
 
 <footer>
   <div class="wrap">
-    <a href="https://talos-agent.ch">talos-agent.ch</a>
+    <a href="/">talos-agent.ch</a>
     <a href="/docs/">Codex</a>
     <a href="/#ledger">Ledger</a>
     <a href="/vergleich/">Weigh the Orders</a>
@@ -750,7 +738,7 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   }, {passive: true});
 })();
 
-/* Reveals + number settle — rein kosmetisch, ohne JS steht das ganze Manual da. */
+/* Reveals + number settle  ·  rein kosmetisch, ohne JS steht das ganze Manual da. */
 (() => {
   const io = new IntersectionObserver(es => es.forEach(e => {
     if (!e.isIntersecting) return;
@@ -765,7 +753,7 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 })();
 
 /* Scroll-Spy: markiert im Inhaltsverzeichnis den Abschnitt, der gerade gelesen wird.
-   Rein kosmetisch — ohne Beobachter bleibt die Liste einfach eine Liste. */
+   Rein kosmetisch  ·  ohne Beobachter bleibt die Liste einfach eine Liste. */
 (function(){
   var links = Array.prototype.slice.call(document.querySelectorAll(".index a"));
   var ziele = links.map(function(a){
