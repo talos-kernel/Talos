@@ -163,8 +163,9 @@ def test_preflight_rejects_wrong_target_and_capture_geometry_before_input(tmp_pa
         check()
 
 
-def test_composed_geometry_preflight_sends_zero_input_on_mismatch(tmp_path):
+def test_composed_preflight_sends_zero_input_on_boundary_mismatch(tmp_path):
     cfg = config(tmp_path)
+    mice = [{"absolute": True}]
 
     def device(vendor, product):
         return {"id": {"vendor": vendor, "device": product},
@@ -186,7 +187,7 @@ def test_composed_geometry_preflight_sends_zero_input_on_mismatch(tmp_path):
                 return [{"inserted": {"file": cfg["disk"], "ro": False}}]
             if command == "query-mice":
                 self.commands.append(command)
-                return [{"absolute": True}]
+                return mice
             return super().__call__(command, args)
 
     qmp = BoundaryQMP()
@@ -194,18 +195,24 @@ def test_composed_geometry_preflight_sends_zero_input_on_mismatch(tmp_path):
     computer = QmpComputer(cfg, qmp=qmp, capture=lambda: frame["value"])
     computer.desktop.control("agent", human=True)
     qmp.commands.clear()
-    wrong = bytearray(png_fixture())
-    wrong[20:24] = (SIZE[1] - 1).to_bytes(4, "big")
-    frame["value"] = bytes(wrong)
-
-    with pytest.raises(ValueError, match="capture geometry"):
-        computer.desktop.action({
-            "op": "click", "project": "fixture", "key": "geometry-guard",
-            "title": "Geometry guard", "x": 10, "y": 10,
-        })
-
-    assert "input-send-event" not in qmp.commands
-    assert computer.desktop.store.jobs(cfg["owner"]) == []
+    for mismatch, reason in (("geometry", "capture geometry"),
+                             ("pointers", "absolute guest pointer")):
+        frame["value"] = png_fixture()
+        if mismatch == "geometry":
+            wrong = bytearray(png_fixture())
+            wrong[20:24] = (SIZE[1] - 1).to_bytes(4, "big")
+            frame["value"] = bytes(wrong)
+        else:
+            mice.append({"absolute": False})
+        qmp.commands.clear()
+        with pytest.raises(ValueError, match=reason):
+            computer.desktop.action({
+                "op": "click", "project": "fixture", "key": "boundary-guard",
+                "title": "Boundary guard", "x": 10, "y": 10,
+            })
+        assert "query-mice" in qmp.commands
+        assert "input-send-event" not in qmp.commands
+        assert computer.desktop.store.jobs(cfg["owner"]) == []
 
 
 def test_capture_uses_service_scratch_and_removes_ppm(tmp_path):

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import time
+from types import SimpleNamespace
 
 from talos.eventlog import Event, EventLog, new_run_id
 from talos.eventscli import run_events, run_why
@@ -224,7 +225,12 @@ def test_events_follow_prints_new_entries_until_interrupted(tmp_path, monkeypatc
         else:
             raise KeyboardInterrupt
 
-    monkeypatch.setattr("talos.eventscli.time.sleep", schlaf)
+    real_sleep = time.sleep
+    # Patching time.sleep mutates the shared module, including worker threads
+    # from other tests. Replace only this consumer's clock binding instead.
+    monkeypatch.setattr("talos.eventscli.time", SimpleNamespace(
+        sleep=schlaf, time=time.time, localtime=time.localtime, strftime=time.strftime))
+    assert time.sleep is real_sleep, "the follow clock must not replace other threads' sleep"
     text = _lauf(run_events, ["--follow"], pfad)
     assert "following" in text
     assert "read_file" in text          # der Bestand

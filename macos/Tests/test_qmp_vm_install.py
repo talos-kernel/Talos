@@ -107,7 +107,7 @@ def test_qemu_plan_is_exact_x86_tcg_with_outbound_nat(tmp_path):
     args = installer.qemu_arguments(tmp_path, manifest)
     release = tmp_path / "runtime/current"
     assert args[0] == str(release / "vm-runtime/bin/qemu-system-x86_64")
-    assert args[args.index("-machine") + 1] == "pc-q35-9.2"
+    assert args[args.index("-machine") + 1] == "pc-q35-9.2,i8042=off"
     assert args[args.index("-accel") + 1] == "tcg,thread=multi"
     assert args[args.index("-cpu") + 1] == "max"
     assert args[args.index("-netdev") + 1] == "user,id=talos-qmp-net,ipv6=off"
@@ -128,6 +128,20 @@ def test_qemu_plan_is_exact_x86_tcg_with_outbound_nat(tmp_path):
         assert forbidden not in text
     assert "qmp.sock" in args[args.index("-qmp") + 1]
     assert str(tmp_path / "vm/rootfs.ext4") in text
+
+
+@pytest.mark.parametrize("machine", ["pc-q35-9.2", "pc-q35-11.1"])
+def test_qemu_plan_disables_implicit_ps2_and_keeps_one_virtio_pointer(tmp_path, machine):
+    _, resources, _ = vm_bundle(tmp_path, qemuMachine=machine)
+    manifest = installer.load_bundle_manifest(resources)
+    args = installer.qemu_arguments(tmp_path, manifest)
+    # -nodefaults does not remove Q35's implicit i8042 mouse. Leaving it present
+    # violates the runtime preflight's exact-one-absolute-pointer requirement.
+    assert args[args.index("-machine") + 1] == machine + ",i8042=off"
+    devices = [args[index + 1] for index, value in enumerate(args) if value == "-device"]
+    assert devices.count("virtio-tablet-pci,romfile=") == 1
+    assert devices.count("virtio-keyboard-pci,romfile=") == 1
+    assert manifest["qemuMachine"] == machine
 
 
 def test_service_config_and_plists_keep_roles_separate(tmp_path):

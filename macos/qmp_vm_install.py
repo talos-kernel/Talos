@@ -249,7 +249,9 @@ def qemu_arguments(root: Path, manifest: dict) -> list[str]:
     return [
         str(release / "vm-runtime" / manifest["qemuBinary"]),
         "-name", "Talos QMP VM - NAT",
-        "-machine", manifest["qemuMachine"],
+        # Q35 creates a PS/2 mouse even with -nodefaults. The visual preflight
+        # requires exactly one absolute pointer, supplied by virtio-tablet below.
+        "-machine", manifest["qemuMachine"] + ",i8042=off",
         "-accel", "tcg,thread=multi",
         "-cpu", manifest["qemuCpu"], "-smp", "4", "-m", "8192M",
         "-nodefaults", "-no-user-config",

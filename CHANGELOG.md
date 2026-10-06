@@ -7,6 +7,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The 0.20.0 beta line follows the frozen operator contract; earlier alpha releases
 remain historical snapshots. Beta does not mean error-free operation.
 
+## [Unreleased]
+
+### Fixed
+
+- Disable Q35's implicit PS/2 controller in the planned Mac QMP launch command.
+  The virtio keyboard and single absolute tablet remain; the existing preflight
+  still refuses extra pointers before sending any input. This is not a production
+  hardware-qualification claim or a change to installed VM services.
+- Isolate the event-follow test clock from other threads instead of replacing the
+  process-wide `time.sleep`, preventing a cross-test worker interruption.
+
 ## [0.20.0-beta.4] — 2026-10-05
 
 ### Security
