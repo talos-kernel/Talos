@@ -16,6 +16,7 @@
 
 - [Home](https://talos-agent.ch/): what it is, live policy-kernel demo in the browser
 - [Field manual](https://talos-agent.ch/docs/): install, identity, memory, channels, commands
+- [FAQ](https://talos-agent.ch/faq/): Ollama, Claude, Codex, costs, Raspberry Pi, Telegram, task approvals and contributions
 - [The MCP registry](https://talos-agent.ch/registry/): extension model without a marketplace
 - [Honest comparison](https://talos-agent.ch/vergleich/): Talos vs. OpenClaw vs. Hermes, including what Talos does not have
 - [Console](https://talos-agent.ch/console.html): one real session, replayed

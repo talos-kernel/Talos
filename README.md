@@ -15,6 +15,7 @@
 <p align="center">
   <a href="https://talos-agent.ch"><b>talos-agent.ch</b></a> ·
   <a href="https://talos-agent.ch/docs/">Field manual</a> ·
+  <a href="https://talos-agent.ch/faq/">FAQ</a> ·
   <a href="CHANGELOG.md">Changelog</a> ·
   <a href="https://github.com/talos-kernel/Talos/fork"><b>Fork Talos</b></a>
 </p>
@@ -53,6 +54,20 @@ operation or a substitute for reviewing permissions and keeping backups.
 [Watch a recorded session](https://talos-agent.ch/console.html) ·
 [Install with Pinokio](https://github.com/talos-kernel/talos-pinokio)
 
+## Is Talos right for you?
+
+- **Run local models:** connect Ollama on hardware you control, or use a configured cloud provider.
+- **Work from terminal or Telegram:** inspect projects, organise notes, prepare reports and run permitted tools.
+- **Keep authority explicit:** approve once, grant eligible steps for the current task, or maintain exact-action standing rules. Hard denials remain denials.
+- **Inspect the evidence:** review tool outcomes and the audit trail; do not mistake a confident answer for a successful action.
+
+Start with the [model, cost and permission FAQ](https://talos-agent.ch/faq/).
+Talos is not Talos Linux or Cisco Talos. It is a self-hosted AI agent, and it remains beta.
+If this approach is useful, **star the repository to bookmark it**, try a small task and
+[report a reproducible result](https://github.com/talos-kernel/Talos/issues).
+Want to improve it? [Fork Talos](https://github.com/talos-kernel/Talos/fork) and read
+[the contribution guide](CONTRIBUTING.md). Keep private configuration and credentials out of your fork.
+
 ```
    message ──▶ event log ──▶ reason ──▶ ╔══════════╗ ──▶ capability ──▶ execute
                                         ║  KERNEL  ║        token          │
@@ -70,7 +85,7 @@ operation or a substitute for reviewing permissions and keeping backups.
 
 ```bash
 curl -fsSL https://talos-agent.ch/install.sh | less   # read it first
-curl -fsSL https://talos-agent.ch/install.sh | sh     # then run it
+curl -fsSL https://talos-agent.ch/install.sh | bash   # then run it
 ```
 
 The installer verifies the signature and the checksum, runs the full suite — and then

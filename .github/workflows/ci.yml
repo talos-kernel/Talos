@@ -57,6 +57,9 @@ jobs:
       - name: Check public hygiene
         run: python scripts/check-public-hygiene.py
 
+      - name: Check FAQ search metadata and links
+        run: python scripts/check-site-discovery.py
+
       - name: Verify embedded signature-verifier pins
         run: python scripts/sync-verifier-lock.py --check
 

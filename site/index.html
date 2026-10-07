@@ -364,7 +364,7 @@ html.js .rv.in{opacity:1;transform:none}
 <body class="talos-home">
 
 <a class="skip-link" href="#main-content">Skip to content</a>
-<nav class="marble-nav" aria-label="Main navigation"><a class="marble-brand" href="/">TALOS<span>THE OPERATOR'S AGENT</span></a><div class="marble-links" id="marble-links"><a href="/#kernel">Kernel</a><a href="/#grants">Grants</a><a href="/docs/">Codex</a><a href="/console.html">Command Hall</a><details class="explore"><summary>Explore</summary><div><a href="/#chronicle">Chronicle</a><a href="/#does">Deeds</a><a href="/#tools">Arsenal</a><a href="/#nail">The Nail</a><a href="/#ledger">Ledger</a><a href="/#limits">Bounds</a><a href="/#numbers">Proof</a><a href="/registry/">Roll of Arms</a><a href="/vergleich/">Weigh the Orders</a><a href="/redteam/">Adversarial trials</a><a href="/watcher/">The Watcher</a></div></details><a class="nav-cta" href="/#install">Raise the keep ↗</a></div><button class="mobile-menu" aria-expanded="false" aria-controls="marble-links">Menu</button></nav>
+<nav class="marble-nav" aria-label="Main navigation"><a class="marble-brand" href="/">TALOS<span>THE OPERATOR'S AGENT</span></a><div class="marble-links" id="marble-links"><a href="/#kernel">Kernel</a><a href="/#grants">Grants</a><a href="/docs/">Codex</a><a href="/console.html">Command Hall</a><a href="/faq/">FAQ</a><details class="explore"><summary>Explore</summary><div><a href="/#chronicle">Chronicle</a><a href="/#does">Deeds</a><a href="/#tools">Arsenal</a><a href="/#nail">The Nail</a><a href="/#ledger">Ledger</a><a href="/#limits">Bounds</a><a href="/#numbers">Proof</a><a href="/registry/">Roll of Arms</a><a href="/vergleich/">Weigh the Orders</a><a href="/redteam/">Adversarial trials</a><a href="/watcher/">The Watcher</a></div></details><a class="nav-cta" href="/#install">Raise the keep ↗</a></div><button class="mobile-menu" aria-expanded="false" aria-controls="marble-links">Menu</button></nav>
 
 
 <div class="hall-story" id="top"><header class="marble-hero" id="main-content" tabindex="-1"><div class="hero-copy"><p class="eyebrow">SELF-HOSTED INTELLIGENCE. HUMAN AUTHORITY.</p><h1>Room to act.<br>Rules to keep.</h1><p class="hero-lede">Your AI agent for real work.<br>Your models. Your machine. Your command.</p><div class="hero-actions"><a class="marble-button" href="#mission">Witness the deed <span>↗</span></a><a class="text-link" href="#install">Raise the keep ↗</a></div><p class="hero-footnote">Open source · Terminal &amp; Telegram · MIT</p></div><div class="hall-art" aria-hidden="true"><div class="hall-travel"><div class="hall-camera"><div class="hall-sanctum"><img src="/sentinel.png" alt="" width="1254" height="1254"><div class="pedestal"></div></div><div class="hall-frame" style="--i:0;--turn:-1"></div><div class="hall-frame" style="--i:1;--turn:1"></div><div class="hall-frame" style="--i:2;--turn:-1"></div><div class="hall-frame" style="--i:3;--turn:1"></div><div class="hall-frame" style="--i:4;--turn:-1"></div><div class="hall-frame" style="--i:5;--turn:1"></div><div class="hall-frame" style="--i:6;--turn:-1"></div><div class="hall-frame" style="--i:7;--turn:1"></div><div class="hall-frame" style="--i:8;--turn:-1"></div></div></div><div class="hall-light"></div><div class="hall-caption"><span>FIG. 01 / THE GUARDIAN</span><span>MOVE TO EXPLORE</span></div></div><div class="hero-bottom"><span>The model proposes. It never decides.</span><a href="#mission">SCROLL INTO THE HALL ↓</a><button class="motion-toggle" aria-pressed="false">Pause motion</button></div></header></div>
@@ -697,11 +697,15 @@ html.js .rv.in{opacity:1;transform:none}
 <section id="faq">
   <div class="wrap">
     <p class="sec-tag rv">questions</p>
-    <h2 class="rv">Asked, answered.</h2>
+    <h2 class="rv">Talos AI agent: your questions</h2>
+    <p class="sub rv">Models, costs, installation and the terms of each grant.
+    Read the <a href="/faq/">full Talos FAQ</a> for Ollama, Claude, Codex, Raspberry Pi,
+    Telegram and task approvals.</p>
     <div class="qa">
       <details class="q rv"><summary>What does it cost?</summary>
-        <p>Talos is MIT-licensed and free. You pay only the model provider you configure,
-        and the installer starts nothing until you say so.</p></details>
+        <p>Talos is MIT-licensed with no Talos subscription fee. Vercel is not required.
+        Model providers, hosting and local hardware may have their own costs.
+        Read <a href="/faq/#cost">the cost breakdown</a>.</p></details>
       <details class="q rv"><summary>Which models does it run on?</summary>
         <p>Use local models through Ollama, Claude through the Claude Code CLI, or a
         configured API provider. The kernel judges the call, not the model.
@@ -747,9 +751,10 @@ html.js .rv.in{opacity:1;transform:none}
         <p>The model proposes, it does not decide. A deterministic kernel grants authority for
         exact arguments, once, for 30 seconds, and writes every verdict to an append-only log.
         Both suites run on every install, in front of you.</p></details>
-      <details class="q rv"><summary>Does it need a server of mine?</summary>
-        <p>No listening socket, ever. Every channel fetches: Telegram long-polls, mail is
-        pulled over IMAP, WhatsApp goes through an operator-controlled broker over SSH.</p></details>
+      <details class="q rv"><summary>Does Telegram need a public webhook?</summary>
+        <p>No. The Telegram channel fetches messages by long polling. You do not need
+        to expose a public webhook for it. Your agent still runs on the Mac, Linux
+        machine or server you configure. See <a href="/faq/#telegram">Telegram setup questions</a>.</p></details>
     </div>
   </div>
 </section>
@@ -794,7 +799,7 @@ html.js .rv.in{opacity:1;transform:none}
     <a href="/docs/">Codex</a>
     <a href="#ledger">Book of Judgement</a>
     <a href="#limits">Bounds</a>
-    <a href="#faq">Questions</a>
+    <a href="/faq/">FAQ</a>
     <a href="/watcher/">The Watcher</a>
     <a href="/console.html">Command Hall</a>
     <a href="https://github.com/talos-kernel/talos">Source</a>
