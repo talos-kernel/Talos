@@ -22,7 +22,9 @@ from talos.prompt_context import (
     UNTRUSTED_TOOL_RESULT_OPEN,
 )
 from talos.snapshot import Snapshotter
-from talos.channel import CallbackQuery, Inbound, Principal, StructuredMessage, Trust
+from talos.channel import (
+    CallbackQuery, DeliveryUncertain, Inbound, Principal, StructuredMessage, Trust,
+)
 
 OWNER = Principal("telegram", "100000001")
 STRANGER = Principal("telegram", "111111")
@@ -85,6 +87,7 @@ def _build(
     approval_picker=None,
     send_structured=None,
     allowed_principals=None,
+    send=None,
 ):
     log = EventLog(tmp_path / "ev.db")
     sent: list[tuple[str, str]] = []
@@ -103,7 +106,7 @@ def _build(
         log=log,
         reasoner=reasoner,
         executor=executor,
-        send=lambda conversation, text: sent.append((conversation, text)),
+        send=send or (lambda conversation, text: sent.append((conversation, text))),
         allowed_principals=allowed,
         trust_of=trust_of,
         approvals=approvals,
@@ -121,6 +124,8 @@ class FakeActivity:
         self.events = []
         self.succeeded = 0
         self.failed: list[str] = []
+        self.cleaned = 0
+        self.uncertain_count = 0
 
     def progress(self, event) -> None:
         self.events.append(event)
@@ -130,6 +135,12 @@ class FakeActivity:
 
     def fail(self, error: str) -> None:
         self.failed.append(error)
+
+    def cleanup(self) -> None:
+        self.cleaned += 1
+
+    def uncertain(self) -> None:
+        self.uncertain_count += 1
 
 
 class FakeCommands:
@@ -855,6 +866,7 @@ class FakeStream:
         self.deltas: list[str] = []
         self.adopted: list[str] = []
         self.settled = 0
+        self.cleaned = 0
         self._adopts = adopts
 
     def begin_turn(self) -> None:
@@ -871,6 +883,9 @@ class FakeStream:
 
     def settle(self) -> None:
         self.settled += 1
+
+    def cleanup(self) -> None:
+        self.cleaned += 1
 
 
 class SinkReasoner:
@@ -911,6 +926,41 @@ def test_stream_that_cannot_adopt_falls_back_to_a_normal_reply(tmp_path):
     assert conductor.handle(msg(61, OWNER, "und?")) is True
     assert stream.settled == 1
     assert sent == [(CHAT_OWNER, "Antwort")]
+
+
+def test_ambiguous_stream_adoption_neither_resends_nor_cleans_possible_answer(tmp_path):
+    class UncertainStream(FakeStream):
+        def adopt(self, text: str) -> bool:
+            self.adopted.append(text)
+            raise DeliveryUncertain("edit acknowledgement lost")
+
+    stream = UncertainStream()
+    activity = FakeActivity()
+    conductor, sent = _build(
+        tmp_path,
+        SinkReasoner(("Possible final answer",)),
+        begin_reply=lambda _c: stream,
+        begin_activity=lambda _c: activity,
+    )
+
+    assert conductor.handle(msg(610, OWNER, "und?")) is False
+    assert sent == []
+    assert activity.succeeded == 0 and activity.failed == []
+    assert activity.uncertain_count == 1
+    assert activity.cleaned == 0 and stream.cleaned == 0
+    assert conductor.log.recent(1, ("reply.delivery_uncertain",))
+
+
+def test_control_reply_uncertainty_is_recorded_without_escaping_consumer(tmp_path):
+    def uncertain_send(_conversation: str, _text: str) -> None:
+        raise DeliveryUncertain("send acknowledgement lost")
+
+    conductor, _sent = _build(
+        tmp_path, FakeReasoner(), commands=FakeCommands(), send=uncertain_send
+    )
+
+    assert conductor.handle(msg(611, OWNER, "/help")) is False
+    assert conductor.log.recent(1, ("reply.delivery_uncertain",))
 
 
 def test_parked_approval_settles_the_stream_and_never_adopts(tmp_path):

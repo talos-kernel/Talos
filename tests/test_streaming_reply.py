@@ -13,13 +13,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from talos import tools
 from talos.capability import CapabilityMint, GrantedRunner
-from talos.channel import Inbound, Principal, Trust
+from talos.channel import DeliveryUncertain, Inbound, Principal, Trust
 from talos.conductor import Conductor, reply_starter
 from talos.eventlog import EventLog
 from talos.executor import Executor
 from talos.policy import PolicyKernel
 from talos.snapshot import Snapshotter
-from talos.telegram import TelegramChannel, TelegramReply
+from talos.telegram import TelegramApiError, TelegramChannel, TelegramReply
 
 OWNER = Principal("telegram", "100000001")
 CHAT = "telegram:100000001"
@@ -36,18 +36,36 @@ class FakeChatClient:
     actions: list[tuple[int, str]] = field(default_factory=list)
     next_id: int = 500
     fail_edits: bool = False
+    unchanged_edits: bool = False
     fail_markdown: bool = False
+    uncertain_first_send: bool = False
 
     def send_message(self, chat_id: int, text: str, **kwargs) -> int:
         self.sent.append((chat_id, text, kwargs))
+        if self.uncertain_first_send and len(self.sent) == 1:
+            raise DeliveryUncertain("initial send acknowledgement lost")
         self.next_id += 1
         return self.next_id
 
     def edit_message_text(self, chat_id: int, message_id: int, text: str, **kwargs) -> None:
         if self.fail_edits:
-            raise RuntimeError("edit refused")
+            raise TelegramApiError(
+                "400 — message can't be edited",
+                status_code=400,
+                description="Bad Request: message can't be edited",
+            )
+        if self.unchanged_edits:
+            raise TelegramApiError(
+                "400 — message is not modified",
+                status_code=400,
+                description="Bad Request: message is not modified",
+            )
         if self.fail_markdown and kwargs.get("parse_mode"):
-            raise RuntimeError("Bad Request: can't parse entities")
+            raise TelegramApiError(
+                "400 — can't parse entities",
+                status_code=400,
+                description="Bad Request: can't parse entities",
+            )
         self.edited.append((chat_id, message_id, text, kwargs))
 
     def delete_message(self, chat_id: int, message_id: int) -> None:
@@ -188,7 +206,7 @@ def test_a_second_turn_reuses_the_same_message() -> None:
 
 def test_adopt_reports_delivered_when_the_answer_already_stands() -> None:
     """Telegram lehnt eine unveraenderte Bearbeitung ab — das ist kein Zustellfehler."""
-    client = FakeChatClient(fail_edits=True)
+    client = FakeChatClient(unchanged_edits=True)
     reply = _reply(client, min_edit_interval=0.0)
     reply.push("Alles klar.")
 
@@ -335,6 +353,18 @@ def test_the_answer_arrives_even_when_every_edit_fails(tmp_path) -> None:
 
     assert conductor.handle(_msg(4, "und?")) is True
     assert sent == [(CHAT, "Trotzdem zugestellt.")]
+
+
+def test_uncertain_initial_stream_send_never_resends_or_logs_reply_sent(tmp_path) -> None:
+    client = FakeChatClient(uncertain_first_send=True)
+    reasoner = StreamingReasoner(("First half ", "and final half"))
+    conductor, sent = _conductor(tmp_path, reasoner, client=client)
+
+    assert conductor.handle(_msg(404, "and?")) is False
+    assert client.messages == 1
+    assert sent == []
+    assert conductor.log.recent(5, ("reply.sent",)) == []
+    assert conductor.log.recent(1, ("reply.delivery_uncertain",))
 
 
 def test_a_reasoner_without_a_sink_behaves_exactly_as_before(tmp_path) -> None:

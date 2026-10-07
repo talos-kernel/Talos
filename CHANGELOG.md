@@ -11,6 +11,13 @@ remain historical snapshots. Beta does not mean error-free operation.
 
 ### Fixed
 
+- Rebuild the minimal sandbox identity-file cache when its temporary passwd or
+  group source has disappeared, without exposing the host identity database.
+- Distinguish ambiguous Telegram delivery acknowledgements from definite API
+  rejections. Do not automatically resend an uncertain first message, report it
+  as delivered, or delete a possibly delivered final answer. Known-message edits
+  may retry the same message; definite formatting/stale-message fallbacks remain.
+  This does not provide a durable outbox or guarantee eventual delivery.
 - Disable Q35's implicit PS/2 controller in the planned Mac QMP launch command.
   The virtio keyboard and single absolute tablet remain; the existing preflight
   still refuses extra pointers before sending any input. This is not a production

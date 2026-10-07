@@ -32,6 +32,14 @@ from typing import Any, Callable, Protocol, runtime_checkable
 # Meldeweg für einen Kanal, der beim Abholen fliegt: (Kanalname, Fehler).
 ErrorSink = Callable[[str, Exception], None]
 
+
+class DeliveryUncertain(RuntimeError):
+    """The provider may have applied an outbound mutation before transport failed.
+
+    Callers must not turn this into a fresh send or clean up the possibly delivered
+    message. It is deliberately distinct from a definite provider rejection.
+    """
+
 # Fällt eine Kennung ohne Kanal an (alte Config, alte Tests), wird sie diesem Kanal
 # zugeschlagen. Bewusst explizit und an einer Stelle: eine stillschweigende Annahme
 # über Identität gehört nicht verstreut in den Code.

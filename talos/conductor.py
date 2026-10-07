@@ -39,7 +39,9 @@ from .approval import ApprovalPicker, ApprovalStore, Pending, is_affirmative, is
 from .attachment import extract as extract_media
 from .attachment import resolve as resolve_media
 from .capability import action_fingerprint
-from .channel import Activity, FileDeliveryReceipt, Inbound, Principal, StructuredMessage, Trust
+from .channel import (
+    Activity, DeliveryUncertain, FileDeliveryReceipt, Inbound, Principal, StructuredMessage, Trust,
+)
 from .media_cleanup import disposable_copy
 from .commands import CommandCenter, is_command, parse
 from .eventlog import Event, EventLog, new_run_id
@@ -1042,6 +1044,7 @@ class Conductor:
         # fragt sie immer.
         verworfen = False
         zurueckgehalten = False
+        delivery_uncertain = False
         media: tuple[str, ...] = ()
         if result.status is AgentStatus.NEEDS_HUMAN and result.pending is not None:
             # Der Freigabe-Dialog ist eine eigene Nachricht mit Buttons; was bis dahin
@@ -1099,9 +1102,18 @@ class Conductor:
                 self.log.append(Event(run_id, "conductor", "conductor.reply_suppressed", {}))
                 sent = False
             else:
-                sent = self._deliver(
-                    update, run_id, reply, stream, approval_reply=approval_reply, media=media
-                )
+                try:
+                    sent = self._deliver(
+                        update, run_id, reply, stream, approval_reply=approval_reply, media=media
+                    )
+                except DeliveryUncertain as error:
+                    # The answer may already be visible. Do not send a failure beside it,
+                    # claim success, or remove the possibly final streamed message.
+                    delivery_uncertain = True
+                    sent = False
+                    self.log.append(Event(run_id, "conductor", "reply.delivery_uncertain", {
+                        "error": str(error),
+                    }))
         if activity is not None:
             if sent:
                 # Ein geparkter Lauf (NEEDS_HUMAN) ist nicht zu Ende: die Anzeige
@@ -1114,11 +1126,15 @@ class Conductor:
                 activity.succeed("discarded via /stopall")
             elif zurueckgehalten:
                 activity.succeed("reply withheld — see the event log")
+            elif delivery_uncertain:
+                freeze = getattr(activity, "uncertain", None)
+                if callable(freeze):
+                    freeze()
             else:
                 activity.fail("could not deliver the answer")
         # A parked approval is not a completed task. Its displays join the resumed
         # task under the original opaque ID and are removed only with its result.
-        if result.status is not AgentStatus.NEEDS_HUMAN and (
+        if result.status is not AgentStatus.NEEDS_HUMAN and not delivery_uncertain and (
             sent or verworfen or zurueckgehalten or getattr(activity, 'failure_delivered', False)
         ):
             self.working_displays.cleanup(display_key)
@@ -1677,6 +1693,8 @@ class Conductor:
                         self.log.append(Event(run_id, "conductor", "reply.sent", {"streamed": True}))
                         self.log.append(Event(run_id, "conductor", "done", {}))
                         delivered = True
+                except DeliveryUncertain:
+                    raise
                 except Exception as error:
                     self.log.append(
                         Event(run_id, "conductor", "error",
@@ -1686,9 +1704,11 @@ class Conductor:
                     self._settle(stream, run_id)
             if not delivered:
                 if approval_reply:
-                    delivered = self._approval_reply(update, run_id, text)
+                    delivered = self._approval_reply(
+                        update, run_id, text, propagate_uncertain=True
+                    )
                 else:
-                    delivered = self._reply(update, run_id, text)
+                    delivered = self._reply(update, run_id, text, propagate_uncertain=True)
         else:
             # Kein Text, nur Anhaenge: die gewachsene Nachricht einfrieren, statt eine
             # leere Endfassung ueber sie zu stueelpen.
@@ -2047,11 +2067,15 @@ class Conductor:
                       {"stage": "approval.callback.ack", "error": str(error)})
             )
 
-    def _approval_reply(self, update: Inbound, run_id: str, text: str) -> bool:
+    def _approval_reply(
+        self, update: Inbound, run_id: str, text: str, *, propagate_uncertain: bool = False
+    ) -> bool:
         """Typed decisions send normally; button decisions replace the prompt and clear buttons."""
         callback = update.callback
         if callback is None:
-            return self._reply(update, run_id, text)
+            return self._reply(
+                update, run_id, text, propagate_uncertain=propagate_uncertain
+            )
         return self._reply_structured(
             update,
             run_id,
@@ -2060,12 +2084,22 @@ class Conductor:
                 edit_message_id=callback.message_id,
                 markdown=True,
             ),
+            propagate_uncertain=propagate_uncertain,
         )
 
-    def _reply(self, update: Inbound, run_id: str, text: str) -> bool:
+    def _reply(
+        self, update: Inbound, run_id: str, text: str, *, propagate_uncertain: bool = False
+    ) -> bool:
         try:
             self.send(update.conversation, text)
             self.log.append(Event(run_id, "conductor", "reply.sent", {}))
+        except DeliveryUncertain as error:
+            if propagate_uncertain:
+                raise
+            self.log.append(Event(run_id, "conductor", "reply.delivery_uncertain", {
+                "error": str(error),
+            }))
+            return False
         except Exception as error:  # Zustellung fehlgeschlagen -> als Fehler-Event
             self.log.append(Event(run_id, "conductor", "error", {"stage": "reply", "error": str(error)}))
             return False
@@ -2073,7 +2107,8 @@ class Conductor:
         return True
 
     def _reply_structured(
-        self, update: Inbound, run_id: str, message: StructuredMessage
+        self, update: Inbound, run_id: str, message: StructuredMessage,
+        *, propagate_uncertain: bool = False,
     ) -> bool:
         try:
             if self.send_structured is None:
@@ -2081,6 +2116,13 @@ class Conductor:
             else:
                 self.send_structured(update.conversation, message)
             self.log.append(Event(run_id, "conductor", "reply.sent", {"structured": True}))
+        except DeliveryUncertain as error:
+            if propagate_uncertain:
+                raise
+            self.log.append(Event(run_id, "conductor", "reply.delivery_uncertain", {
+                "error": str(error), "structured": True,
+            }))
+            return False
         except Exception as error:
             self.log.append(
                 Event(run_id, "conductor", "error", {"stage": "reply", "error": str(error)})

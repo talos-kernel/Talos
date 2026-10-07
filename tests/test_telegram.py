@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import Mock
 
+import requests
+
 from talos.channel import Button, CallbackQuery, StructuredMessage
 from talos.telegram import TelegramChannel, TelegramClient, Update, to_inbound
 
@@ -134,7 +136,14 @@ def test_a_stale_card_edit_falls_back_to_a_fresh_message(monkeypatch) -> None:
         if url.endswith("/sendMessage"):
             response.json.return_value = {"ok": True, "result": {"message_id": 100}}
         if url.endswith("/editMessageText"):
-            response.raise_for_status.side_effect = RuntimeError("message to edit not found")
+            response.status_code = 400
+            response.json.return_value = {
+                "ok": False,
+                "description": "Bad Request: message to edit not found",
+            }
+            error = requests.HTTPError("400 Client Error")
+            error.response = response
+            response.raise_for_status.side_effect = error
         return response
 
     monkeypatch.setattr("talos.telegram.requests.post", post)

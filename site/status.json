@@ -1,8 +1,10 @@
 {
   "version": "0.20.0-beta.4",
   "release_state": "released",
+  "source_state": "unreleased candidate changes",
   "installer_version": "0.20.0-beta.4",
-  "tests": 3216,
+  "tests": 3241,
+  "tests_scope": "working source candidate; not the published archive",
   "redteam_faelle": 263,
   "kernel_zeilen": 985,
   "werkzeuge": 33,

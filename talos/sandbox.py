@@ -195,7 +195,12 @@ def _identity_files() -> tuple[str, str] | None:
     """
     global _IDENTITY_CACHE
     if _IDENTITY_CACHE is not None:
-        return _IDENTITY_CACHE
+        # Long-lived workers can outlive system temporary-file cleanup. Never
+        # return missing sources to bwrap; rebuild only our minimal identity pair.
+        # A disappearance after this check still makes bwrap refuse the launch.
+        if all(Path(path).is_file() for path in _IDENTITY_CACHE):
+            return _IDENTITY_CACHE
+        _IDENTITY_CACHE = None
     if not hasattr(os, "getuid"):
         return None
     passwd = _identity_line("/etc/passwd", os.getuid())

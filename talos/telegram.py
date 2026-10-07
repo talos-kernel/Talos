@@ -22,7 +22,9 @@ import requests
 
 from . import documents
 from .agent_loop import AgentProgress, ProgressStage
-from .channel import Button, CallbackQuery, Inbound, Principal, StructuredMessage, Trust
+from .channel import (
+    Button, CallbackQuery, DeliveryUncertain, Inbound, Principal, StructuredMessage, Trust,
+)
 from .identity import agent_name
 from .tgmarkup import to_telegram_html
 from .ux import EXPRESSIVE, GEOMETRIC, Style, style_for
@@ -57,6 +59,20 @@ TOOL_CALL_MARKER = "TOOL_CALL"
 # Betreiber sehen sollte.
 PLAN_MARKER = "PLAN:"
 MEDIA_MARKER = "MEDIA:"
+_MUTATION_METHODS = frozenset({
+    "sendMessage", "editMessageText", "answerCallbackQuery", "deleteMessage",
+    "sendChatAction", "sendPhoto", "sendDocument", "sendAudio", "sendVideo",
+    "sendVoice", "sendAnimation",
+})
+
+
+class TelegramApiError(requests.HTTPError):
+    """A redacted, definite API rejection with only classification-safe metadata."""
+
+    def __init__(self, message: str, *, status_code: int | None, description: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.description = description
 
 def split_for_telegram(text: str, limit: int = TELEGRAM_TEXT_LIMIT) -> tuple[str, ...]:
     """Eine zu lange Antwort in mehrere Nachrichten — statt sie zu verlieren.
@@ -393,7 +409,25 @@ class TelegramClient:
             beschreibung = _api_description(getattr(error, "response", None))
             if beschreibung:
                 meldung = f"{meldung} — {self._redact(beschreibung)}"
-            raise type(error)(meldung) from None
+            response = getattr(error, "response", None)
+            status = getattr(response, "status_code", None)
+            mutation = method in _MUTATION_METHODS
+            if not mutation:
+                # Reads cannot duplicate an outbound mutation. Keep their established
+                # requests exception type, but detach all response/request objects.
+                raise type(error)(meldung) from None
+            if mutation and (not isinstance(error, requests.HTTPError)
+                             or not isinstance(status, int) or status >= 500):
+                # A timeout/reset or 5xx has no reliable negative acknowledgement.
+                raise DeliveryUncertain(meldung) from None
+            if isinstance(error, requests.HTTPError):
+                # Never retain the raw response/request: their URL contains the bot token,
+                # and provider bodies are not safe log metadata.
+                raise TelegramApiError(
+                    meldung, status_code=status if isinstance(status, int) else None,
+                    description=self._redact(beschreibung),
+                ) from None
+            raise DeliveryUncertain(meldung) from None  # defensive: unknown mutation failure
 
     def fetch_photo(self, message: dict, user_id: int) -> str:
         """Holt das groesste Foto und legt es ab. Gibt den Pfad zurueck — oder "".
@@ -1023,6 +1057,20 @@ class TelegramActivity:
         with self._lock:
             self._fail(error)
 
+    def uncertain(self) -> None:
+        """Stop heartbeat without a fresh message or deletion after an ambiguous answer."""
+        with self._lock:
+            if self._finished:
+                return
+            self._finished = True
+            self._stop.set()
+            self._settle()
+            if self._message_id is not None:
+                self._edit(
+                    text=self._render(final=True, footer="delivery unconfirmed — check chat before retrying"),
+                    force=True,
+                )
+
     def _fail(self, error: str) -> None:
         """Ein Fehler wird immer gemeldet — notfalls als eigene Nachricht.
 
@@ -1254,8 +1302,8 @@ class TelegramReply:
     2. **Genau eine Antwortnachricht.** `adopt` macht die gewachsene zur endgueltigen.
        Nur wenn das nicht geht, sendet der Aufrufer normal — nie beides.
 
-    Die Anzeige ist Komfort, die Antwort nicht: jeder Netzfehler bleibt hier und wird
-    zu einem `False`, das den Aufrufer auf den normalen Sendeweg zurueckfallen laesst.
+    Die Anzeige ist Komfort, die Antwort nicht: eine definitive Ablehnung wird `False`;
+    ein Timeout/Reset bleibt `DeliveryUncertain`, damit kein zweiter Sendeweg entsteht.
     """
 
     def __init__(
@@ -1280,6 +1328,9 @@ class TelegramReply:
         self._commentary_ids: list[int] = []
         self._adopted = False
         self._progress_only = False
+        # A first send can be accepted while its response is lost. Without a known
+        # message_id no later delta may retry it as a fresh message.
+        self._delivery_uncertain: DeliveryUncertain | None = None
         # Das erste Delta soll sofort sichtbar werden — dafuer wurde gestreamt.
         self._last_edit = clock() - self._min_edit_interval
         # Nur Zustand liegt unter dem Lock, nie ein Netzaufruf: sonst haenge der
@@ -1360,6 +1411,10 @@ class TelegramReply:
     def cleanup(self) -> None:
         with self._lock:
             self._done = True
+            if self._delivery_uncertain is not None:
+                # A final edit may have landed. Without its acknowledgement, deleting
+                # this known message id could erase the only delivered answer.
+                return
             ids = list(self._commentary_ids)
             self._commentary_ids.clear()
             if not self._adopted and self._message_id is not None:
@@ -1376,12 +1431,16 @@ class TelegramReply:
     def adopt(self, text: str) -> bool:
         """Macht die gewachsene Nachricht zur endgueltigen Antwort.
 
-        `False` heisst: es gibt keine (nichts gestreamt) oder Telegram nahm sie nicht —
-        dann sendet der Aufrufer die Antwort ganz normal. Es darf nie beides passieren.
+        `False` heisst: es gibt keine (nichts gestreamt) oder Telegram lehnte sie sicher ab.
+        Ein fehlendes Transport-Ack wirft `DeliveryUncertain`: dann darf der Aufrufer weder
+        frisch senden noch die moeglicherweise fertige Nachricht aufraeumen.
         """
         with self._lock:
             self._done = True
             message_id, shown = self._message_id, self._shown
+            uncertain = self._delivery_uncertain
+        if uncertain is not None:
+            raise uncertain
         if self._progress_only:
             return False
         final = text.strip()
@@ -1394,7 +1453,17 @@ class TelegramReply:
             self._client.edit_message_text(
                 self._chat_id, message_id, to_telegram_html(final), parse_mode="HTML"
             )
-        except Exception:
+        except Exception as error:
+            uncertain = _as_delivery_uncertain(error)
+            if uncertain is not None:
+                self._delivery_uncertain = uncertain
+                raise uncertain from None
+            if _is_unchanged_edit(error):
+                self._shown = final
+                self._adopted = True
+                return True
+            if not _is_format_rejection(error):
+                return False
             self._adopted = self._adopt_fallback(message_id, final, shown)
             return self._adopted
         self._shown = final
@@ -1413,7 +1482,14 @@ class TelegramReply:
             return True
         try:
             self._client.edit_message_text(self._chat_id, message_id, final)
-        except Exception:
+        except Exception as error:
+            uncertain = _as_delivery_uncertain(error)
+            if uncertain is not None:
+                self._delivery_uncertain = uncertain
+                raise uncertain from None
+            if _is_unchanged_edit(error):
+                self._shown = final
+                return True
             return False
         self._shown = final
         return True
@@ -1456,6 +1532,8 @@ class TelegramReply:
         waechst sie immer; formatiert wird ein einziges Mal, in `adopt`, wenn der Text
         vollstaendig ist.
         """
+        if self._delivery_uncertain is not None:
+            return False
         try:
             if self._message_id is None:
                 # Mit Ton: diese Nachricht IST die Antwort, und eine Antwort ohne
@@ -1463,8 +1541,13 @@ class TelegramReply:
                 self._message_id = self._client.send_message(self._chat_id, text)
             else:
                 self._client.edit_message_text(self._chat_id, self._message_id, text)
-        except Exception:
-            return False   # Komfort. Der naechste Takt schickt ohnehin den vollen Stand.
+        except Exception as error:
+            uncertain = _as_delivery_uncertain(error)
+            if uncertain is not None and self._message_id is None:
+                self._delivery_uncertain = uncertain
+            # A definite cosmetic failure may be retried by the next full-state tick.
+            # Ambiguity is latched above and blocks every later write without a known id.
+            return False
         self._shown = text
         return True
 
@@ -1505,6 +1588,51 @@ def _redact(value: object) -> str:
     text = _SECRET_ASSIGNMENT.sub(lambda match: f"{match.group(1)}=[REDACTED]", text)
     text = _SECRET_TOKEN.sub("[REDACTED]", text)
     return text[:240]
+
+
+def _telegram_rejection(error: Exception) -> tuple[int | None, str]:
+    """Return a definite Telegram HTTP rejection, never infer one from exception prose."""
+    if not isinstance(error, TelegramApiError):
+        return None, ""
+    return error.status_code, error.description.lower()
+
+
+def _as_delivery_uncertain(error: Exception) -> DeliveryUncertain | None:
+    """Classify only failures that cannot prove an outbound mutation was rejected."""
+    if isinstance(error, DeliveryUncertain):
+        return error
+    if isinstance(error, (requests.ConnectionError, requests.Timeout)):
+        return DeliveryUncertain(str(error))
+    if isinstance(error, requests.HTTPError):
+        status = getattr(error, "status_code", None)
+        if status is None:
+            status = getattr(getattr(error, "response", None), "status_code", None)
+        if not isinstance(status, int) or status >= 500:
+            return DeliveryUncertain(str(error))
+    return None
+
+
+def _is_format_rejection(error: Exception) -> bool:
+    status, description = _telegram_rejection(error)
+    return status == 400 and any(marker in description for marker in (
+        "can't parse entities",
+        "can't find end tag",
+        "unsupported start tag",
+    ))
+
+
+def _is_stale_edit_rejection(error: Exception) -> bool:
+    status, description = _telegram_rejection(error)
+    return status == 400 and any(marker in description for marker in (
+        "message to edit not found",
+        "message can't be edited",
+        "message identifier is not specified",
+    ))
+
+
+def _is_unchanged_edit(error: Exception) -> bool:
+    status, description = _telegram_rejection(error)
+    return status == 400 and "message is not modified" in description
 
 
 def to_inbound(update: Update) -> Inbound:
@@ -1630,7 +1758,12 @@ class TelegramChannel:
         for teil in split_for_telegram(text):
             try:
                 self._client.send_message(chat, to_telegram_html(teil), parse_mode="HTML")
-            except Exception:
+            except Exception as error:
+                uncertain = _as_delivery_uncertain(error)
+                if uncertain is not None:
+                    raise uncertain from None
+                if not _is_format_rejection(error):
+                    raise
                 self._client.send_message(chat, teil)
 
     def send_structured(self, conversation: str, message: StructuredMessage) -> None:
@@ -1662,7 +1795,14 @@ class TelegramChannel:
                             chat_id, message.edit_message_id, text, reply_markup=markup, **kwargs
                         )
                         return
-                    except Exception:
+                    except Exception as error:
+                        uncertain = _as_delivery_uncertain(error)
+                        if uncertain is not None:
+                            raise uncertain from None
+                        if _is_unchanged_edit(error):
+                            return
+                        if not _is_stale_edit_rejection(error):
+                            raise
                         # Die alte Karte ist verfallen oder weg (stale approval) —
                         # die Auskunft darf nicht von ihr abhaengen: neu zustellen.
                         pass
@@ -1673,10 +1813,17 @@ class TelegramChannel:
             if message.markdown:
                 try:
                     deliver(to_telegram_html(message.text), parse_mode="HTML")
-                except Exception:
+                except Exception as error:
+                    uncertain = _as_delivery_uncertain(error)
+                    if uncertain is not None:
+                        raise uncertain from None
+                    if not _is_format_rejection(error):
+                        raise
                     deliver(message.text)
             else:
                 deliver(message.text)
+        except DeliveryUncertain:
+            raise
         except Exception as error:
             errors.append(f"message delivery: {error}")
         if errors:
