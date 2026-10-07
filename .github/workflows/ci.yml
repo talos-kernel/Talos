@@ -60,6 +60,9 @@ jobs:
       - name: Check FAQ search metadata and links
         run: python scripts/check-site-discovery.py
 
+      - name: Run offline proof demonstrations
+        run: python scripts/demo-proof.py
+
       - name: Verify embedded signature-verifier pins
         run: python scripts/sync-verifier-lock.py --check
 
