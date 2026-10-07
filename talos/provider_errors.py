@@ -34,6 +34,12 @@ _MESSAGES = {
     "unknown": "The provider process failed without a classified diagnostic.",
 }
 
+_AUTH_FAILURE_MARKERS = (
+    "your authentication token has been invalidated",
+    "your access token could not be refreshed because your refresh token has expired",
+    "refresh token has expired. please log out and sign in again",
+)
+
 
 def cli_failure(stdout: str, stderr: str, exit_code: int, *,
                 provider: str, model: str) -> ReasonerFailure:
@@ -80,6 +86,13 @@ def cli_failure(stdout: str, stderr: str, exit_code: int, *,
         if ("The API returned an empty response." in bounded
                 or "The API returned a response containing only thinking content" in bounded):
             kind = "empty_response"
+            break
+        # Official Codex CLI refresh failures are plain stderr rather than the
+        # structured provider envelope above. Match only the bounded, stable
+        # authentication diagnostics; arbitrary Exit-1 output remains unknown.
+        lowered = bounded.lower()
+        if any(marker in lowered for marker in _AUTH_FAILURE_MARKERS):
+            kind = "key_rejected"
             break
     message = _MESSAGES[kind]
     if reset:
