@@ -6,7 +6,7 @@
 
 - Permission kernel: 985 lines of Python, the only code that decides
 - 33 tools, all gated; unattended runs cannot escalate
-- 3219 tests (automated) and 263/263 red-team cases green at the release gate
+- 3219 tests collected in the source tree; 263/263 red-team cases passed in source verification. Release contents follow their own signed tag.
 - MCP servers run only inside a UID-separated worker, from an operator-owned registry — no marketplace, no third-party code in the agent process
 - Channels: Telegram, mail (IMAP pull), CLI, WhatsApp via an operator-controlled broker — every channel fetches; no inbound port, no webhook
 - Updates: signed tarballs, verified before anything is unpacked; dependencies pinned and hashed, installed with --require-hashes
@@ -16,6 +16,7 @@
 
 - [Home](https://talos-agent.ch/): what it is, live policy-kernel demo in the browser
 - [Field manual](https://talos-agent.ch/docs/): install, identity, memory, channels, commands
+- [FAQ](https://talos-agent.ch/faq/): Ollama, Claude, Codex, costs, Raspberry Pi, Telegram, task approvals and contributions
 - [The MCP registry](https://talos-agent.ch/registry/): extension model without a marketplace
 - [Honest comparison](https://talos-agent.ch/vergleich/): Talos vs. OpenClaw vs. Hermes, including what Talos does not have
 - [Console](https://talos-agent.ch/console.html): one real session, replayed

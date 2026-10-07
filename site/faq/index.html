@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talos AI Agent FAQ: Models, Costs &amp; Permissions</title>
+<meta name="description" content="Answers about the self-hosted Talos AI agent: Ollama, Claude, Codex, Raspberry Pi, Telegram, costs, task approvals and getting started.">
+<link rel="canonical" href="https://talos-agent.ch/faq/">
+<link rel="icon" href="/brand/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<meta name="theme-color" content="#e7eae9">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Talos">
+<meta property="og:title" content="Talos AI Agent FAQ: Models, Costs &amp; Permissions">
+<meta property="og:description" content="Your models. Your machine. Your command. Practical answers about installation, local models, costs and scoped approvals.">
+<meta property="og:url" content="https://talos-agent.ch/faq/">
+<meta property="og:image" content="https://talos-agent.ch/brand/og-preview.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Talos AI Agent FAQ: Models, Costs &amp; Permissions">
+<meta name="twitter:description" content="Practical answers about the self-hosted Talos AI agent, local models, costs and scoped approvals.">
+<meta name="twitter:image" content="https://talos-agent.ch/brand/og-preview.jpg">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[{"@type":"WebPage","@id":"https://talos-agent.ch/faq/#page","url":"https://talos-agent.ch/faq/","name":"Talos AI Agent FAQ: Models, Costs & Permissions","description":"Practical answers about Talos installation, models, costs and permissions.","inLanguage":"en","about":{"@id":"https://talos-agent.ch/#software"},"breadcrumb":{"@id":"https://talos-agent.ch/faq/#breadcrumb"}},{"@type":"BreadcrumbList","@id":"https://talos-agent.ch/faq/#breadcrumb","itemListElement":[{"@type":"ListItem","position":1,"name":"Talos AI agent","item":"https://talos-agent.ch/"},{"@type":"ListItem","position":2,"name":"FAQ","item":"https://talos-agent.ch/faq/"}]}]}
+</script>
+<link rel="stylesheet" href="/marble.css?v=20261006">
+<style>
+.wrap{margin-inline:auto}.faq-intro{padding:55px 0 45px}.faq-intro h1{margin:20px 0 24px}.faq-intro .lede{margin:18px 0 28px}.breadcrumb{font-size:13px}.faq-index{display:flex;flex-wrap:wrap;gap:12px 24px;padding:20px 0;border-block:1px solid var(--line)}.faq-section h2{margin:0 0 28px}.faq-item{border-top:1px solid var(--line);padding:22px 0;scroll-margin-top:125px}.faq-item:last-child{border-bottom:1px solid var(--line)}.faq-item summary{font-size:18px;font-weight:600;padding:5px 0;line-height:1.5}.faq-item p{max-width:78ch;margin:16px 0 0;line-height:1.85}.faq-item code{overflow-wrap:anywhere}.faq-item[open]{padding-bottom:28px}.faq-note{font-size:14px;max-width:76ch}.faq-actions{display:flex;flex-wrap:wrap;gap:14px;margin:28px 0}footer{padding:35px 0;border-top:1px solid var(--line)}footer .wrap{display:flex;flex-wrap:wrap;gap:24px}.faq-section{content-visibility:visible}h2,h3{scroll-margin-top:120px}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+footer .wrap>span,footer .footer-wordmark{color:var(--hot)}
+</style>
+<script src="/marble.js?v=20261006" defer></script>
+</head>
+<body class="marble-document">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<nav class="marble-nav" aria-label="Main navigation"><a class="marble-brand" href="/">TALOS<span>THE OPERATOR'S AGENT</span></a><div class="marble-links" id="marble-links"><a href="/docs/">Field manual</a><a href="/faq/" aria-current="page">FAQ</a><a href="/console.html">Command Hall</a><a href="https://github.com/talos-kernel/Talos">GitHub</a><a class="nav-cta" href="/docs/#install">Raise the keep</a></div><button class="mobile-menu" aria-expanded="false" aria-controls="marble-links">Menu</button></nav>
+<main id="main-content" tabindex="-1"><div class="wrap">
+<header class="faq-intro">
+<p class="breadcrumb"><a href="/">Talos AI agent</a> / Frequently asked questions</p>
+<h1>Talos AI agent FAQ</h1>
+<p class="lede">A self-hosted AI agent for terminal and Telegram, with your choice of models and a deterministic permission kernel. Here is what to know before you raise the keep.</p>
+<div class="faq-actions"><a class="btn" href="/docs/#install">Read the installation guide</a><a class="btn ghost" href="/console.html">Witness a recorded session</a></div>
+<div class="faq-index" aria-label="Question categories"><a href="#getting-started">Getting started</a><a href="#models-costs">Models &amp; costs</a><a href="#permissions-privacy">Permissions &amp; privacy</a><a href="#project">Project &amp; contributions</a></div>
+</header>
+<section class="faq-section" id="getting-started">
+<h2>Getting started</h2>
+<details class="faq-item" id="what-is-talos" open><summary>What is Talos AI agent?</summary><p>Talos is an open-source, self-hosted AI agent that takes instructions through terminal chat or Telegram and can use tools for real work. A language model proposes each tool call; a separate deterministic kernel decides whether it is allowed, needs human approval or must be denied. Talos is an agent application, not Talos Linux or Cisco Talos. Start with the <a href="/docs/">field manual</a> or inspect the <a href="https://github.com/talos-kernel/Talos">source on GitHub</a>.</p></details>
+<details class="faq-item" id="use-cases"><summary>What can I use Talos for?</summary><p>Use it to inspect a project, search and organise local notes, run permitted maintenance commands, prepare reports or delegate a bounded coding task to a configured Claude or Codex worker. The tools and host access available depend on your setup and permissions. The <a href="/console.html">Command Hall</a> shows a recorded session, not a live connection to anyone's agent.</p></details>
+<details class="faq-item" id="install"><summary>How do I install Talos on macOS or Linux?</summary><p>Follow the <a href="/docs/#install">installation guide</a>: inspect the Bash installer, install the signed release, configure your identity and model, then start terminal chat. Talos requires Python 3.11 or newer. The installer verifies the release and runs its tests; it does not start the agent automatically. A <a href="https://github.com/talos-kernel/talos-pinokio">separate Pinokio launcher</a> is also available; check the release it currently pins.</p></details>
+<details class="faq-item" id="raspberry-pi"><summary>Can Talos run on a Raspberry Pi or a VPS?</summary><p>Yes. Talos runs on Linux, including Raspberry Pi, as well as macOS. The agent and the model are separate: a Pi can run Talos while a configured provider supplies inference. Running a large model locally needs enough memory and compute for that model. Self-hosting does not imply that every model fits on a Pi. See <a href="/docs/#model">model setup</a>.</p></details>
+<details class="faq-item" id="telegram"><summary>Can I use Talos as a self-hosted Telegram AI agent?</summary><p>Yes. Configure your own Telegram bot and explicitly allow your identity. Talos fetches messages by long polling; the Telegram channel does not need a public webhook. Follow the <a href="/docs/#channels">Telegram setup instructions</a>. Keep one service polling each bot token to avoid competing consumers.</p></details>
+</section>
+<section class="faq-section" id="models-costs">
+<h2>Your models. Your costs.</h2>
+<details class="faq-item" id="ollama"><summary>Does Talos work with Ollama and local models?</summary><p>Yes. You can configure Ollama as the model provider and run inference on hardware you control. Local inference avoids cloud-provider charges for those model calls, but hardware and electricity still cost money. Tool quality depends on the model; the permission kernel remains separate from it. Read the <a href="/docs/#model">Ollama and model guide</a>.</p></details>
+<details class="faq-item" id="claude-codex"><summary>Can I use Claude or Codex with Talos?</summary><p>Yes. Talos supports configured model providers and CLI integrations, including Claude through Claude Code, and bounded Claude and Codex coding workers. Reasoning and delegated coding are distinct roles. You must provide supported, valid access for the integration you choose; availability, usage limits and subscription eligibility are determined by that provider. Talos does not grant a model subscription or repair expired credentials by itself.</p></details>
+<details class="faq-item" id="cost"><summary>Is Talos free? Do I need Vercel or a Talos subscription?</summary><p>Talos is MIT-licensed open-source software with no Talos subscription fee. Vercel or a paid gateway is not required. You pay for any cloud models, hosting or other services you choose; local models use your own hardware. A configured provider may have its own plan or usage charges. See <a href="https://github.com/talos-kernel/Talos/blob/main/LICENSE">the MIT licence</a>.</p></details>
+<details class="faq-item" id="eval"><summary>Does /eval make every model faster?</summary><p>No. <code>/eval</code> is a local classification and preflight diagnostic, not a faster model or a VPS inspection. It can classify a request without a model call, but that does not mean it has answered the request or executed a task. Actual response time depends on the model, context, network and required tools. A near-zero classification time is not an end-to-end speed benchmark.</p></details>
+</section>
+<section class="faq-section" id="permissions-privacy">
+<h2>The terms of the grant</h2>
+<details class="faq-item" id="task-approval"><summary>Do I have to approve every action individually?</summary><p>No. When offered for an attended task, <strong>Allow once</strong> approves the pending action, <strong>Allow this task</strong> covers eligible approval-required steps of that current task, and <strong>Always allow</strong> creates a standing rule for the exact action. A task approval is not a blanket grant for future tasks. Each tool call still goes through the kernel, and a hard denial cannot be turned into permission by the model. See <a href="/#grants">the approval choices</a>.</p></details>
+<details class="faq-item" id="kernel"><summary>What does the deterministic permission kernel actually do?</summary><p>It evaluates the proposed tool, arguments, derived targets and applicable policy before execution. The executor requires a capability tied to the approved call. The model cannot issue that capability itself. An audit trail records decisions and outcomes. This is an enforcement boundary, not a promise that the model never makes mistakes. Read <a href="/#kernel">the kernel explanation</a> and <a href="/redteam/">the adversarial test documentation</a>.</p></details>
+<details class="faq-item" id="private-data"><summary>Does self-hosting mean my data never leaves my machine?</summary><p>No, not automatically. Your selected model provider receives the context sent to it; external tools and Telegram also involve their configured services. Local inference through Ollama keeps those model calls on the host you configure, but it does not make unrelated network tools offline. Review providers, tool permissions and data flow for your deployment. Never put credentials or private runtime data in a public fork.</p></details>
+<details class="faq-item" id="unattended"><summary>Can Talos work while I am away?</summary><p>Talos supports scheduled and background work under an unattended ceiling. Actions that still need a human grant are refused or reported, rather than silently approved. Capabilities available in an attended conversation do not automatically carry over to unattended work. See the <a href="/docs/">operation guide</a> before relying on a scheduled workflow.</p></details>
+<details class="faq-item" id="recovery"><summary>What happens if an agent or tool fails?</summary><p>Inspect the recorded outcome rather than relying only on the model's summary. Talos includes stop controls, event inspection and recovery features such as undo for supported file changes. Undo is not a universal reversal of messages, remote operations or other external effects. Keep independent backups and test recovery for your own workload.</p></details>
+</section>
+<section class="faq-section" id="project">
+<h2>Judge the work</h2>
+<details class="faq-item" id="comparison"><summary>How should I compare Talos with IronClaw, OpenClaw or Hermes?</summary><p>Compare the same task, model, host resources and permission scope. Measure completed outcomes, operator effort, latency and recovery, not just stars or test counts. Talos focuses on a readable deterministic capability kernel and scoped approvals; other projects may suit different integrations or workflows. We do not claim a universal winner. Read the <a href="/vergleich/">documented comparison</a> and check each project's current source for its own capabilities.</p></details>
+<details class="faq-item" id="beta"><summary>Is Talos production-ready?</summary><p>Talos is in beta. Automated tests and signed releases are evidence for specific checks, not a guarantee of error-free operation. Review the <a href="https://github.com/talos-kernel/Talos/blob/main/docs/beta-contract.md">beta operator contract</a>, validate your own workflows and keep a rollback path. Experimental Computer adapters have separate qualification requirements; a source implementation is not a ready-to-use VM.</p></details>
+<details class="faq-item" id="contribute"><summary>How can I star, fork or contribute to Talos?</summary><p>Visit <a href="https://github.com/talos-kernel/Talos">Talos on GitHub</a> and star it if you want to keep track of the project. <a href="https://github.com/talos-kernel/Talos/fork">Fork the repository</a> to experiment, follow the <a href="https://github.com/talos-kernel/Talos/blob/main/CONTRIBUTING.md">contribution guide</a>, or open a reproducible issue. Helpful contributions include installation reports, clearer documentation and regression tests. Share only sanitised examples, never tokens, private logs or personal configuration.</p></details>
+<div class="faq-actions"><a class="btn" href="https://github.com/talos-kernel/Talos">Inspect Talos on GitHub</a><a class="btn ghost" href="/docs/#install">Raise your own keep</a></div>
+<p class="faq-note">These answers describe Talos, not a hosted service. Check the <a href="https://github.com/talos-kernel/Talos/releases">release notes</a> for the version you install. A GitHub star is a bookmark and a signal of interest, not a security certificate.</p>
+</section>
+</div></main>
+<footer><div class="wrap"><a href="/">Talos AI agent</a><a href="/docs/">Field manual</a><a href="/faq/">FAQ</a><a href="/console.html">Command Hall</a><a href="https://github.com/talos-kernel/Talos">GitHub</a><span>MIT · The model proposes. It never decides.</span></div></footer>
+</body>
+</html>
