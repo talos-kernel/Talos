@@ -67,6 +67,24 @@ def test_failed_cli_does_not_expose_unknown_output():
     assert 'private entire prompt' not in str(e)
 
 
+@pytest.mark.parametrize('diagnostic', [
+    'Your authentication token has been invalidated. Please try signing in again.',
+    'Your access token could not be refreshed because your refresh token has expired. '
+    'Please log out and sign in again.',
+])
+def test_codex_auth_refresh_failure_is_classified_without_leaking_text(diagnostic):
+    e = cli_failure('', diagnostic, 1, provider='openai-codex', model='gpt-5.6-sol')
+    assert e.kind == 'key_rejected'
+    assert e.fallback_allowed is False
+    assert diagnostic not in str(e)
+
+
+def test_unrelated_exit_one_remains_unknown():
+    e = cli_failure('', 'unrelated local process crash', 1,
+                    provider='openai-codex', model='gpt-5.6-sol')
+    assert e.kind == 'unknown'
+
+
 @pytest.mark.parametrize('backend', ['claude', 'hermes'])
 def test_probe_timeout_never_exposes_the_subprocess_prompt(tmp_path, monkeypatch, backend):
     import subprocess
