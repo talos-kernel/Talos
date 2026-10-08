@@ -54,6 +54,11 @@ operation or a substitute for reviewing permissions and keeping backups.
 [Watch a recorded session](https://talos-agent.ch/console.html) ·
 [Install with Pinokio](https://github.com/talos-kernel/talos-pinokio)
 
+**New to Talos?** [Try three small, checkable tasks](docs/first-task.md): turn notes into
+a handover, save and read back a local note, and compare release notes without inventing
+missing facts. Already tried it? [Share your first-run result](https://github.com/talos-kernel/Talos/issues/new?template=first_run.yml),
+including installation blockers. No star or positive review required.
+
 ## Is Talos right for you?
 
 - **Run local models:** connect Ollama on hardware you control, or use a configured cloud provider.

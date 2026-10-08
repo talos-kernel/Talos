@@ -10,6 +10,11 @@ anything security-relevant — it states the scope and the limits no patch will 
 
 ## Set up
 
+You do not need to write code to help. Follow the [first-task guide](docs/first-task.md)
+and [report the first checkpoint that worked or failed](https://github.com/talos-kernel/Talos/issues/new?template=first_run.yml).
+A reproducible installation blocker is useful feedback. Keep all public reports free
+of credentials, personal paths, private endpoints and full logs.
+
 Fork the repository on GitHub, then clone your fork. Keeping the canonical repository as
 `upstream` makes it possible to rebase without mixing your work with release commits:
 
@@ -36,6 +41,10 @@ python e2e.py                  # the full path against a real model (costs token
 python -m talos --once         # one real cycle, after wiring anything new
 python -m talos doctor         # what this machine is missing — changes nothing
 ```
+
+For a small, offline introduction to the existing tests, run
+`python scripts/demo-proof.py`. It checks three fixture groups without calling a model;
+it does not replace the full suites or prove a real conversation succeeded.
 
 ## Where a first contribution belongs
 

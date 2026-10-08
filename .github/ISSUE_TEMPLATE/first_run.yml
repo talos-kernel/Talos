@@ -1,0 +1,76 @@
+name: First install or first task
+description: Share a working checkpoint or an installation blocker; no coding required.
+title: "[First run] "
+labels: [documentation]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for trying Talos. A failed or blocked attempt is useful feedback too.
+        Try https://github.com/talos-kernel/Talos/blob/main/docs/first-task.md if you need a small task.
+        This report is PUBLIC. Never attach credentials, OAuth files, talos.env, full event logs,
+        personal paths, private hosts or customer data. Report security vulnerabilities privately:
+        https://github.com/talos-kernel/Talos/security/advisories/new
+  - type: input
+    id: version
+    attributes:
+      label: Talos version or source commit
+      description: Use talos version; if installation failed before that, say not installed.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS, architecture and Python version
+      placeholder: "Example: Debian, x86_64, Python 3.11 — no hostname needed"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method
+      options:
+        - Signed installer
+        - Source checkout
+        - Pinokio
+        - macOS app
+        - Other (describe below)
+    validations:
+      required: true
+  - type: dropdown
+    id: checkpoint
+    attributes:
+      label: Furthest checkpoint reached
+      options:
+        - Installation blocked
+        - Installed, setup blocked
+        - Setup complete, model request failed
+        - Received a model answer
+        - Wrote and independently checked the trial note
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: What worked, what failed, and what you checked
+      description: Include exact steps, expected and actual result, and any manual corrections. Positive feedback is not required.
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Provider and model (optional)
+      description: Names only; no API keys, account identifiers or private endpoint URLs.
+  - type: textarea
+    id: excerpt
+    attributes:
+      label: Short redacted error excerpt (optional)
+      description: Review manually before posting. Do not paste full doctor output, configuration or logs.
+      render: text
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Before publishing
+      options:
+        - label: I removed secrets, personal paths, private hosts and customer data from this public report.
+          required: true
