@@ -43,6 +43,21 @@ TOOL_RESULT_CUT = " […tool output truncated]"
 _TOOL_LINE = re.compile(r"^[ \t]*TOOL_CALL:[ \t]*(?P<payload>.*?)[ \t]*$")
 _TOOL_PREFIX = re.compile(r"^[ \t]*TOOL_CALL:")
 
+# `delegate_status` ist READ und passiert den Kernel frei. Ein Modell, das auf einen
+# laufenden Job wartet, fragt sonst bis zur Notbremse nach - im echten Lauf 98-mal, und
+# der Betreiber bekam nur "Step limit reached.". Bleibt die Antwort fuer denselben offenen
+# Job dreimal gleich, endet der Lauf; der Abschluss kommt als eigener Push
+# (`notify.watching`).
+MAX_IDENTICAL_POLLS = 3
+POLL_TOOLS = frozenset({"delegate_status"})
+_POLL_PENDING = re.compile(r"\bstate=(?!done\b|failed\b|timeout\b)\w+")
+_SAFE_JOB_ID = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+POLL_STOP_NOTE = (
+    "Task paused: delegated job {job} is still running (status unchanged after {n} checks). "
+    "Polling stopped here; the result arrives as a separate notification when the job "
+    "finishes. No action was repeated."
+)
+
 # --- Fremdsyntax: der Ausfall, der wie eine Antwort aussieht ------------------------
 # Der Reasoner laeuft als Subprozess einer CLI, die ihre EIGENE Werkzeug-Schreibweise
 # kennt. Rutscht das Modell in die (`Read(/tmp/x)`, `<invoke name="Read">`), passiert
@@ -467,6 +482,8 @@ def run_agent(
     empty_repairs = 0
     announcement_repairs = 0
     recovery_attempts = 0
+    polls: dict[str, tuple[str, int]] = {}
+    tool_counts: dict[str, int] = {}
     from .computer.observation import ObservationProgress, image_followup
     observations = ObservationProgress()
     followup = None
@@ -737,6 +754,25 @@ def run_agent(
             )
 
         history.append(tool_history_entry(tool, outcome.status.value, outcome.detail, outcome.result, args=args))
+        tool_counts[tool] = tool_counts.get(tool, 0) + 1
+        if tool in POLL_TOOLS and outcome.status is Status.DONE:
+            job = str(args.get("job_id", ""))
+            seen = f"{outcome.detail} {'' if outcome.result is None else outcome.result}"
+            if _POLL_PENDING.search(seen):
+                last, count = polls.get(job, ("", 0))
+                count = count + 1 if seen == last else 1
+                polls[job] = (seen, count)
+                if count >= MAX_IDENTICAL_POLLS:
+                    executor.log.append(Event(run_id, "agent", "protocol.repair", {
+                        "tool": tool, "reason": "identical status polls",
+                        "attempt": count, "exhausted": True,
+                    }))
+                    return AgentResult(
+                        AgentStatus.ANSWERED,
+                        POLL_STOP_NOTE.format(
+                            job=job if _SAFE_JOB_ID.match(job) else "(unnamed)", n=count),
+                        steps=step, history=tuple(history), plan=active,
+                    )
         if outcome.status is Status.DONE:
             # A new receipt is real progress. Permit one correction at the next
             # step, while two announcements without intervening progress still stop.
@@ -776,11 +812,23 @@ def run_agent(
 
     return AgentResult(
         AgentStatus.STEP_LIMIT,
-        "Step limit reached.",
+        _step_limit_note(max_steps, tool_counts),
         steps=max_steps,
         history=tuple(history),
         plan=active,
     )
+
+
+def _step_limit_note(max_steps: int, tool_counts: dict[str, int]) -> str:
+    """Notbremse mit Bericht: welche Werkzeuge liefen, statt eines nackten Satzes."""
+    if not tool_counts:
+        return "Step limit reached."
+    used = ", ".join(
+        f"{name if _SAFE_SCHEMA_NAME.match(name) else '?'} x{n}"
+        for name, n in sorted(tool_counts.items(), key=lambda kv: -kv[1])
+    )
+    return (f"Step limit reached after {max_steps} steps. Tools used: {used}. "
+            "Earlier tool results remain valid; no completed action was replayed.")
 
 
 def _with_verdict(answer: str, plan: PlanRun | None) -> str:

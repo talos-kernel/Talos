@@ -11,6 +11,11 @@ remain historical snapshots. Beta does not mean error-free operation.
 
 ### Fixed
 
+- Stop repeated `delegate_status` polling after three identical pending results. The
+  completion watcher still delivers the final worker result separately, while the
+  bounded turn now names the paused job instead of spending its remaining step budget.
+- Include a sanitized per-tool count when a turn reaches the hard step limit, so an
+  unfinished run no longer ends with an unexplained generic sentence.
 - Disable Q35's implicit PS/2 controller in the planned Mac QMP launch command.
   The virtio keyboard and single absolute tablet remain; the existing preflight
   still refuses extra pointers before sending any input. This is not a production
