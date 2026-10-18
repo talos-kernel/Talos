@@ -477,3 +477,71 @@ def test_malformed_tool_call_nagging_is_bounded(tmp_path: Path) -> None:
     assert "TOOL_CALL" not in result.text and "powershell" not in result.text
     assert zuege[0] == MAX_CONTROL_REPAIRS + 1
     assert not any(row["type"] == "exec.intent" for row in executor.log.recent(20))
+
+
+# --- Polling ohne Fortschritt ---------------------------------------------------------
+# Aus einem echten Lauf: ein delegate_codex, danach 98x delegate_status, bis die Notbremse
+# griff. Der Betreiber bekam nur "Step limit reached." und keinen Hinweis auf den Job.
+
+
+class _PollExecutor:
+    def __init__(self, tmp_path: Path, result) -> None:
+        self.log = EventLog(tmp_path / "ev.db")
+        self.result = result
+        self.calls = 0
+
+    def run(self, req, run_id):
+        from types import SimpleNamespace
+
+        self.calls += 1
+        return SimpleNamespace(
+            status=agent_loop.Status.DONE,
+            detail="ok",
+            result=self.result(self.calls),
+        )
+
+
+def _poll(job: str = "job-abc") -> str:
+    return _tool_call("delegate_status", {"job_id": job}, [])
+
+
+def test_identical_polls_end_the_run_with_a_push_note(tmp_path: Path) -> None:
+    executor = _PollExecutor(
+        tmp_path,
+        lambda _n: "delegate_status job_id=job-abc state=running",
+    )
+    result = run_agent(lambda _h: _poll(), executor, OWNER, "polls")
+
+    assert result.status is AgentStatus.ANSWERED
+    assert executor.calls == agent_loop.MAX_IDENTICAL_POLLS
+    assert "job-abc" in result.text and "notification" in result.text
+
+
+def test_polls_with_changing_status_keep_going(tmp_path: Path) -> None:
+    states = {1: "running seq=1", 2: "running seq=2", 3: "done"}
+    executor = _PollExecutor(
+        tmp_path,
+        lambda n: f"delegate_status job_id=job-abc state={states[n]}",
+    )
+    result = run_agent(
+        lambda _h: _poll() if executor.calls < 3 else "Fertig.",
+        executor,
+        OWNER,
+        "polls-ok",
+    )
+
+    assert result.status is AgentStatus.ANSWERED
+    assert executor.calls == 3
+    assert result.text.startswith("Fertig.")
+
+
+def test_step_limit_note_names_the_tools_used(tmp_path: Path) -> None:
+    executor = _PollExecutor(
+        tmp_path,
+        lambda n: f"delegate_status job_id=job-abc state=running seq={n}",
+    )
+    result = run_agent(lambda _h: _poll(), executor, OWNER, "polls-limit", max_steps=4)
+
+    assert result.status is AgentStatus.STEP_LIMIT
+    assert result.text.startswith("Step limit reached")
+    assert "delegate_status x4" in result.text
