@@ -13,7 +13,19 @@ import threading
 
 import pytest
 
-from talos.memory import OWNER, CUT_MARK, MAX_TURN_CHARS, Memory, Turn, clip, render
+from talos.memory import (
+    AGENT,
+    CONTROL_STATE_SPEAKER,
+    CUT_MARK,
+    MAX_TURN_CHARS,
+    OWNER,
+    RUN_STATUS,
+    SUMMARY_SPEAKER,
+    Memory,
+    Turn,
+    clip,
+    render,
+)
 
 CHAT = "telegram:100000001"
 OTHER = "telegram:999"
@@ -305,3 +317,32 @@ def test_the_original_task_falls_out_of_memory():
                         answered=f"Antwort {i} " + "y" * 100)
     zuege = memory.recall("chat")
     assert "Jahresbericht" in zuege[0].text, "die urspruengliche Aufgabe ist verloren"
+
+
+def test_control_states_never_orphan_a_response_after_summary_compression():
+    memory = Memory(summarize=lambda _text: "kurz gefasst")
+    for i in range(60):
+        memory.remember(
+            "chat",
+            asked=f"Frage {i} " + "x" * 100,
+            answered=f"Antwort {i} " + "y" * 100,
+        )
+    for i in range(6):
+        memory.remember_control_state("chat", f"revoked {i}")
+
+    context = memory.context("chat")
+
+    assert len(context) <= 12
+    assert sum(turn.size for turn in context) <= 8_000
+    conversation = [
+        turn for turn in context if turn.speaker != CONTROL_STATE_SPEAKER
+    ]
+    index = 0
+    while index < len(conversation):
+        if conversation[index].speaker == SUMMARY_SPEAKER:
+            index += 1
+            continue
+        assert conversation[index].speaker == OWNER
+        assert index + 1 < len(conversation)
+        assert conversation[index + 1].speaker in {AGENT, RUN_STATUS}
+        index += 2

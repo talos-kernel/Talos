@@ -27,14 +27,16 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
+import hashlib
 import inspect
 from pathlib import Path
+import re
 import threading
 import time
 from typing import Callable, Iterator, Protocol
 from weakref import WeakKeyDictionary
 
-from .agent_loop import AgentStatus, run_agent, tool_history_entry
+from .agent_loop import CompletionVerdict, AgentStatus, run_agent, tool_history_entry
 from .approval import ApprovalPicker, ApprovalStore, Pending, is_affirmative, is_always, is_negative
 from .attachment import extract as extract_media
 from .attachment import resolve as resolve_media
@@ -43,7 +45,7 @@ from .channel import Activity, FileDeliveryReceipt, Inbound, Principal, Structur
 from .media_cleanup import disposable_copy
 from .commands import CommandCenter, is_command, parse
 from .eventlog import Event, EventLog, new_run_id
-from .executor import Executor, Outcome, Status
+from .executor import COMMAND_AUDIT_DIGEST_KEY, Executor, Outcome, Status
 from .memory import Memory, Turn, render
 from .plan import PlanRun
 from .policy import ToolRequest, command_risk_paths, guard_targets
@@ -168,6 +170,67 @@ REVIEW_TYPES = ("exec.intent", "exec.result", "grant.issued", "review.reported")
 # stop text reaches its own cap. Selected receipt bytes are re-framed once below.
 INTERRUPTED_RECEIPTS_MAX_CHARS = 1_000
 INTERRUPTED_RECEIPTS_CUT = " […receipt excerpts truncated]"
+
+# Deliberately narrow structured intent: only an explicit run/execute request with ONE
+# backtick-quoted command.  Natural-language "write a sentence" and historical status
+# questions are not actions this parser pretends to understand.
+_EXPLICIT_SHELL_REQUEST = re.compile(
+    r"^\s*(?:(?:please|bitte)\s+)?(?:run|execute|fuehre|führe)\b|"
+    r"^\s*(?:can|could|would)\s+you\s+(?:please\s+)?(?:run|execute)\b",
+    re.IGNORECASE,
+)
+_BACKTICK_COMMAND = re.compile(r"`([^`\r\n]{1,2000})`")
+_COMPLETION_WORD = re.compile(
+    r"\b(?:executed|ran|completed|done|verified|successful(?:ly)?|ausgefuehrt|ausgeführt|"
+    r"gelaufen|lief|erledigt|verifiziert|erfolgreich)\b",
+    re.IGNORECASE,
+)
+_CLAUSE_BREAK = re.compile(
+    r"[.!?;,\n]|\b(?:but|however|and|yet|nevertheless|although|though|while|aber|jedoch|"
+    r"und|dennoch|trotzdem|obwohl|waehrend|während)\b",
+    re.IGNORECASE,
+)
+_CLAIM_NEGATION = re.compile(
+    r"\b(?:not|never|no|cannot|can't|couldn't|wasn't|weren't|didn't|nicht|nie|kein(?:e|en|er|es)?|"
+    r"konnte\s+nicht|kann\s+nicht)\b",
+    re.IGNORECASE,
+)
+_HONEST_NON_COMPLETION = re.compile(
+    r"(?:\b(?:not|never|nothing|cannot|can't|couldn't|wasn't|weren't|didn't|unable|blocked|"
+    r"denied|unverified)\b.{0,100}\b(?:execute|run|complete|verify|approval|permission|access)|"
+    r"\b(?:needs?|requires?)\b.{0,60}\b(?:approval|permission|access)\b|"
+    r"\b(?:nicht|nie|nichts|kein(?:e|en|er|es)?|kann\s+nicht|konnte\s+nicht|blockiert|"
+    r"abgelehnt|unverifiziert)\b.{0,100}\b(?:ausfuehr|ausführ|gelaufen|erledigt|verifizier|"
+    r"freigabe|erlaubnis|zugriff)|\b(?:braucht|benötigt)\b.{0,60}\b(?:freigabe|erlaubnis|zugriff)|"
+    r"\b(?:command|execution|action|befehl|ausfuehrung|ausführung|aktion)\b.{0,80}"
+    r"\b(?:failed|failure|error|timed\s+out|timeout|denied|blocked|fehlgeschlagen|fehler|"
+    r"zeitueberschreitung|zeitüberschreitung|abgelehnt|blockiert)\b)",
+    re.IGNORECASE,
+)
+
+
+def _explicit_shell_command(text: str) -> str | None:
+    if _EXPLICIT_SHELL_REQUEST.search(text) is None:
+        return None
+    commands = _BACKTICK_COMMAND.findall(text)
+    return commands[0] if len(commands) == 1 else None
+
+
+def _claims_positive_completion(text: str) -> bool:
+    """Bind negation to the completion clause instead of the whole answer."""
+    for match in _COMPLETION_WORD.finditer(text):
+        prefix = text[:match.start()]
+        breaks = [boundary.end() for boundary in _CLAUSE_BREAK.finditer(prefix)]
+        clause = prefix[breaks[-1] if breaks else 0:]
+        # "not only executed" is affirmative; plain "not executed" is not.
+        folded = re.sub(r"\bnot\s+only\b", "", clause, flags=re.IGNORECASE)
+        if _CLAIM_NEGATION.search(folded[-100:]) is None:
+            return True
+    return False
+
+
+def _honest_non_completion(text: str) -> bool:
+    return not _claims_positive_completion(text) and _HONEST_NON_COMPLETION.search(text) is not None
 
 
 @dataclass(frozen=True)
@@ -472,6 +535,11 @@ class Conductor:
                 result = self.commands.dispatch(
                     name, rest, principal=update.principal, conversation=update.conversation
                 )
+            if result.context_notice is not None:
+                # Der Zustandswechsel gilt auch dann, wenn die Chat-Zustellung danach
+                # scheitert. Er ist kein Kommando im Verlauf und keine Erlaubnis, sondern
+                # eine deterministische Tatsache, die aeltere Ausfuehrungsbelege einordnet.
+                self.memory.remember_control_state(update.conversation, result.context_notice)
             if result.request is not None:
                 return self._dispatch_request(update, run_id, result.request, result.reply or "")
             if result.background is not None:
@@ -890,16 +958,22 @@ class Conductor:
         if steerable and not task_id:
             self.task_approvals.cancel(update.principal, update.conversation)
         text = update.text if text is None else text
-        past = (
+        conversation_past = (
             self.memory.recall(update.conversation)
             if past_override is None
             else past_override
         )
-        if (past_override is None and not initial_history and not approval_reply and past
+        past = (
+            self.memory.context(update.conversation)
+            if past_override is None
+            else past_override
+        )
+        if (past_override is None and not initial_history and not approval_reply
+                and conversation_past
                 and text.strip().casefold() in {"?", "status?", "noch dran?", "was machst du jetzt?"}):
             from .memory import RUN_STATUS
-            if past[-1].speaker == RUN_STATUS:
-                summary = next((line[9:] for line in past[-1].text.splitlines()
+            if conversation_past[-1].speaker == RUN_STATUS:
+                summary = next((line[9:] for line in conversation_past[-1].text.splitlines()
                                 if line.startswith("Stopped: ")), "")
                 if summary:
                     # Status after protocol exhaustion is a read-back, not a new
@@ -959,6 +1033,7 @@ class Conductor:
                     steps_used=steps_used,
                     plan=plan,
                     redirect=self.redirect if steerable else steering,
+                    completion_check=self._completion_check(text, run_id),
                     final_check=self._final_check(text, run_id),
                     should_stop=stopped,
                 )
@@ -1328,7 +1403,8 @@ class Conductor:
         self.log.append(Event(run_id, "human", "command.steered",
                               {"target": target if target.startswith("bg_") else "foreground",
                                "principal": str(update.principal), "chars": len(text)}))
-        return self._reply(update, run_id, "Accepted — the task receives your correction at its next step.")
+        return self._reply(update, run_id,
+                           "Accepted — superseding unfinished reasoning before the next action.")
 
     def _cancel_background(self, update: Inbound, run_id: str, task_id: str) -> bool:
         found = next((task for task in self.background.running()
@@ -1358,9 +1434,11 @@ class Conductor:
         3. **Eigener `run_id`.** Der Bericht laesst sich damit spaeter ueber
            `talos why` einem Lauf zuordnen, ohne ihn vom Vordergrund zu trennen.
         4. **Lenkbar nur ausdruecklich adressiert.** `delegate_steer` legt eine
-           Kurskorrektur auf dem Schreibtisch ab; der Lauf liest sie an seiner
-           naechsten Schrittgrenze — an derselben Naht wie die getippte Korrektur im
-           Vordergrund, nur aus seinem eigenen Postfach. Wer lenken darf, entscheidet
+           Kurskorrektur auf dem Schreibtisch ab; eine noch nicht zugelassene Proposal
+           wird verworfen. Der Provider-Aufruf wird nicht synchron abgebrochen: ein
+           blockierendes Netzwerk-close darf weder Stop noch andere Laeufe sperren. Der
+           Lauf liest sie an derselben Naht wie die getippte Korrektur im Vordergrund,
+           nur aus seinem eigenen Postfach. Wer lenken darf, entscheidet
            die Herkunft, die HIER aufgezeichnet wird (Person und Unterhaltung des
            Tippenden). Jede eingelegte Anweisung hinterlaesst `background.steered`
            unter dem run_id dieses Laufs — die Richtungsaenderung ist damit im
@@ -1583,8 +1661,61 @@ class Conductor:
             return False
         return False
 
+    def _completion_check(self, user_text: str, run_id: str):
+        """Require the exact current-run shell receipt for an explicit quoted command."""
+        command = _explicit_shell_command(user_text)
+        if command is None:
+            return None
+
+        command_digest = hashlib.sha256(command.encode("utf-8")).hexdigest()
+
+        def check(answer: str, _history: tuple[str, ...]) -> CompletionVerdict:
+            waiting = False
+            attempted_status: str | None = None
+            for entry in self.log.by_run(run_id, limit=1_000):
+                payload = entry.get("payload") or {}
+                if entry.get("type") == "exec.intent":
+                    args = payload.get("args") or {}
+                    waiting = (
+                        payload.get("tool") == "run_shell"
+                        and isinstance(args, dict)
+                        and (
+                            args.get("command") == command
+                            or args.get(COMMAND_AUDIT_DIGEST_KEY) == command_digest
+                        )
+                    )
+                elif entry.get("type") == "exec.result":
+                    if waiting and payload.get("tool") == "run_shell":
+                        attempted_status = str(payload.get("status", "")).casefold() or "unknown"
+                        if attempted_status == Status.DONE.value:
+                            return CompletionVerdict(True)
+                    waiting = False
+            if _honest_non_completion(answer):
+                return CompletionVerdict(True)
+            if attempted_status is not None:
+                return CompletionVerdict(
+                    False,
+                    f"the exact quoted shell command has a terminal {attempted_status} "
+                    "receipt in this run, not a successful one",
+                    retry_action=False,
+                )
+            if waiting:
+                return CompletionVerdict(
+                    False,
+                    "the exact quoted shell command has an intent but no terminal receipt; "
+                    "its effects are uncertain",
+                    retry_action=False,
+                )
+            return CompletionVerdict(
+                False,
+                "the exact quoted shell command has no matching executor intent or successful "
+                "receipt in this run",
+            )
+
+        return check
+
     def _final_check(self, user_text: str, run_id: str):
-        """Adapt the intelligence review object to the agent-loop's tiny protocol."""
+        """Adapt the optional intelligence review object to the agent-loop protocol."""
         if self.intelligence is None:
             return None
 

@@ -155,12 +155,145 @@ def test_the_correction_reaches_the_next_step_of_the_real_loop(tmp_path) -> None
             return 'TOOL_CALL: {"tool": "read_file", "args": {"path": "/tmp/a"}}'
         return "fertig"
 
+    executor = _executor(tmp_path)
     ergebnis = run_agent(
-        propose, _executor(tmp_path), OWNER, "run-weg",
+        propose, executor, OWNER, "run-weg",
         redirect=conductor.redirect, max_steps=4,
     )
 
     assert ergebnis.status is AgentStatus.ANSWERED
+    assert len(gesehen) == 2
+    assert not [event for event in executor.log.recent(20) if event["type"] == "exec.intent"]
     zweiter = "\n".join(gesehen[1])
     assert "das andere Verzeichnis" in zweiter
     assert "[correction from the operator" in zweiter
+
+
+def test_a_correction_discards_a_stale_final_answer(tmp_path) -> None:
+    from tests.test_agent_loop import OWNER, _executor
+    from talos.agent_loop import AgentStatus, run_agent
+
+    conductor = _laufend(uid=OWNER.user_id, conversation="chat-7")
+    gesehen: list[list[str]] = []
+
+    def propose(history: list[str]) -> str:
+        gesehen.append(list(history))
+        if len(gesehen) == 1:
+            eingegangen = replace(
+                _update(uid=OWNER.user_id, conversation="chat-7"),
+                principal=OWNER,
+            )
+            assert _steers_the_running_task(conductor, FakeDesk(), eingegangen) is True
+            return "veraltete antwort"
+        return "aktuelle antwort"
+
+    ergebnis = run_agent(
+        propose, _executor(tmp_path), OWNER, "run-final",
+        redirect=conductor.redirect, max_steps=4,
+    )
+
+    assert ergebnis.status is AgentStatus.ANSWERED
+    assert ergebnis.text == "aktuelle antwort"
+    assert len(gesehen) == 2
+    assert "das andere Verzeichnis" in "\n".join(gesehen[1])
+
+
+class _AdmissionRace:
+    """Inject one correction immediately before or after the admission lock."""
+
+    def __init__(self, mailbox: Redirect, *, before: bool) -> None:
+        self.mailbox = mailbox
+        self.before = before
+        self.injected = False
+
+    def take_with_revision(self):
+        return self.mailbox.take_with_revision()
+
+    def admit(self, revision: int) -> bool:
+        if self.before and not self.injected:
+            self.injected = True
+            assert self.mailbox.offer("telegram:100000001", "chat-race", "nicht lesen")
+        accepted = self.mailbox.admit(revision)
+        if accepted and not self.before and not self.injected:
+            self.injected = True
+            assert self.mailbox.offer("telegram:100000001", "chat-race", "danach anders")
+        return accepted
+
+    def finish_proposal(self, revision: int) -> bool:
+        return self.mailbox.finish_proposal(revision)
+
+
+def test_a_correction_winning_immediately_before_admission_blocks_the_tool(tmp_path) -> None:
+    from tests.test_agent_loop import OWNER, _executor
+    from talos.agent_loop import AgentStatus, run_agent
+
+    target = tmp_path / "must-not-read.txt"
+    target.write_text("secret", encoding="utf-8")
+    mailbox = Redirect()
+    mailbox.open(str(OWNER), "chat-race")
+    raced = _AdmissionRace(mailbox, before=True)
+    calls = 0
+
+    def propose(_history: list[str]) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return f'TOOL_CALL: {{"tool": "read_file", "args": {{"path": "{target}"}}}}'
+        return "current answer"
+
+    executor = _executor(tmp_path)
+    result = run_agent(propose, executor, OWNER, "run-admit-before", redirect=raced)
+
+    assert result.status is AgentStatus.ANSWERED
+    assert result.text == "current answer"
+    assert not [event for event in executor.log.recent(20) if event["type"] == "exec.intent"]
+
+
+def test_a_correction_after_admission_waits_for_the_next_step(tmp_path) -> None:
+    from tests.test_agent_loop import OWNER, _executor
+    from talos.agent_loop import AgentStatus, run_agent
+
+    target = tmp_path / "read-once.txt"
+    target.write_text("ok", encoding="utf-8")
+    mailbox = Redirect()
+    mailbox.open(str(OWNER), "chat-race")
+    raced = _AdmissionRace(mailbox, before=False)
+    seen: list[list[str]] = []
+
+    def propose(history: list[str]) -> str:
+        seen.append(list(history))
+        if len(seen) == 1:
+            return f'TOOL_CALL: {{"tool": "read_file", "args": {{"path": "{target}"}}}}'
+        return "finished after correction"
+
+    executor = _executor(tmp_path)
+    result = run_agent(propose, executor, OWNER, "run-admit-after", redirect=raced)
+
+    assert result.status is AgentStatus.ANSWERED
+    assert result.text == "finished after correction"
+    assert len([event for event in executor.log.recent(20) if event["type"] == "exec.intent"]) == 1
+    assert "danach anders" in "\n".join(seen[1])
+
+
+def test_a_correction_after_initial_admission_cannot_be_lost_at_terminal_return(tmp_path) -> None:
+    from tests.test_agent_loop import OWNER, _executor
+    from talos.agent_loop import AgentStatus, run_agent
+
+    mailbox = Redirect()
+    mailbox.open(str(OWNER), "chat-race")
+    raced = _AdmissionRace(mailbox, before=False)
+    seen: list[list[str]] = []
+
+    def propose(history: list[str]) -> str:
+        seen.append(list(history))
+        return "stale final" if len(seen) == 1 else "current final"
+
+    result = run_agent(
+        propose, _executor(tmp_path), OWNER, "run-terminal-race", redirect=raced
+    )
+
+    assert result.status is AgentStatus.ANSWERED
+    assert result.text == "current final"
+    assert len(seen) == 2
+    assert "danach anders" in "\n".join(seen[1])
+    assert mailbox.is_open() is False

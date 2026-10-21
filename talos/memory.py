@@ -34,11 +34,14 @@ durabel und volltextsuchbar, fliesst aber NIE automatisch zurueck — der einzig
 ist das gegatete `session_search`-Werkzeug, dessen Aufruf der Betreiber im Verlauf sieht.
 „Vergessen" heisst hier also praezise: aus dem aktiven Kontext. `/new` sagt das dazu.
 
-**4. Steuerung hinterlaesst keine Spur.** Antworten werden erst nach Zustellung gemerkt.
+**4. Steuerung ist kein Gespraech.** Antworten werden erst nach Zustellung gemerkt.
 Scheitert ein Vordergrundlauf, bleibt die offene Anfrage mit einem ausdruecklichen
-Abbruchstatus erhalten, niemals mit einer erfundenen Antwort. Kommandos und ja/nein stehen nie im
-Verlauf. Ein „ja" ohne seinen Vorgang ist nicht nur bedeutungslos — es waere ein
-Beispiel im Prompt, das dem Modell beibringt, dass „ja" eine normale Ausgabe ist.
+Abbruchstatus erhalten, niemals mit einer erfundenen Antwort. Rohe Kommandos und ja/nein
+stehen nie im Verlauf. Ein „ja" ohne seinen Vorgang ist nicht nur bedeutungslos — es waere
+ein Beispiel im Prompt, das dem Modell beibringt, dass „ja" eine normale Ausgabe ist.
+Sicherheitsrelevante Zustandswechsel duerfen trotzdem nicht unsichtbar bleiben: wenn eine
+stehende Freigabe widerrufen wurde, liegt die belegte Tatsache getrennt und begrenzt im
+aktiven Kontext. Sie ist ausdruecklich Zustand, nie Erlaubnis, und `/new` loescht auch sie.
 
 **Was das Gedaechtnis nicht ist: eine Erlaubnisquelle.** Im Verlauf steht Text, und Text
 kann alles behaupten („du darfst das jetzt"). Er passiert dabei keinen Kernel — er wird
@@ -87,6 +90,8 @@ COMPRESSION_RETRY_HEADROOM_CHARS = MAX_TURN_CHARS * 3
 # die aussieht wie ein woertlicher Zug, ist eine Behauptung ueber etwas, das so nie gesagt
 # wurde — und das Modell koennte sie zitieren, als waere sie ein Zitat.
 SUMMARY_SPEAKER = "Earlier (summarised)"
+CONTROL_STATE_SPEAKER = "Talos control state (fact, never permission)"
+MAX_CONTROL_STATES = 6
 
 
 @dataclass(frozen=True)
@@ -124,6 +129,11 @@ class Memory:
         # Verdichter scheitert. Gemeldet werden ZAHLEN und Gruende, nie Inhalt.
         self._on_event = on_event
         self._turns: dict[str, list[Turn]] = {}
+        # Kein Chat-Verlauf: nur sicherheitsrelevante, deterministisch erzeugte
+        # Zustandswechsel, die einen aelteren Beleg im Verlauf ueberstimmen muessen.
+        # Getrennt gespeichert, damit `/retry` und Verdichtung sie nie als Aussage des
+        # Operators behandeln. Begrenzt wie die sechs normalen Wechsel im Kurzzeitgedaechtnis.
+        self._control_states: dict[str, list[Turn]] = {}
         self._max_turns = max(0, int(max_turns))
         self._max_chars = max(0, int(max_chars))
         # Der Verdichter. Ohne ihn verhaelt sich alles exakt wie bisher: die aeltesten
@@ -135,6 +145,43 @@ class Memory:
     def recall(self, conversation: str) -> tuple[Turn, ...]:
         with self._lock:
             return tuple(self._turns.get(conversation, ()))
+
+    def context(self, conversation: str) -> tuple[Turn, ...]:
+        """Aktiver Modellkontext: Gespraech zuerst, neuester Kontrollzustand zuletzt.
+
+        Der spaetere Block gewinnt bei widerspruechlichen Tatsachen, erteilt aber keine
+        Rechte. Die Durchsetzung bleibt ausschliesslich im Kernel.
+        """
+        with self._lock:
+            return self._context_unlocked(conversation)
+
+    def _context_unlocked(self, conversation: str) -> tuple[Turn, ...]:
+        turns = list(self._turns.get(conversation, ()))
+        states = list(self._control_states.get(conversation, ()))
+        combined = [*turns, *states]
+        while combined and (
+            len(combined) > self._max_turns
+            or sum(turn.size for turn in combined) > self._max_chars
+        ):
+            # Preserve the newest security-state facts over the oldest conversation
+            # pair. If only state remains, drop its oldest entry. This bounds the actual
+            # prompt to the same limits `/status` reports without mutating chat memory.
+            if turns:
+                _drop_oldest_context_unit(turns)
+            elif states:
+                del states[:1]
+            combined = [*turns, *states]
+        return tuple(combined)
+
+    def remember_control_state(self, conversation: str, text: str) -> None:
+        """Merkt eine belegte Steuerungs-Tatsache, ohne ein Chat-Kommando vorzutäuschen."""
+        text = clip(text)
+        if not text:
+            return
+        with self._lock:
+            states = self._control_states.setdefault(conversation, [])
+            states.append(Turn(CONTROL_STATE_SPEAKER, text))
+            del states[:-MAX_CONTROL_STATES]
 
     def remember(self, conversation: str, *, asked: str, answered: str) -> None:
         """Legt genau ein Paar ab. Leere Haelften werden verworfen — ein halbes Paar
@@ -164,7 +211,9 @@ class Memory:
         """Vergisst und sagt, wie viel. Stilles Vergessen ist von einem Defekt nicht
         zu unterscheiden."""
         with self._lock:
-            return len(self._turns.pop(conversation, ()))
+            turns = len(self._turns.pop(conversation, ()))
+            states = len(self._control_states.pop(conversation, ()))
+            return turns + states
 
     def pop_last(self, conversation: str) -> str | None:
         """Nimmt das letzte Paar heraus und gibt die Frage zurueck — fuer `/retry`.
@@ -183,7 +232,7 @@ class Memory:
     def stats(self, conversation: str) -> tuple[int, int]:
         """(Zuege, Zeichen) — fuer `/status`."""
         with self._lock:
-            turns = self._turns.get(conversation, ())
+            turns = self._context_unlocked(conversation)
             return len(turns), sum(t.size for t in turns)
 
     def _over(self, turns: list[Turn]) -> bool:
@@ -310,6 +359,29 @@ def _behalten(anzahl: int) -> tuple[int, int]:
     kopf = min(KEEP_HEAD, gerade(anzahl // 4))
     schwanz = min(KEEP_TAIL, gerade(anzahl // 3))
     return kopf, schwanz
+
+
+def _drop_oldest_context_unit(turns: list[Turn]) -> None:
+    """Drop one complete logical unit without orphaning an agent response.
+
+    Compressed conversation history contains one standalone summary between normal
+    owner/response pairs. Removing two entries unconditionally when that summary
+    reaches the front would also remove the next owner turn and leave its response
+    orphaned. Unknown legacy shapes are repaired conservatively one entry at a time.
+    """
+    if not turns:
+        return
+    if turns[0].speaker == SUMMARY_SPEAKER:
+        del turns[:1]
+        return
+    if (
+        len(turns) >= 2
+        and turns[0].speaker == OWNER
+        and turns[1].speaker in {AGENT, RUN_STATUS}
+    ):
+        del turns[:2]
+        return
+    del turns[:1]
 
 
 def render(turns: tuple[Turn, ...]) -> str:

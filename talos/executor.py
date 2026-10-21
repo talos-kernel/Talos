@@ -19,6 +19,7 @@ Executor nicht.
 """
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
@@ -29,17 +30,37 @@ from .capability import CapabilityError, CapabilityMint, Grant
 from .eventlog import Event, EventLog
 from .manifest import Effect
 from .policy import Decision, PolicyKernel, ToolRequest, Verdict, guard_targets
-from .snapshot import SnapshotToken, Snapshotter
+from .snapshot import SnapshotError, SnapshotToken, Snapshotter
 
 GrantedRun = Callable[[ToolRequest, Grant], object]
 
 # Ohne die Argumente steht im Receipt nur "run_shell" — nicht, welches Kommando lief.
 # "Wer hat freigegeben" war belegbar, "was wurde ausgefuehrt" nicht. Das schliesst die Luecke.
 AUDIT_MAX_CHARS = 400
+COMMAND_AUDIT_DIGEST_KEY = "command_sha256"
 
 
 # Die Quittung einer Handlung, die nur lief, weil the operator sie freigegeben hat.
 APPROVED_DETAIL = "ran with your approval"
+_BOUND_FILE_KEY = "__talos_bound_file_v1"
+
+
+def _bound_runner_request(
+    req: ToolRequest, bindings: tuple[verifier.Binding, ...]
+) -> ToolRequest:
+    """Freeze file runners to the verifier-bound object, not a mutable symlink."""
+    if req.tool not in {"read_file", "write_file"} or len(bindings) != 1:
+        return req
+    binding = bindings[0]
+    args = dict(req.args)
+    args["path"] = binding.realpath
+    args[_BOUND_FILE_KEY] = {
+        "realpath": binding.realpath,
+        "sha256": binding.sha256,
+        "parent_dev": binding.parent_dev,
+        "parent_ino": binding.parent_ino,
+    }
+    return ToolRequest(req.tool, req.identity, args, req.targets)
 
 
 def done_detail(decision: Decision) -> str:
@@ -83,6 +104,13 @@ def audit_args(args: dict, tool: str = "") -> dict:
         if len(text) > AUDIT_MAX_CHARS:
             text = text[:AUDIT_MAX_CHARS] + f"…(+{len(text) - AUDIT_MAX_CHARS} Zeichen)"
         out[str(key)] = text
+    # A long shell command is intentionally truncated in the human-readable audit
+    # payload, but completion verification must still bind to the exact command. The
+    # derived digest is written after user-provided keys so it cannot be spoofed by an
+    # argument named ``command_sha256``.
+    command = args.get("command")
+    if tool == "run_shell" and isinstance(command, str):
+        out[COMMAND_AUDIT_DIGEST_KEY] = hashlib.sha256(command.encode("utf-8")).hexdigest()
     return out
 
 
@@ -131,28 +159,58 @@ class Executor:
         # A failed read must never rewrite its source (which may be read-only or
         # have changed independently). Binding checks still cover every target.
         spec = self.policy.manifest.get(req.tool)
-        token = self.snapshotter.take(() if spec and spec.effect is Effect.READ else targets)
+        # Snapshot the same resolved objects that the verifier bound.  In particular,
+        # a broken symlink's real target is "absent"; restoring the lexical link would
+        # delete the link and strand the file the runner created behind it.
+        snapshot_targets = tuple(binding.realpath for binding in bindings)
+        try:
+            token = self.snapshotter.take(
+                () if spec and spec.effect is Effect.READ else snapshot_targets
+            )
+        except SnapshotError as error:
+            # Snapshot refusal precedes both grant and runner, so restoration would be
+            # not only unnecessary but unsafe for the special file that was refused.
+            return self._final(run_id, req.tool, Status.ERROR, str(error))
 
         if not verifier.recheck(bindings):
-            self.snapshotter.restore(token)
+            # No effect has started. Restoring here would overwrite the very external
+            # change that the binding check detected (or follow a newly swapped link).
             return self._final(run_id, req.tool, Status.BINDING_CHANGED, "target changed before the run")
+
+        bound_req = _bound_runner_request(req, bindings)
 
         # Erst jetzt das Recht praegen — auf diese Anfrage, fuer diesen einen Lauf.
         try:
-            grant = self.mint.issue(req, human_approved=human_approved)
+            grant = self.mint.issue(bound_req, human_approved=human_approved)
         except CapabilityError as error:
-            self.snapshotter.restore(token)
+            # Minting is still before the runner boundary; there is nothing to undo.
             return self._final(run_id, req.tool, Status.DENIED, str(error))
-        self._record_grant(run_id, req, grant)
+        self._record_grant(run_id, bound_req, grant)
 
         try:
-            result = self.runner(req, grant)
+            result = self.runner(bound_req, grant)
         except Exception as error:  # jeder Tool-Fehler -> zurückrollen
-            self.snapshotter.restore(token)
+            # Atomic runners mark failures that happened before publication.  Rolling
+            # those back can itself damage an unchanged FIFO, hardlink or read-only
+            # file; rollback is only for a failure after an effect may have started.
+            if getattr(error, "effect_started", None) is not False:
+                try:
+                    self.snapshotter.restore(token)
+                except Exception as restore_error:
+                    return self._final(
+                        run_id, req.tool, Status.ERROR,
+                        f"{error}; rollback failed: {restore_error}", grant=grant,
+                    )
             return self._final(run_id, req.tool, Status.ERROR, str(error), grant=grant)
 
         if expected is not None and not verifier.verify_result(expected, result):
-            self.snapshotter.restore(token)
+            try:
+                self.snapshotter.restore(token)
+            except Exception as restore_error:
+                return self._final(
+                    run_id, req.tool, Status.ERROR,
+                    f"result verification failed; rollback failed: {restore_error}", grant=grant,
+                )
             return self._final(run_id, req.tool, Status.VERIFY_FAILED, "Ergebnis != erwartet", grant=grant)
 
         self._record_snapshot(run_id, req, token)

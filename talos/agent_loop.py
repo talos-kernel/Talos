@@ -31,12 +31,30 @@ Propose = Callable[[list[str]], str]
 Progress = Callable[["AgentProgress"], None]
 FinalCheck = Callable[[str, tuple[str, ...]], tuple[bool, str]]
 
+
+@dataclass(frozen=True)
+class CompletionVerdict:
+    """Result of the deterministic action-receipt gate.
+
+    ``retry_action`` is false once an effect was attempted or its receipt is
+    ambiguous. That distinction prevents a reporting repair from replaying a command
+    whose first execution may already have produced effects.
+    """
+
+    ok: bool
+    note: str = ""
+    retry_action: bool = True
+
+
+CompletionCheck = Callable[[str, tuple[str, ...]], CompletionVerdict]
+
 # 8 war zu knapp fuer echte Mehrschritt-Auftraege: der Lauf brach
 # mitten in legitimen Werkzeug-Kaskaden ab. 100 ist eine Notbremse gegen Endlosschleifen,
 # keine Arbeitsgrenze — jeder einzelne Schritt passiert weiterhin einzeln den Kernel, und
 # `/stop` bleibt jederzeit moeglich. Mehr Schritte = mehr Wirkungen pro Auftrag, aber
 # keine neuen Rechte.
 MAX_STEPS = 100
+MAX_STEER_REPLANS = 4
 MAX_TOOL_RESULT_CHARS = 12_000
 MAX_TOOL_ARGS_CHARS = 3_000
 TOOL_RESULT_CUT = " […tool output truncated]"
@@ -326,6 +344,19 @@ QUESTION_REPAIR_FAILED = (
 # turn, and every resulting tool request still passes the same kernel.
 MAX_FINAL_REVIEW_RETRIES = 1
 MAX_REVIEW_NOTE_CHARS = 800
+# A missing receipt for an explicit action is not a quality warning.  One repair is
+# enough; after that Talos returns a deterministic unfinished result and never delivers
+# the model's unsupported completion claim.
+MAX_COMPLETION_REPAIRS = 1
+COMPLETION_UNVERIFIED = (
+    "Task unfinished: the model's completion report was not supported by current-run "
+    "receipts. No unsupported completion claim was delivered and no uncertain action "
+    "was repeated."
+)
+COMPLETION_RECEIPTS_UNAVAILABLE = (
+    "Task unfinished: current-run receipts could not be verified. No action was repeated; "
+    "inspect the event log before trying again."
+)
 
 
 def looks_self_blocked(text: str) -> bool:
@@ -466,6 +497,7 @@ def run_agent(
     # adressiert). Beide liefern `take()` mit Eintraegen, die `as_turn()` koennen, und
     # werden an derselben Schrittgrenze gelesen — es gibt bewusst keine zweite Naht.
     redirect: Redirect | SteerInbox | None = None,
+    completion_check: CompletionCheck | None = None,
     final_check: FinalCheck | None = None,
     # Not-Halt (/stopall): eine abstimmende Abfrage an der Schrittgrenze. Der
     # laufende Modellaufruf selbst ist ein blockierender Subprozess und bleibt
@@ -478,6 +510,8 @@ def run_agent(
     control_repairs = 0
     self_block_retries = 0
     final_review_retries = 0
+    completion_repairs = 0
+    completion_report_only = False
     question_retries = 0
     empty_repairs = 0
     announcement_repairs = 0
@@ -521,30 +555,69 @@ def run_agent(
                 history=tuple(history),
                 plan=active,
             )
-        # Eine Korrektur des Betreibers wird HIER eingelegt — zwischen zwei Schritten,
-        # bevor der naechste Zug aus der Historie gebildet wird. In einen laufenden
-        # Modellaufruf greift niemand hinein; der ist ein blockierender Subprozess.
-        # Sie ist ein Zug DESSELBEN Sprechers und traegt kein zusaetzliches Recht: jeder
-        # Werkzeugaufruf danach geht durch denselben Kernel, und eine abgelehnte
-        # Handlung wird durch eine nachgeschobene Nachricht nicht erlaubt.
+        # A correction is a new operator turn, never an extra right.  The mailbox's
+        # revision supplies a linear admission boundary around inference: if a steer
+        # was accepted before that boundary, the older proposal is discarded before
+        # parsing, approval or execution.  The provider call is deliberately left
+        # alone; the revision check is the safety guarantee.
+        redirect_revision = 0
         if redirect is not None:
-            for korrektur in redirect.take():
-                followup = None  # Reconsider a pending read after an operator correction.
-                history.append(korrektur.as_turn())
+            redirect_revision, corrections = redirect.take_with_revision()
+            for correction in corrections:
+                followup = None
+                history.append(correction.as_turn())
                 _emit(
                     progress,
                     AgentProgress(ProgressStage.REDIRECTED, step=step, max_steps=max_steps),
                 )
-        if followup is None:
-            _emit(progress, AgentProgress(ProgressStage.THINKING, step=step, max_steps=max_steps))
-            text = propose(history)
-        else:
-            text, followup = followup, None
-        # A stop can arrive while inference is blocked. Do not execute the proposal
-        # returned by that cancelled call, even if the backend did not kill it.
-        if should_stop is not None and should_stop():
-            return AgentResult(AgentStatus.ANSWERED, STOPPED_NOTE,
-                               steps=step, history=tuple(history), plan=active)
+
+        steer_replans = 0
+        while True:
+            if followup is None:
+                _emit(progress, AgentProgress(ProgressStage.THINKING,
+                                              step=step, max_steps=max_steps))
+                text = propose(history)
+            else:
+                text, followup = followup, None
+            # A stop can arrive while inference is blocked. Do not execute the proposal
+            # returned by that cancelled call, even if the backend did not kill it.
+            if should_stop is not None and should_stop():
+                return AgentResult(AgentStatus.ANSWERED, STOPPED_NOTE,
+                                   steps=step, history=tuple(history), plan=active)
+
+            if redirect is None:
+                break
+            # This is the proposal's linearization point.  A correction accepted
+            # before it makes ``admit`` fail and the proposal is never parsed.  One
+            # accepted after it belongs to the next step; this closes the former
+            # check-then-execute race without holding the mailbox across a tool run.
+            if redirect.admit(redirect_revision):
+                break
+
+            admitted_revision, corrections = redirect.take_with_revision()
+            redirect_revision = admitted_revision
+            steer_replans += 1
+            for correction in corrections:
+                history.append(correction.as_turn())
+                _emit(
+                    progress,
+                    AgentProgress(ProgressStage.REDIRECTED, step=step, max_steps=max_steps),
+                )
+            executor.log.append(Event(run_id, "agent", "proposal.superseded", {
+                "step": step, "corrections": len(corrections), "attempt": steer_replans,
+            }))
+            if steer_replans >= MAX_STEER_REPLANS:
+                return AgentResult(
+                    AgentStatus.STEP_LIMIT,
+                    "Too many course corrections arrived during reasoning. "
+                    "No superseded proposal was executed; send the final direction once.",
+                    steps=step - 1,
+                    history=tuple(history),
+                    plan=active,
+                )
+            # The stale text is intentionally never parsed. Re-plan this same logical
+            # step, so steering cannot consume a plan budget or repeat an effect.
+            followup = None
 
         # Der Plan wird genau einmal gelesen, im ersten Zug, der einen enthaelt. Danach
         # ist er fest: ein Werkzeug-Ergebnis ist fremder Text, und koennte es das Modell
@@ -645,6 +718,54 @@ def run_agent(
                 self_block_retries += 1
                 history.append(SELF_BLOCK_NOTE)
                 continue
+            if completion_check is not None:
+                try:
+                    completion = completion_check(text.strip(), tuple(history))
+                except Exception:
+                    executor.log.append(Event(run_id, "agent", "completion.receipts_unavailable", {}))
+                    return AgentResult(
+                        AgentStatus.STEP_LIMIT,
+                        COMPLETION_RECEIPTS_UNAVAILABLE,
+                        steps=step,
+                        history=tuple(history),
+                        plan=active,
+                    )
+                if not completion.ok:
+                    note = " ".join(str(completion.note).split())[:MAX_REVIEW_NOTE_CHARS]
+                    exhausted = completion_repairs >= MAX_COMPLETION_REPAIRS
+                    executor.log.append(Event(run_id, "agent", "completion.repair", {
+                        "attempt": completion_repairs + 1,
+                        "exhausted": exhausted,
+                    }))
+                    if exhausted:
+                        return AgentResult(
+                            AgentStatus.STEP_LIMIT,
+                            COMPLETION_UNVERIFIED,
+                            steps=step,
+                            history=tuple(history),
+                            plan=active,
+                        )
+                    completion_repairs += 1
+                    if completion.retry_action:
+                        history.append(
+                            "[Completion receipt check failed. "
+                            f"{note}. Emit the fresh TOOL_CALL for the exact requested action, "
+                            "or state a precise blocker without claiming it ran. Do not reuse "
+                            "an older or unrelated receipt.]"
+                        )
+                    else:
+                        # This is a hard execution latch, not merely advice to the
+                        # model. Once an exact action was attempted or its outcome is
+                        # uncertain, no later proposal in this run may execute or even
+                        # park another tool call.
+                        completion_report_only = True
+                        history.append(
+                            "[Completion receipt check failed. "
+                            f"{note}. Do not emit another TOOL_CALL and do not retry the action. "
+                            "Report the precise recorded failure, denial, or uncertainty without "
+                            "claiming success. An attempted or uncertain effect must not be replayed.]"
+                        )
+                    continue
             if final_check is not None:
                 try:
                     review_ok, review_note = final_check(text.strip(), tuple(history))
@@ -663,6 +784,22 @@ def run_agent(
                         )
                         continue
                     text = f"{text.strip()}\n\n⚠ NOT VERIFIED — {note}"
+            if redirect is not None and not redirect.finish_proposal(redirect_revision):
+                admitted_revision, corrections = redirect.take_with_revision()
+                redirect_revision = admitted_revision
+                for correction in corrections:
+                    history.append(correction.as_turn())
+                    _emit(
+                        progress,
+                        AgentProgress(
+                            ProgressStage.REDIRECTED, step=step, max_steps=max_steps
+                        ),
+                    )
+                executor.log.append(Event(run_id, "agent", "proposal.superseded", {
+                    "step": step, "corrections": len(corrections), "attempt": 1,
+                    "terminal": True,
+                }))
+                continue
             # Hier faellt das Urteil des Codes ueber eine Antwort, die das Modell selbst
             # geschrieben hat. Die Antwort bleibt vollstaendig stehen — sie zu verwerfen
             # hiesse, Brauchbares wegzuwerfen. Aber ihr „fertig" steht ab jetzt nicht
@@ -670,6 +807,18 @@ def run_agent(
             return AgentResult(
                 AgentStatus.ANSWERED,
                 _with_verdict(text.strip(), active),
+                steps=step,
+                history=tuple(history),
+                plan=active,
+            )
+
+        if completion_report_only:
+            executor.log.append(Event(run_id, "agent", "completion.replay_blocked", {
+                "step": step,
+            }))
+            return AgentResult(
+                AgentStatus.STEP_LIMIT,
+                COMPLETION_UNVERIFIED,
                 steps=step,
                 history=tuple(history),
                 plan=active,

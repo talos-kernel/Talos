@@ -33,6 +33,7 @@ def test_hermes_argv_selects_provider_model_and_exact_no_tools_toolset(tmp_path:
     assert "--toolsets" not in argv  # Hermes rejects empty toolsets; preflight proves none enabled
     assert "--source" not in argv
     assert "--yolo" not in argv
+    assert "--reasoning" not in argv  # current Hermes releases removed this flag
 
 
 def test_hermes_argv_keeps_machine_protocol_in_final_answer_channel(tmp_path: Path) -> None:
@@ -65,7 +66,13 @@ def test_adaptive_reasoning_routes_simple_standard_and_deep_work() -> None:
 
 def test_hermes_argv_passes_adaptive_reasoning_to_the_real_cli(tmp_path: Path) -> None:
     binary = tmp_path / "hermes"
-    binary.write_text("#!/bin/sh\n[ \"$1\" = tools ] && echo \"✗ disabled web\"\n", encoding="utf-8")
+    binary.write_text(
+        "#!/bin/sh\n"
+        "[ \"$1\" = tools ] && echo \"✗ disabled web\" && exit 0\n"
+        "[ \"$1\" = chat ] && [ \"$2\" = --help ] && "
+        "echo 'usage: hermes chat --reasoning LEVEL' >&2 && exit 0\n",
+        encoding="utf-8",
+    )
     binary.chmod(0o700)
     reasoner = HermesCliReasoner(
         str(binary), 30, provider="openai-codex", model="gpt-5.6-sol"
@@ -90,6 +97,10 @@ def test_tool_protocol_binds_the_model_to_verified_results() -> None:
         "tool_call",
     ):
         assert term in prompt
+    assert "every execution request is a new action" in prompt
+    assert "never reuse a prior receipt" in prompt
+    assert "after /revoke" in prompt
+    assert "must emit a fresh tool_call" in prompt
 
 
 def test_hermes_parser_reads_plain_oneshot_and_defensive_json() -> None:

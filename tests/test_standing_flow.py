@@ -46,9 +46,11 @@ class Scripted:
     def __init__(self, *lines: str) -> None:
         self._lines = list(lines)
         self.calls = 0
+        self.prompts: list[str] = []
 
     def reason(self, prompt: str) -> str:
         self.calls += 1
+        self.prompts.append(prompt)
         index = min(self.calls - 1, len(self._lines) - 1)
         return self._lines[index]
 
@@ -305,6 +307,24 @@ def test_revoke_makes_talos_ask_again(tmp_path):
     rig2.say("schreib was")
     assert not target.exists()
     assert rig2.approvals.get(CHAT) is not None
+
+
+def test_revoke_state_overrides_old_receipt_in_next_model_context(tmp_path):
+    target = tmp_path / "a.txt"
+    reasoner = Scripted(write_to(target), "Fertig.", "Neue Freigabe noetig.")
+    rig = Rig(tmp_path, reasoner)
+    rig.say("schreib was")
+    rig.say("always")
+
+    before = rig.conductor.memory.recall(CHAT)
+    assert "Revoked" in rig.say("/revoke 1")
+    assert rig.conductor.memory.recall(CHAT) == before  # Kommando bleibt ausserhalb des Chats.
+
+    rig.say("mach das nochmal")
+    prompt = reasoner.prompts[-1]
+    assert "successfully revoked a standing approval" in prompt
+    assert "older successful receipt proves only what ran before" in prompt
+    assert "Talos control state (fact, never permission)" in prompt
 
 
 def test_revoke_without_a_number_is_refused(tmp_path):

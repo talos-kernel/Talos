@@ -10,7 +10,11 @@ from __future__ import annotations
 from . import (apiclient, browser, claudejobs, clianything, dag, documents, frames,
                gitops, hearing, remoteexec, sandbox, speech, transcript, vision, web)
 
+import os
+import hashlib
+import stat
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -19,7 +23,7 @@ from typing import Callable
 
 from .manifest import Effect, ToolManifest, ToolSpec
 from .computer.client import runner as computer_runner
-from .policy import ToolRequest, claude_job_workspace
+from .policy import ToolRequest, claude_job_workspace, guard_targets
 from .question import Answer, AnswerReason, QuestionDesk
 from .skillwrite import skill_write
 from .snapshot import Entries, restore_entries
@@ -35,6 +39,7 @@ from .vault import (
 SHELL_TIMEOUT_S = 60
 # Wie weit `/undo` zurückschaut, um den Snapshot zum angefragten Lauf zu finden.
 UNDO_LOOKBACK = 200
+_BOUND_FILE_KEY = "__talos_bound_file_v1"
 
 
 def _need(req: ToolRequest, key: str) -> str:
@@ -50,15 +55,292 @@ def _need(req: ToolRequest, key: str) -> str:
     return str(req.args[key])
 
 
+def _file_target(req: ToolRequest) -> Path:
+    """Resolve exactly the target that the kernel derived for this request.
+
+    `guard_targets` owns expansion of `~` and environment variables.  Reusing it here
+    prevents the policy/snapshot path from drifting away from the path the runner
+    actually touches.  The verifier separately binds the resulting real path.
+    """
+    _need(req, "path")  # keep the public missing-argument error stable
+    bound = req.args.get(_BOUND_FILE_KEY)
+    if isinstance(bound, dict):
+        target = Path(str(bound.get("realpath", "")))
+        if not target.is_absolute() or os.path.abspath(str(target)) != os.path.abspath(
+            str(req.args["path"])
+        ):
+            raise WritePreconditionError("bound file target does not match request path")
+        # Do not resolve it again: the executor deliberately froze this path after
+        # verifier binding. Re-resolving a swapped symlink here reopens the TOCTOU.
+        return target
+    targets = guard_targets(req)
+    if len(targets) != 1:
+        raise ValueError("file tool needs exactly one regular-file target")
+    return Path(os.path.realpath(targets[0]))
+
+
 def read_file(req: ToolRequest) -> str:
-    return Path(_need(req, "path")).read_text(encoding="utf-8")
+    path = _file_target(req)
+    binding = _file_binding(req, path)
+    dir_fd = _open_parent(path, binding=binding, create=False)
+    file_fd: int | None = None
+    try:
+        file_fd = os.open(
+            path.name,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
+            dir_fd=dir_fd,
+        )
+        current = os.fstat(file_fd)
+        if not stat.S_ISREG(current.st_mode):
+            raise ValueError("read target is not a regular file")
+        data = _read_fd(file_fd)
+        if binding is not None and hashlib.sha256(data).hexdigest() != binding["sha256"]:
+            raise WritePreconditionError("read target changed after verifier binding")
+        return data.decode("utf-8")
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        os.close(dir_fd)
+
+
+class WritePreconditionError(ValueError):
+    """The target was rejected before its directory entry was changed."""
+
+    effect_started = False
+
+
+class WritePermissionError(PermissionError):
+    """A write permission precondition failed before publication."""
+
+    effect_started = False
+
+
+def _has_extended_metadata(fd: int) -> bool:
+    """Detect ACLs/xattrs that this atomic writer cannot safely reproduce.
+
+    Linux exposes ACLs as xattrs, so ``listxattr(fd)`` is inode-bound and sufficient.
+    CPython on macOS does not expose it in this build; BSD ``ls`` marks the permission
+    token with ``+`` (ACL) or ``@`` (xattrs).  Probing ``/dev/fd`` with ``-L`` and
+    ``pass_fds`` keeps that fallback bound to the already-open inode.  Unknown
+    platforms fail closed rather than silently dropping an access restriction.
+    """
+    listxattr = getattr(os, "listxattr", None)
+    if callable(listxattr):
+        try:
+            return bool(listxattr(fd))
+        except OSError as error:
+            raise WritePreconditionError(
+                "cannot verify target ACL or extended metadata; atomic write refused"
+            ) from error
+    if sys.platform != "darwin":
+        raise WritePreconditionError(
+            "cannot verify target ACL or extended metadata on this platform; "
+            "atomic write refused"
+        )
+    try:
+        result = subprocess.run(
+            ["/bin/ls", "-Llde@", "--", f"/dev/fd/{fd}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            pass_fds=(fd,),
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise WritePreconditionError(
+            "cannot verify target ACL or extended metadata; atomic write refused"
+        ) from error
+    first = result.stdout.splitlines()[0].split()[0] if result.stdout.splitlines() else ""
+    if result.returncode != 0 or len(first) < 10:
+        raise WritePreconditionError(
+            "cannot verify target ACL or extended metadata; atomic write refused"
+        )
+    return len(first) > 10
+
+
+def _read_fd(fd: int) -> bytes:
+    os.lseek(fd, 0, os.SEEK_SET)
+    chunks: list[bytes] = []
+    while True:
+        chunk = os.read(fd, 1024 * 1024)
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
+
+
+def _file_binding(req: ToolRequest, path: Path) -> dict[str, object] | None:
+    raw = req.args.get(_BOUND_FILE_KEY)
+    if not isinstance(raw, dict):
+        return None
+    if str(raw.get("realpath", "")) != str(path):
+        raise WritePreconditionError("bound file target does not match runner target")
+    digest = raw.get("sha256")
+    if not isinstance(digest, str):
+        raise WritePreconditionError("bound file target has no verifier digest")
+    return raw
+
+
+def _open_parent(path: Path, *, binding: dict[str, object] | None, create: bool) -> int:
+    if binding is not None and binding.get("parent_dev") is None:
+        # Creating a whole directory chain after the verifier ran would leave no
+        # inode to bind.  A caller can create/approve the directory separately and
+        # retry; the file publication itself never proceeds through an unbound parent.
+        raise WritePreconditionError(
+            "file parent did not exist at verifier binding; create it and retry"
+        )
+    if create:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path.parent, flags)
+    try:
+        if binding is not None and binding.get("parent_dev") is not None:
+            current = os.fstat(fd)
+            if (
+                current.st_dev != binding.get("parent_dev")
+                or current.st_ino != binding.get("parent_ino")
+            ):
+                raise WritePreconditionError("file parent changed after verifier binding")
+        return fd
+    except Exception:
+        os.close(fd)
+        raise
+
+
+def _same_entry(before: os.stat_result, after: os.stat_result) -> bool:
+    """Did the directory entry and its observable file state stay bound?"""
+    fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+              "st_size", "st_mtime_ns", "st_ctime_ns", "st_flags")
+    return all(getattr(before, name, None) == getattr(after, name, None) for name in fields)
+
+
+def _atomic_write_text(
+    path: Path, content: str, *, binding: dict[str, object] | None = None
+) -> None:
+    """Publish one complete UTF-8 file without broadening write semantics.
+
+    The final target is already the verifier's real path, so a caller-supplied symlink
+    remains a symlink.  Existing mode/owner/group metadata is retained.  Multi-link
+    files are refused: replacing one directory entry would silently split a hardlink,
+    unlike the previous in-place write.
+    """
+    dir_fd = _open_parent(path, binding=binding, create=True)
+    temp_name = f".{path.name}.{uuid.uuid4().hex}.tmp"
+    temp_fd: int | None = None
+    existing_fd: int | None = None
+    published = False
+    try:
+        try:
+            existing = os.stat(path.name, dir_fd=dir_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            existing = None
+        if existing is not None:
+            if not stat.S_ISREG(existing.st_mode):
+                raise WritePreconditionError("write target is not a regular file")
+            if existing.st_nlink != 1:
+                raise WritePreconditionError("atomic write refuses to split a hardlink")
+            if existing.st_uid != os.geteuid():
+                raise WritePermissionError(
+                    "atomic write refuses to replace a file owned by another user"
+                )
+            if not existing.st_mode & stat.S_IWUSR:
+                raise WritePermissionError("write target is not writable")
+            if stat.S_IMODE(existing.st_mode) & (stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX):
+                raise WritePreconditionError("atomic write refuses special permission bits")
+            if getattr(existing, "st_flags", 0):
+                raise WritePreconditionError("atomic write refuses file flags it cannot preserve")
+            existing_fd = os.open(
+                path.name,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
+                dir_fd=dir_fd,
+            )
+            opened = os.fstat(existing_fd)
+            if not _same_entry(existing, opened):
+                raise WritePreconditionError("write target changed before binding check")
+            existing = opened
+            if _has_extended_metadata(existing_fd):
+                raise WritePreconditionError(
+                    "atomic write refuses ACL or extended metadata it cannot preserve"
+                )
+            if binding is not None and hashlib.sha256(_read_fd(existing_fd)).hexdigest() != binding["sha256"]:
+                raise WritePreconditionError("write target changed after verifier binding")
+        elif binding is not None and binding["sha256"] != "absent":
+            raise WritePreconditionError("write target disappeared after verifier binding")
+
+        temp_fd = os.open(
+            temp_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            # Content is private from the instant the inode exists.  The final mode
+            # of an existing plain file is applied only after the complete payload
+            # has been flushed and immediately before publication.
+            0o600,
+            dir_fd=dir_fd,
+        )
+        if _has_extended_metadata(temp_fd):
+            raise WritePreconditionError(
+                "atomic temp file inherited ACL or extended metadata; write refused"
+            )
+        with os.fdopen(temp_fd, "wb", closefd=True) as handle:
+            temp_fd = None
+            handle.write(content.encode("utf-8"))
+            handle.flush()
+            os.fsync(handle.fileno())
+
+        if existing is not None:
+            os.chmod(
+                temp_name, stat.S_IMODE(existing.st_mode),
+                dir_fd=dir_fd, follow_symlinks=False,
+            )
+            os.chown(
+                temp_name, existing.st_uid, existing.st_gid,
+                dir_fd=dir_fd, follow_symlinks=False,
+            )
+
+            try:
+                current = os.stat(path.name, dir_fd=dir_fd, follow_symlinks=False)
+            except FileNotFoundError as error:
+                raise WritePreconditionError(
+                    "write target changed before atomic publication"
+                ) from error
+            if not _same_entry(existing, current):
+                raise WritePreconditionError("write target changed before atomic publication")
+        else:
+            try:
+                os.stat(path.name, dir_fd=dir_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                raise WritePreconditionError("write target appeared before atomic publication")
+
+        os.replace(temp_name, path.name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+        published = True
+        os.fsync(dir_fd)
+    except OSError as error:
+        if not published:
+            # Executor rollback is for effects, not for a failed pre-publication
+            # attempt.  Marking the original exception preserves its errno/type for
+            # callers while preventing a no-op refusal from damaging special or
+            # read-only targets during restore.
+            try:
+                error.effect_started = False  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        raise
+    finally:
+        if temp_fd is not None:
+            os.close(temp_fd)
+        if existing_fd is not None:
+            os.close(existing_fd)
+        try:
+            os.unlink(temp_name, dir_fd=dir_fd)
+        except FileNotFoundError:
+            pass
+        os.close(dir_fd)
 
 
 def write_file(req: ToolRequest) -> str:
-    path = Path(_need(req, "path"))
+    path = _file_target(req)
     content = _need(req, "content")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    _atomic_write_text(path, content, binding=_file_binding(req, path))
     return f"{len(content)} Zeichen geschrieben nach {path}"
 
 
@@ -826,7 +1108,7 @@ def make_delegate_steer_runner(
         )
         return (
             f"delegate_steer task_id={task_id} queued ({len(steer.text)} chars) — the run "
-            "reads it before its next step, not during the current model call; its "
+            "discards unfinished reasoning before its next action; its "
             "ceiling is unchanged (unattended: anything needing approval is still refused)"
         )
 

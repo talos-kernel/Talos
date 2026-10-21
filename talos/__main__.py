@@ -936,7 +936,8 @@ def delegate_propose(reasoner: object):
 
 REDIRECTED_TEXT = (
     "Verstanden — das geht in den laufenden Auftrag, nicht dahinter. "
-    "Wirkung ab dem naechsten Schritt. /queue haengt stattdessen an, /stop bricht ab."
+    "Der unfertige Denkzug wird vor der naechsten Wirkung ersetzt. "
+    "/queue haengt stattdessen an, /stop bricht ab."
 )
 
 

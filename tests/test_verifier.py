@@ -28,6 +28,16 @@ def test_recheck_false_when_file_appears(tmp_path: Path) -> None:
     assert verifier.recheck(bindings) is False
 
 
+def test_recheck_false_when_an_absent_parent_appears(tmp_path: Path) -> None:
+    parent = tmp_path / "later-parent"
+    target = parent / "later.txt"
+    bindings = verifier.bind((str(target),))
+
+    parent.mkdir()
+
+    assert verifier.recheck(bindings) is False
+
+
 def test_verify_result_compares_expected() -> None:
     assert verifier.verify_result(42, 42) is True
     assert verifier.verify_result(42, 7) is False

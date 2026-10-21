@@ -209,7 +209,8 @@ def test_reasoning_shows_real_limits_and_points_at_the_real_dial(tmp_path: Path)
 def test_reasoning_reports_the_real_adaptive_effort_router(tmp_path: Path) -> None:
     reply = _say(_center(tmp_path, reasoner_timeout_s=180), "reasoning")
     assert "low" in reply and "medium" in reply and "high" in reply
-    assert "automatisch" in reply and "Hermes --reasoning" in reply
+    assert "automatisch" in reply and "--reasoning" in reply
+    assert "konfiguriertes Profil" in reply
 
 
 # --- /debug: zeigen, ohne zu verraten ----------------------------------------------

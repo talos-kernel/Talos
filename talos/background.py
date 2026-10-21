@@ -33,10 +33,12 @@ Kurskorrektur unterwegs (`delegate_steer`)
 -------------------------------------------
 Ein Hintergrundlauf ist der EINZIGE Nebenlauf, der sich unterwegs lenken laesst — und
 das ist keine Produktentscheidung, sondern Bauart: er ist der einzige mit einer
-Schrittgrenze in diesem Prozess. Dort liest `run_agent` ohnehin das Postfach fuer die
-getippte Korrektur (`redirect.py`); ein Hintergrundlauf bekommt an derselben Naht sein
-eigenes (`SteerInbox`). Was KEINE Schrittgrenze hier hat, ist ehrlicherweise nicht
-steuerbar, und dafuer gibt es keine Schein-Steuerung:
+Proposal-Zulassungsgrenze in diesem Prozess. `run_agent` verwirft dort veraltete
+Antworten deterministisch; der Provider-Aufruf selbst bleibt unangetastet, damit ein
+blockierendes Netzwerk-``close`` nicht den gemeinsamen Schreibtisch festhaelt.
+Der Hintergrundlauf bekommt dafuer sein eigenes Postfach (`SteerInbox`). Was diese
+Grenze nicht hat, ist ehrlicherweise nicht steuerbar, und dafuer gibt es keine
+Schein-Steuerung:
 
 - synchrone `delegate`-Untergebene laufen im Werkzeugaufruf des Hauptlaufs, ohne
   Postfach — wer sie umlenken will, wartet auf ihre Antwort und fragt neu;
@@ -160,6 +162,8 @@ class BackgroundDesk:
     # wie der Rest: abgelegt wird aus dem Thread des lenkenden Laufs, genommen aus dem
     # des gelenkten — eine Liste ohne Schloss verliert dabei Eintraege.
     _steering: dict[str, tuple[Steer, ...]] = field(default_factory=dict, init=False, repr=False)
+    _steering_revision: dict[str, int] = field(default_factory=dict, init=False, repr=False)
+    _finalizing: set[str] = field(default_factory=set, init=False, repr=False)
     _count: int = field(default=0, init=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
@@ -176,6 +180,7 @@ class BackgroundDesk:
             self._count += 1
             task = Task(self._count, f"bg_{run_id[:12]}", prompt, str(principal), str(conversation))
             self._running[task.task_id] = task
+            self._steering_revision[task.task_id] = 0
             return task
 
     def finish(self, task_id: str) -> None:
@@ -183,13 +188,35 @@ class BackgroundDesk:
             self._running.pop(task_id, None)
             self._cancelled.discard(task_id)
             self._steering.pop(task_id, None)
+            self._steering_revision.pop(task_id, None)
+            self._finalizing.discard(task_id)
+
+    def finish_proposal(self, task_id: str, revision: int) -> bool:
+        """Atomically mark the task's terminal proposal as no longer steerable."""
+        with self._lock:
+            if (
+                task_id not in self._running
+                or self._steering_revision.get(task_id, 0) != revision
+            ):
+                return False
+            self._finalizing.add(task_id)
+            return True
+
+    def admit(self, task_id: str, revision: int) -> bool:
+        """Linearize one proposal against steers accepted for this task."""
+        with self._lock:
+            return (
+                task_id in self._running
+                and self._steering_revision.get(task_id, 0) == revision
+            )
 
     def steer(self, task_id: str, text: str, *, principal: str, conversation: str) -> Steer:
         """Legt eine Kurskorrektur fuer einen LAUFENDEN Auftrag ab — oder sagt, warum nicht.
 
         Steuerbar ist genau, was hier auf dem Schreibtisch liegt: Laeufe aus
-        `/background`. Sie lesen das Postfach an ihrer naechsten Schrittgrenze; in den
-        laufenden Modellaufruf greift niemand hinein. Alles andere (siehe Modul-Doku)
+        `/background`. Eine angenommene Anweisung verwirft eine noch nicht zugelassene
+        Modell-Proposal; der Provider-Aufruf selbst wird dabei nicht abgebrochen.
+        Alles andere (siehe Modul-Doku)
         hat keinen Einspeisepunkt und faellt hier als „unbekannt" heraus — ehrlich,
         statt eine Steuerung vorzutaeuschen.
 
@@ -218,6 +245,11 @@ class BackgroundDesk:
                     f"background task {task_id} was stopped (/stopall) — it takes no more "
                     "instructions; nothing was queued"
                 )
+            if task_id in self._finalizing:
+                raise SteerRefused(
+                    f"background task {task_id} is already finalizing — start a new task; "
+                    "nothing was queued"
+                )
             task = self._running.get(task_id)
             if task is None:
                 raise SteerRefused(
@@ -239,14 +271,20 @@ class BackgroundDesk:
                 )
             steer = Steer(clean, principal)
             self._steering = {**self._steering, task_id: pending + (steer,)}
-            return steer
+            self._steering_revision[task_id] = self._steering_revision.get(task_id, 0) + 1
+        return steer
 
     def take_steering(self, task_id: str) -> tuple[Steer, ...]:
         """Holt alles Wartende fuer diesen Auftrag und leert sein Postfach."""
+        _, pending = self.take_steering_with_revision(task_id)
+        return pending
+
+    def take_steering_with_revision(self, task_id: str) -> tuple[int, tuple[Steer, ...]]:
+        """Drain one task's corrections and return the monotonic admission revision."""
         with self._lock:
             wartend = self._steering.get(task_id, ())
             self._steering = {k: v for k, v in self._steering.items() if k != task_id}
-            return wartend
+            return self._steering_revision.get(task_id, 0), wartend
 
     def inbox(self, task_id: str, *, taken: Callable[[Steer], None] | None = None) -> "SteerInbox":
         """Das Postfach EINES Auftrags in der Form, die `run_agent` liest."""
@@ -271,6 +309,7 @@ class BackgroundDesk:
             # Wartende Anweisungen fallen mit: der Lauf beginnt keinen Schritt mehr,
             # an dem er sie laese.
             self._steering = {k: v for k, v in self._steering.items() if k != task_id}
+            self._finalizing.discard(task_id)
             return True
 
     def cancel_all(self) -> tuple[Task, ...]:
@@ -284,6 +323,7 @@ class BackgroundDesk:
             self._cancelled |= set(self._running)
             self._running = {}
             self._steering = {}
+            self._finalizing = set()
             return tasks
 
     def was_cancelled(self, task_id: str) -> bool:
@@ -319,11 +359,21 @@ class SteerInbox:
         self._taken = taken
 
     def take(self) -> tuple[Steer, ...]:
-        steers = self._desk.take_steering(self._task_id)
+        _, steers = self.take_with_revision()
+        return steers
+
+    def take_with_revision(self) -> tuple[int, tuple[Steer, ...]]:
+        revision, steers = self._desk.take_steering_with_revision(self._task_id)
         if self._taken is not None:
             for steer in steers:
                 self._taken(steer)
-        return steers
+        return revision, steers
+
+    def admit(self, revision: int) -> bool:
+        return self._desk.admit(self._task_id, revision)
+
+    def finish_proposal(self, revision: int) -> bool:
+        return self._desk.finish_proposal(self._task_id, revision)
 
 
 def receipt(task: Task) -> str:

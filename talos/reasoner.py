@@ -49,7 +49,12 @@ TOOL_PROTOCOL = (
     "milestones, not for every routine call. Keep the TOOL_CALL on its own final line. "
     "Never expose hidden reasoning, secrets or raw tool JSON in the update; never "
     "claim completion before verification. A progress sentence is not a final answer "
-    "and never authorizes an action.\n"
+    "and never authorizes an action. Every execution request is a new action, even if "
+    "its command is identical to one that ran earlier. Never reuse a prior receipt as "
+    "proof and never claim the new action ran: emit a fresh TOOL_CALL and wait for its "
+    "receipt. A standing approval changes only kernel admission; it never makes you skip "
+    "the proposal. After /revoke, a denial, or an expired approval, the earlier receipt "
+    "proves nothing about the next request: you must emit a fresh TOOL_CALL.\n"
     "File delivery: when asked for an image or generated file, deliver the actual attachment, "
     "not only its path. After verifying the LOCAL file, put MEDIA:<local path> on its own "
     "line in your final answer (no code fence). This sends it to the current chat through "
@@ -84,7 +89,7 @@ TOOL_PROTOCOL = (
     '- delegate_code {"prompt": "…", "mcp": ["chrome-devtools", …], "browser": true|false} — hand a bounded coding task to the confined Claude worker; returns a job_id. mcp names operator-enabled MCP servers added inside the job sandbox (registry data/mcp-servers.json ∩ TALOS_MCP_SERVERS); browser=true is the alias for mcp: ["chrome-devtools"]\n'
     '- delegate_dag {"nodes": [{"id": "a", "prompt": "…", "depends_on": ["b"], "mcp": ["…"]}]} — a small acyclic graph (≤ 8 nodes) of bounded coding tasks for the confined worker; dependency-free nodes run in parallel, dependents fire when their parents finish, a failed parent skips its children; per-node pushes plus a final report come back to this conversation\n'
     '- delegate_status {"job_id": "…"} — read a delegated job\'s state and result\n'
-    '- delegate_steer {"task_id": "bg_…", "instruction": "…"} — send a course correction to a RUNNING /background task (its id is in the start receipt and in /status); it reaches the run before its next step, never mid-call, and grants nothing — the task keeps its unattended ceiling. Only /background tasks can be steered: delegate answers, delegate_code jobs and schedules have no injection point\n'
+    '- delegate_steer {"task_id": "bg_…", "instruction": "…"} — send a course correction to a RUNNING /background task (its id is in the start receipt and in /status); it supersedes unfinished reasoning before the next action and grants nothing — the task keeps its unattended ceiling. Only /background tasks can be steered: delegate answers, delegate_code jobs and schedules have no injection point\n'
     '- delegate_agy {"prompt": "…"} — hand a bounded coding task to the confined worker\'s agy backend (exists only when the operator enabled it); returns a job_id; no mcp/browser — those are claude-backend only\n'
     '- delegate_codex {"prompt": "…"} — hand a bounded implementation, debugging or independent review task to the confined Codex worker (only when enabled); returns a job_id; no mcp/browser\n'
     '- browse {"url": "https://…"}\n'
@@ -898,6 +903,30 @@ def _assert_hermes_no_tools(binary: str) -> None:
         )
 
 
+def _hermes_supports_reasoning_flag(binary: str, provider: str) -> bool:
+    """Probe the installed CLI instead of assuming a release-specific flag exists.
+
+    Hermes moved reasoning effort into profile configuration and removed
+    ``--reasoning`` from current ``chat`` releases. Older installations still accept
+    it. Passing an unknown flag kills the provider before inference, so absence or an
+    inconclusive help probe must degrade to the profile default, never to a failed run.
+    """
+    command = [binary, "--help"] if provider == "kimi-cli" else [binary, "chat", "--help"]
+    try:
+        checked = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=HERMES_TOOL_PREFLIGHT_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    help_text = (checked.stdout or "") + "\n" + (checked.stderr or "")
+    return checked.returncode == 0 and "--reasoning" in help_text
+
+
 class HermesCliReasoner:
     """Hermes inference with its native tools disabled at the process boundary."""
 
@@ -917,6 +946,9 @@ class HermesCliReasoner:
             raise RuntimeError(f"Hermes CLI nicht ausfuehrbar: {executable}")
         self.binary = str(executable)
         _assert_hermes_no_tools(self.binary)
+        self.adaptive_reasoning = _hermes_supports_reasoning_flag(
+            self.binary, provider
+        )
         self.timeout_s = timeout_s
         self.provider = provider
         self.model = model
@@ -948,17 +980,18 @@ class HermesCliReasoner:
         # honors both and keeps the same disabled CLI toolsets. Kimi's standalone
         # adapter implements the existing -z protocol, not Hermes chat flags.
         mode = ["-z", full] if self.provider == "kimi-cli" else ["chat", "-Q", "-q", full]
-        return [
+        argv = [
             self.binary,
             *mode,
             "--provider",
             self.provider,
             "--model",
             self.model,
-            "--reasoning",
-            reasoning_effort_for(prompt),
-            "--ignore-rules",
         ]
+        if self.adaptive_reasoning:
+            argv.extend(("--reasoning", reasoning_effort_for(prompt)))
+        argv.append("--ignore-rules")
+        return argv
 
     def validate(self) -> None:
         """Prove provider/model/auth works before ModelRouter atomically swaps to it."""

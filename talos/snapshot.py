@@ -14,11 +14,17 @@ deshalb steht die eigentliche Arbeit in einer freien Funktion.
 from __future__ import annotations
 
 import shutil
+import os
+import stat
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
 Entries = tuple[tuple[str, str | None], ...]  # (originalpfad, gesicherter-pfad|None=absent)
+
+
+class SnapshotError(ValueError):
+    """A target cannot be represented by the file snapshot format."""
 
 
 @dataclass(frozen=True)
@@ -52,7 +58,12 @@ class Snapshotter:
         entries: list[tuple[str, str | None]] = []
         for index, target in enumerate(targets):
             src = Path(target)
-            if src.is_file():
+            if os.path.lexists(src):
+                current = os.lstat(src)
+                if not stat.S_ISREG(current.st_mode):
+                    raise SnapshotError(
+                        f"snapshot target is not a regular file: {src}"
+                    )
                 dst = root / f"{index}.bak"
                 shutil.copy2(src, dst)
                 entries.append((str(src), str(dst)))

@@ -83,14 +83,15 @@ def test_approved_task_receives_consent_receipt_and_can_be_steered(tmp_path):
                 assert rig.conductor.redirect.is_open()
                 assert 'Accepted' in rig.say('/steer verify before reporting')
             return super().reason(prompt)
-    rig = Rig(tmp_path, Inspect(write_to(first), 'Done.', write_to(later)))
+    rig = Rig(tmp_path, Inspect(write_to(first), 'Done.', 'Verified.', write_to(later)))
     rig.say('Create this file')
     rig.say('/approve task')
     assert first.exists()
     assert 'Operator consent recorded by Talos' not in prompts[0]
     assert 'Operator consent recorded by Talos' in prompts[1]
+    assert 'Operator consent recorded by Talos' in prompts[2]
     rig.say('Another task')
-    assert 'Operator consent recorded by Talos' not in prompts[2]
+    assert 'Operator consent recorded by Talos' not in prompts[3]
     assert not later.exists()
 
 

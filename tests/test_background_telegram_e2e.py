@@ -158,7 +158,10 @@ def test_background_finishes_while_main_runs_then_steer_and_queue_work(tmp_path,
         assert source.read_text() == 'verified file contents'
         with sqlite3.connect(f'file:{tmp_path / "ev.db"}?mode=ro', uri=True) as db:
             assert db.execute("select count(*) from events where type='background.finished'").fetchone()[0] == 1
-            assert db.execute("select count(*) from events where type='exec.result' and json_extract(payload_json,'$.status')='done'").fetchone()[0] == 2
+            # The main read proposal was returned after /steer had already won the
+            # admission race, so only the independent background read may execute.
+            assert db.execute("select count(*) from events where type='exec.result' and json_extract(payload_json,'$.status')='done'").fetchone()[0] == 1
+            assert db.execute("select count(*) from events where type='proposal.superseded'").fetchone()[0] >= 1
             assert db.execute("select count(*) from events where type='command.steered'").fetchone()[0] == 1
     finally:
         release_main.set()

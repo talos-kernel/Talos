@@ -6,12 +6,13 @@ haeufigsten kommt: „nein, das andere Verzeichnis". Die Korrektur wurde geschri
 *weil* der Lauf gerade laeuft, und sie hinter ihm anzustellen heisst, ihn erst falsch
 zuende laufen zu lassen und dann noch einmal von vorn.
 
-Was das NICHT ist
------------------
-Kein Eingriff in einen laufenden Modellaufruf — der ist ein blockierender Subprozess und
-bleibt unantastbar. Die Korrektur wird zwischen zwei Schritten der Agentenschleife
-eingelegt, also an genau der Stelle, an der der naechste Zug ohnehin aus der Historie
-gebildet wird.
+Was dabei verworfen wird
+------------------------
+Eine Revisionsschranke verwirft eine noch nicht zugelassene Modell-Proposal, bevor sie
+geparst, freigegeben oder ausgefuehrt wird. Der Provider-Aufruf selbst wird hier bewusst
+nicht abgebrochen: ein synchrones Netzwerk-``close`` kann Steuerung und Stop blockieren,
+und ein spaeter globaler Abbruch kann schon den naechsten Lauf treffen. Laeuft bereits
+ein zugelassenes Werkzeug, erreicht die Korrektur den naechsten Denkschritt.
 
 Kein zusaetzliches Recht. Die Korrektur ist ein Zug DESSELBEN Sprechers, der den Lauf
 gestartet hat. Jeder Werkzeugaufruf danach geht durch denselben Kernel wie vorher; eine
@@ -77,6 +78,7 @@ class Redirect:
         self._run: tuple[str, str] | None = None      # (principal, conversation)
         self._pending: list[Correction] = []
         self._generation = 0
+        self._revision = 0
 
     def open(self, principal: str, conversation: str) -> int:
         """Ein Lauf erklaert sich fuer lenkbar. Verwirft Reste eines frueheren Laufs."""
@@ -84,6 +86,7 @@ class Redirect:
             self._run = (principal, conversation)
             self._pending = []
             self._generation += 1
+            self._revision = 0
             return self._generation
 
     def close(self, generation: int | None = None) -> None:
@@ -93,6 +96,16 @@ class Redirect:
                 return
             self._run = None
             self._pending = []
+
+    def admit(self, revision: int) -> bool:
+        """Atomically linearize a proposal against accepted corrections.
+
+        ``True`` means no correction won the race before this boundary.  A
+        correction accepted afterwards belongs to the next step; without this
+        explicit boundary, a check followed by parse/execute has a check/use gap.
+        """
+        with self._lock:
+            return self._run is not None and self._revision == revision
 
     def active(self, generation: int) -> bool:
         with self._lock:
@@ -123,11 +136,31 @@ class Redirect:
             if len(self._pending) >= MAX_PENDING:
                 return False
             self._pending.append(Correction(text, principal, conversation))
+            self._revision += 1
+        return True
+
+    def finish_proposal(self, revision: int) -> bool:
+        """Atomically close a terminal proposal, or reject it as superseded.
+
+        A message accepted before this boundary forces another turn.  Once this
+        succeeds, ``offer`` returns ``False`` so a later message is queued as a new
+        task instead of being accepted and then discarded by ``close``.
+        """
+        with self._lock:
+            if self._run is None or self._revision != revision:
+                return False
+            self._run = None
+            self._pending = []
             return True
 
     def take(self) -> tuple[Correction, ...]:
         """Holt alles Wartende und leert das Postfach. Leer, wenn nichts da ist."""
+        _, pending = self.take_with_revision()
+        return pending
+
+    def take_with_revision(self) -> tuple[int, tuple[Correction, ...]]:
+        """Atomically drain corrections and expose their admission revision."""
         with self._lock:
             wartend = tuple(self._pending)
             self._pending = []
-            return wartend
+            return self._revision, wartend
