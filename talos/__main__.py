@@ -115,6 +115,8 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     # erste Anlauf gescheitert: dort stand `require_channel=False`, hier nicht, und der
     # Weg blieb versperrt, waehrend neun Unit-Tests gruen waren.
     config = load_config(require_channel=not (ask or chat))
+    from .paths import initialize_profile
+    initialize_profile()
     log = EventLog(config.eventlog_db)
     # Der Kanal haelt seinen eigenen Cursor; die Registry kennt den Rueckweg zu jeder
     # `conversation`. Ein zweiter Kanal kostet ab hier eine Zeile und keine im Loop.
@@ -1128,6 +1130,8 @@ def main() -> None:
 
     args = sys.argv[1:]
     try:
+        from .paths import validate_profile
+        validate_profile()
         code = dispatch(args)
         if code is not None:
             raise SystemExit(code)

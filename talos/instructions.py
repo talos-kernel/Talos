@@ -7,9 +7,10 @@ from pathlib import Path
 
 from .identity import FALLBACK_PREAMBLE, SOUL_PATH
 
-INSTALL_DIR = Path(__file__).resolve().parent.parent
-AGENTS_PATH = INSTALL_DIR / "AGENTS.md"
-USER_PATH = INSTALL_DIR / "USER.md"
+from .paths import INSTALL_DIR, PROFILE_DIR
+
+AGENTS_PATH = PROFILE_DIR / "AGENTS.md"
+USER_PATH = PROFILE_DIR / "USER.md"
 
 # Jede Quelle und auch ihre Summe haben eine harte, sichtbare Grenze. Der Summendeckel
 # ist kleiner als drei Einzeldeckel: so bleibt auch bei drei legitimen, grossen Dateien

@@ -24,6 +24,7 @@ from . import clianything, command_floor
 from .channel import Principal
 from .manifest import Effect, ToolManifest
 from .vault import DEFAULT_VAULT_DIR, VaultPathError, canonical_target_from_args
+from .paths import INSTALL_DIR, PROFILE_DIR
 
 HOME = Path.home()
 
@@ -34,14 +35,13 @@ HOME = Path.home()
 # ueberschreiben darf. Der Fall ist nicht theoretisch — er ist beim Umbenennen des
 # Installationsverzeichnisses bereits eingetreten und musste von Hand nachgezogen werden.
 PACKAGE_DIR = Path(__file__).resolve().parent
-INSTALL_DIR = PACKAGE_DIR.parent
-SOUL_FILE = INSTALL_DIR / "SOUL.md"
-AGENTS_FILE = INSTALL_DIR / "AGENTS.md"
-USER_FILE = INSTALL_DIR / "USER.md"
+SOUL_FILE = PROFILE_DIR / "SOUL.md"
+AGENTS_FILE = PROFILE_DIR / "AGENTS.md"
+USER_FILE = PROFILE_DIR / "USER.md"
 # Der freie Schreibbereich der Stufe 4 haengt am selben Anker (siehe `autonomy.WORKSPACE`).
 # Er liegt bewusst NEBEN dem Code, nicht darin: laege er darunter, fienge der
 # Persistenz-Floor jede gewoehnliche Schreibarbeit ab und Stufe 4 waere wertlos.
-WORKSPACE_DIR = INSTALL_DIR / "workspace"
+WORKSPACE_DIR = PROFILE_DIR / "workspace"
 
 
 def _both_forms(*prefixes: str) -> tuple[str, ...]:
@@ -87,7 +87,8 @@ def _config_files() -> tuple[str, ...]:
     laedt, schuetzt sie erst, nachdem sie gelesen wurde — und haengt dann an genau den
     Werten, die er schuetzen soll.
     """
-    orte = [str(INSTALL_DIR / "talos.env"), os.environ.get("TALOS_SECRETS_ENV", "")]
+    orte = [str(INSTALL_DIR / "talos.env"), str(PROFILE_DIR / "talos.env"),
+            os.environ.get("TALOS_SECRETS_ENV", "")]
     return tuple(str(Path(o).expanduser()) for o in orte if o.strip())
 
 
@@ -146,6 +147,9 @@ PERSISTENCE_PREFIXES: tuple[str, ...] = _both_forms(
     str(HOME / ".local" / "bin"),
     str(HOME / ".claude"),
     str(PACKAGE_DIR),
+    str(INSTALL_DIR / "missions"),
+    str(INSTALL_DIR / "blueprints"),
+    str(INSTALL_DIR / ".talos-install-manager"),
     str(SOUL_FILE),
     str(AGENTS_FILE),
     str(USER_FILE),
@@ -245,7 +249,7 @@ def skill_write_root() -> str:
         roots = [part for part in raw.split(os.pathsep) if part.strip()]
     else:
         roots = [
-            str(INSTALL_DIR / "skills"),
+            str(PROFILE_DIR / "skills"),
             str(HOME / ".talos" / "skills"),
             str(HOME / ".claude" / "skills"),
         ]

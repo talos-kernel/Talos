@@ -15,9 +15,10 @@ from __future__ import annotations
 import hashlib
 import re
 from pathlib import Path
+from .paths import PROFILE_DIR
 
 SOUL_FILENAME = "SOUL.md"
-SOUL_PATH = Path(__file__).resolve().parent.parent / SOUL_FILENAME
+SOUL_PATH = PROFILE_DIR / SOUL_FILENAME
 # Die Datei geht in JEDEN Prompt. Ohne Deckel frisst eine versehentlich hineinkopierte
 # Logdatei still das Kontextfenster.
 MAX_SOUL_CHARS = 8_000
