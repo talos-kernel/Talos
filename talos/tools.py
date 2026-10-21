@@ -601,7 +601,12 @@ def make_vault_runners(vault_dir: Path, qmd_bin: str) -> dict[str, Callable[[Too
     }
 
 
-def default_manifest(*, agy_backend: bool = True, codex_backend: bool = True) -> ToolManifest:
+def default_manifest(
+    *,
+    agy_backend: bool = True,
+    codex_backend: bool = True,
+    mail_enabled: bool = True,
+) -> ToolManifest:
     """Manifest der Start-Tools. Effekt/Reversibilität steuern das Gating.
 
     `undo_last` ist ein WRITE wie jedes andere — ein Rückrollen auf `~/.bashrc` fragt
@@ -757,6 +762,17 @@ def default_manifest(*, agy_backend: bool = True, codex_backend: bool = True) ->
     )
     for spec in web.web_manifest_specs():
         manifest = manifest.with_tool(spec)
+    if mail_enabled:
+        # The production manifest only exposes these tools when the complete
+        # operator-owned mailbox configuration was loaded.  This deliberately
+        # uses the parsed Talos config rather than os.environ: settings may come
+        # from talos.env without being exported.  The runners select the fixed
+        # folder read-only and fetch with BODY.PEEK; no mutation counterpart exists.
+        manifest = (
+            manifest
+            .with_tool(ToolSpec("mailbox_list", Effect.READ, reversible=True))
+            .with_tool(ToolSpec("mailbox_read", Effect.READ, reversible=True))
+        )
     if agy_backend:
         # Dasselbe Werkzeugbild wie delegate_code, aber fuer das agy-Backend
         # des Workers: EXEC mit sandbox_required, dieselbe Worker-Root als

@@ -438,6 +438,10 @@ TARGET_EXTRACTORS = {
     # NEEDS_HUMAN) faellt in `_decide_cli`.
     "cli_anything": lambda args: (),
     "send_mail": lambda args: (),
+    # The mailbox and folder are fixed by operator configuration. The model chooses
+    # only a bounded result count or one numeric UID; neither is a filesystem target.
+    "mailbox_list": lambda args: (),
+    "mailbox_read": lambda args: (),
     # Rückfrage an den Betreiber: kein Ziel, weil sie nichts anfasst — nur Text und
     # eine Auswahl. Der Eintrag muss trotzdem hier stehen: ein Werkzeug ohne Extractor
     # ist per Bauart DENY (siehe `decide`, Schritt 0.5), und ein DENY wäre hier absurd —

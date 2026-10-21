@@ -9,17 +9,37 @@ remain historical snapshots. Beta does not mean error-free operation.
 
 ## [Unreleased]
 
-## [0.20.0-beta.5] — candidate
+## [0.20.0-beta.5] — 2026-10-21
 
 ### Security
 
 - Ship the audited dependency pins from the current source tree, including
   certifi 2026.10.19 (fixes PYSEC-2026-4320 / GHSA-6q48-6c7w-9gw2).
+- Update pypdf to 6.21.2 with hashed packages, including the stream/tree denial-of-
+  service fixes and bounded cross-reference work. No unrelated dependency upgrades.
+- Refuse existing proof-export destinations, including hardlinks and symlinks;
+  newly created receipts are private (0600) and never overwrite operator state.
 - Preserve the no-replay execution latch, bounded conversation memory and
   per-request approval binding from the execution-reliability update.
 
+### Added
+
+- Four bundled missions: repository guardian, folder dossier, mailbox brief with
+  local drafts, and server health watcher. Missions are validated prompt templates,
+  not executable plugins or blanket approval; every proposed tool call remains gated.
+- Named projects and `/continue`, with durable context scoped to the initiating
+  principal and conversation. Project selection grants no filesystem permission.
+- Read-only mailbox listing and reading using IMAP read-only selection and BODY.PEEK.
+  These tools cannot send, delete, move, flag or mark messages read.
+- `talos proof` summarizes recorded outcomes without copying prompts, arguments or
+  result bodies. `talos local-check` probes only loopback model endpoints without
+  submitting user content and refuses redirects; it is not a global privacy audit.
+
 ### Fixed
 
+- Recover stale sandbox identity cache after ownership changes. Treat uncertain
+  Telegram delivery as ambiguous rather than automatically resending a possible
+  duplicate; a missing acknowledgement is not proof that delivery failed.
 - Stop repeated `delegate_status` polling after three identical pending results. The
   completion watcher still delivers the final worker result separately, while the
   bounded turn now names the paused job instead of spending its remaining step budget.

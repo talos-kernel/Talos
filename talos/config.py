@@ -75,6 +75,11 @@ SCHEDULE_DB = DATA_DIR / "schedules.db"
 # Laufzeitdaten: installiert wird daraus erst auf Kommando; der INSTALLIERTE Stand
 # liegt unter `data/`, wie alles, was ein Update mitnehmen darf.
 BLUEPRINTS_DIR = INSTALL_DIR / "blueprints"
+# Shipped one-shot outcome packages. Like blueprints these are trusted source, not
+# mutable runtime state; they contain prompts and acceptance checks, never code or rights.
+MISSIONS_DIR = INSTALL_DIR / "missions"
+# Named project context belongs to the operator and survives side-by-side upgrades.
+PROJECTS_FILE = DATA_DIR / "projects.json"
 SNAPSHOT_DIR = DATA_DIR / "snapshots"
 # Die live geholten Modellnamen je Anbieter. Liegt bei den Laufzeitdaten und nicht
 # bei der Konfiguration: er ist wiederbeschaffbar, und ein Update darf ihn verlieren.

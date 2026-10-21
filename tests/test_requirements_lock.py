@@ -117,12 +117,13 @@ def test_urllib3_lock_includes_proxy_and_streaming_security_fixes() -> None:
 def test_pypdf_declared_floor_excludes_known_denial_of_service_versions() -> None:
     """Range-based installs must retain the October security fixes too."""
     requirement = next(r for r in _declared(RUNTIME[0]) if _canonical(r.name) == "pypdf")
-    assert not requirement.specifier.contains(Version("6.18.1"))
-    assert requirement.specifier.contains(Version("6.19.0"))
+    assert not requirement.specifier.contains(Version("6.19.0"))
+    assert not requirement.specifier.contains(Version("6.20.0"))
+    assert requirement.specifier.contains(Version("6.21.2"))
 
 
 def test_pypdf_lock_includes_denial_of_service_security_fixes() -> None:
-    assert all(version >= Version("6.19.0")
+    assert all(version >= Version("6.21.2")
                for version, _ in _pins(RUNTIME[1])["pypdf"])
 
 

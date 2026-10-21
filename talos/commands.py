@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import platform
+import shlex
 import subprocess
 import time
 from dataclasses import dataclass
@@ -153,6 +154,9 @@ Accountability
   (/heartbeat status|pause|resume|clear)
 /blueprints — installable automations with plain-language schedules
   (/blueprint install|remove|enable|disable|status <name>)
+/missions — verified outcome packages · /mission info|run <name> [key=value …]
+/projects — named workspaces · /project add|use|context|status|remove
+/continue [instruction] — resume the selected project explicitly; never replays effects
 /skills — what is loaded, what was refused; /reload-skills re-scans the live catalogue
 /tools — which tools exist and how they are gated
 /whoami — your identity, chat and access
@@ -228,6 +232,10 @@ class CommandCenter:
     # Kommando-Pfad installiert, und ein installierter Blueprint laeuft ueber denselben
     # ScheduleStore wie `/every` — Kernel und UnattendedCeiling inklusive.
     blueprints: object | None = None
+    # Missions and projects are operator command surfaces, not model tools. A mission
+    # produces an ordinary foreground turn; the selected project adds context only.
+    missions: object | None = None
+    projects: object | None = None
     # Woher die Skills kommen. Leer heisst: keine geladen — dann sagt `/skills` das auch,
     # statt eine leere Liste zu zeigen, die nach „kaputt" aussieht.
     skills_dirs: tuple[Path, ...] = ()
@@ -325,6 +333,12 @@ class CommandCenter:
             return CommandResult(reply=self._unschedule(rest, conversation))
         if name in ("blueprint", "blueprints", "bp"):
             return CommandResult(reply=self._blueprints(rest, principal, conversation))
+        if name in ("mission", "missions"):
+            return self._mission(rest, principal, conversation)
+        if name in ("project", "projects"):
+            return CommandResult(reply=self._project(rest, principal, conversation))
+        if name == "continue":
+            return self._continue_project(rest, principal, conversation)
         if name == "computer":
             from .computer.presentation import chat_authorized
             if (principal not in self.policy.allowed_identities
@@ -664,6 +678,123 @@ class CommandCenter:
         else:
             lines.append(f"state: paused — /blueprint enable {blueprint.name} switches it back on")
         return "\n".join(lines)
+
+    def _mission(self, rest: str, principal: Principal, conversation: str) -> CommandResult:
+        """List, explain or start a bounded outcome mission.
+
+        Rendering is deterministic and merely creates the next foreground instruction.
+        It deliberately bypasses neither the reasoner nor the policy kernel.
+        """
+        if self.missions is None:
+            return CommandResult(reply="No mission catalogue wired.")
+        from .missions import MissionError
+        from .projects import ProjectError
+
+        try:
+            parts = shlex.split(rest)
+            if not parts or parts[0].lower() in ("list", "ls"):
+                return CommandResult(reply=self.missions.list_text())
+            verb = parts[0].lower()
+            if verb == "info":
+                if len(parts) != 2:
+                    return CommandResult(reply="Usage: /mission info <name>")
+                return CommandResult(reply=self.missions.describe(parts[1]))
+            if verb != "run":
+                return CommandResult(reply="Usage: /mission info|run <name> [key=value …]")
+            if len(parts) < 2:
+                return CommandResult(reply="Usage: /mission run <name> [key=value …]")
+            if self.projects is None:
+                return CommandResult(reply="No project store wired.")
+            project = self.projects.selected(principal=principal, conversation=conversation)
+            if project is None:
+                return CommandResult(reply="Select a project first with /project use <name>.")
+            supplied: dict[str, str] = {}
+            for raw in parts[2:]:
+                key, separator, value = raw.partition("=")
+                if not separator or not key or key in supplied:
+                    raise MissionError(f"expected unique key=value input, got: {raw}")
+                supplied[key] = value
+            prompt = self.missions.get(parts[1]).render(
+                supplied, project_root=project.root, project_name=project.name
+            )
+            return CommandResult(forward_as=prompt)
+        except (MissionError, ProjectError, ValueError) as error:
+            return CommandResult(reply=f"Mission error: {error}")
+
+    def _project(self, rest: str, principal: Principal, conversation: str) -> str:
+        """Manage named project context without creating any standing authority."""
+        if self.projects is None:
+            return "No project store wired."
+        from .projects import ProjectError
+
+        try:
+            parts = shlex.split(rest)
+            verb = parts[0].lower() if parts else "list"
+            if verb in ("list", "ls"):
+                selected = self.projects.selected(principal=principal, conversation=conversation)
+                projects = self.projects.list(principal=principal, conversation=conversation)
+                if not projects:
+                    return "No projects in this chat. /project add <name> <folder> [context] creates one."
+                lines = [f"{len(projects)} project(s):"]
+                for project in projects:
+                    marker = "*" if selected is not None and project.name == selected.name else " "
+                    lines.append(f"{marker} {project.name} — {project.root}")
+                lines.append("\n* selected · /project use <name> · /project status")
+                return "\n".join(lines)
+            if verb == "add":
+                if len(parts) < 3:
+                    return "Usage: /project add <name> <folder> [context]"
+                project = self.projects.add(
+                    parts[1], Path(parts[2]), principal=principal, conversation=conversation,
+                    context=" ".join(parts[3:]),
+                )
+                self.projects.select(project.name, principal=principal, conversation=conversation)
+                return f"Added and selected project {project.name} at {project.root}. Nothing was granted."
+            if verb in ("use", "select"):
+                if len(parts) != 2:
+                    return "Usage: /project use <name>"
+                project = self.projects.select(parts[1], principal=principal, conversation=conversation)
+                return f"Selected project {project.name} at {project.root}. Context only; nothing was granted."
+            if verb == "context":
+                if len(parts) < 2:
+                    return "Usage: /project context <open items or constraints>"
+                project = self.projects.update_context(
+                    " ".join(parts[1:]), principal=principal, conversation=conversation
+                )
+                return f"Updated context for project {project.name}."
+            if verb == "status":
+                project = self.projects.selected(principal=principal, conversation=conversation)
+                if project is None:
+                    return "No selected project. /project list shows what exists."
+                return (
+                    f"Selected project: {project.name}\n"
+                    f"root: {project.root}\n"
+                    f"context: {project.context or '(none)'}\n"
+                    "Context grants no permission and never replays an effect."
+                )
+            if verb == "remove":
+                if len(parts) != 2:
+                    return "Usage: /project remove <name>"
+                if not self.projects.remove(parts[1], principal=principal, conversation=conversation):
+                    return f"No project named '{parts[1]}' in this chat."
+                return f"Removed project {parts[1]}."
+            return "Usage: /project add|use|context|status|remove|list"
+        except (ProjectError, ValueError) as error:
+            return f"Project error: {error}"
+
+    def _continue_project(
+        self, rest: str, principal: Principal, conversation: str
+    ) -> CommandResult:
+        if self.projects is None:
+            return CommandResult(reply="No project store wired.")
+        from .projects import ProjectError
+
+        try:
+            return CommandResult(forward_as=self.projects.continue_prompt(
+                rest, principal=principal, conversation=conversation
+            ))
+        except ProjectError as error:
+            return CommandResult(reply=f"Project error: {error}")
 
     def _skills(self) -> str:
         """Was geladen ist, was verworfen wurde — und was Talos bewusst ignoriert.
