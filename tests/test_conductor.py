@@ -12,8 +12,8 @@ from talos.approval import ApprovalPicker, ApprovalStore
 from talos.capability import CapabilityMint, GrantedRunner
 from talos.commands import CommandResult
 from talos.conductor import Conductor
-from talos.eventlog import EventLog
-from talos.executor import Executor, Outcome, Status
+from talos.eventlog import Event, EventLog
+from talos.executor import Executor, Outcome, Status, audit_args
 from talos.policy import PolicyKernel, ToolRequest
 from talos.prompt_context import (
     RUN_CONTEXT_MARKER,
@@ -997,9 +997,11 @@ class QueueReasoner:
     def __init__(self, *antworten: str) -> None:
         self._q = list(antworten)
         self.calls = 0
+        self.prompts: list[str] = []
 
     def reason(self, prompt: str, *args, **kwargs) -> str:
         self.calls += 1
+        self.prompts.append(prompt)
         return self._q.pop(0) if self._q else ""
 
 
@@ -1077,3 +1079,228 @@ def test_answered_run_never_pays_for_a_closing_pass(tmp_path) -> None:
     assert sent[-1][1] == "Alles fertig."
     assert r.calls == 1
     assert "closing.requested" not in _events(conductor)
+
+
+def test_new_action_completion_claim_without_current_receipt_is_repaired(tmp_path) -> None:
+    reasoner = QueueReasoner(
+        "Das Kommando wurde ausgefuehrt und verifiziert.",
+        _tool_call("run_shell", {"command": "echo frisch"}, []),
+    )
+    conductor, sent = _build(tmp_path, reasoner)
+
+    conductor.handle(msg(1, OWNER, "Fuehre in der Shell exakt `echo frisch` aus."))
+
+    pending = conductor.approvals.get(CHAT_OWNER)
+    assert pending is not None and pending.req.tool == "run_shell"
+    assert pending.req.args["command"] == "echo frisch"
+    assert reasoner.calls == 2
+    assert "Completion receipt check failed" in reasoner.prompts[1]
+    assert "exact quoted shell command" in reasoner.prompts[1]
+    assert "Approval required" in sent[-1][1]
+
+
+def test_historical_execution_question_does_not_demand_a_new_receipt(tmp_path) -> None:
+    reasoner = QueueReasoner("Das alte Kommando wurde ausgefuehrt.")
+    conductor, sent = _build(tmp_path, reasoner)
+
+    conductor.handle(msg(1, OWNER, "Wurde das alte Kommando ausgefuehrt?"))
+
+    assert reasoner.calls == 1
+    assert conductor.approvals.get(CHAT_OWNER) is None
+    assert sent[-1][1] == "Das alte Kommando wurde ausgefuehrt."
+
+
+def test_truth_gate_does_not_treat_text_creation_as_external_execution(tmp_path) -> None:
+    reasoner = QueueReasoner("Done: one short checklist.")
+    conductor, sent = _build(tmp_path, reasoner)
+
+    conductor.handle(msg(1, OWNER, "Create a short checklist."))
+
+    assert reasoner.calls == 1
+    assert sent[-1][1] == "Done: one short checklist."
+
+
+def test_truth_gate_does_not_treat_historical_update_request_as_execution(tmp_path) -> None:
+    reasoner = QueueReasoner("The old deployment was completed yesterday.")
+    conductor, sent = _build(tmp_path, reasoner)
+
+    conductor.handle(msg(1, OWNER, "Please update me on the old deployment."))
+
+    assert reasoner.calls == 1
+    assert sent[-1][1] == "The old deployment was completed yesterday."
+
+
+def test_unrelated_negation_cannot_hide_a_positive_execution_claim(tmp_path) -> None:
+    claims = (
+        "Executed successfully. I cannot run the optional tests.",
+        "It cannot be verified, but I executed it.",
+        "I cannot run the optional tests and I executed the command successfully.",
+        "I did not run into errors and completed the command successfully.",
+        "I could not verify the output, yet executed it.",
+        "I could not verify the output although I executed it.",
+        "I could not verify the output while I executed it.",
+        "Keine Fehler; der Befehl wurde ausgefuehrt.",
+    )
+    for index, claim in enumerate(claims):
+        case = tmp_path / str(index)
+        case.mkdir()
+        reasoner = QueueReasoner(
+            claim,
+            _tool_call("run_shell", {"command": "echo fresh"}, []),
+        )
+        conductor, _sent = _build(case, reasoner)
+
+        conductor.handle(msg(index + 1, OWNER, "Run `echo fresh`."))
+
+        pending = conductor.approvals.get(CHAT_OWNER)
+        assert reasoner.calls == 2
+        assert pending is not None and pending.req.args["command"] == "echo fresh"
+
+
+def test_honest_negated_execution_claim_does_not_trigger_a_replay(tmp_path) -> None:
+    reasoner = QueueReasoner("The command was not executed because approval was denied.")
+    conductor, sent = _build(tmp_path, reasoner)
+
+    conductor.handle(msg(1, OWNER, "Run `echo fresh`."))
+
+    assert reasoner.calls == 1
+    assert conductor.approvals.get(CHAT_OWNER) is None
+    assert sent[-1][1] == "The command was not executed because approval was denied."
+
+
+def test_negated_file_creation_report_is_not_mistaken_for_a_shell_completion(tmp_path) -> None:
+    reasoner = QueueReasoner("The report was not created because approval was denied.")
+    conductor, sent = _build(tmp_path, reasoner)
+
+    conductor.handle(msg(1, OWNER, "Create the report file."))
+
+    assert reasoner.calls == 1
+    assert sent[-1][1] == "The report was not created because approval was denied."
+
+
+def test_unrelated_done_receipt_does_not_prove_the_requested_shell_command(tmp_path) -> None:
+    source = tmp_path / "source.txt"
+    source.write_text("old evidence", encoding="utf-8")
+    reasoner = QueueReasoner(
+        _tool_call("read_file", {"path": str(source)}, [str(source)]),
+        "Executed successfully.",
+        _tool_call("run_shell", {"command": "echo fresh"}, []),
+    )
+    conductor, _sent = _build(tmp_path, reasoner)
+
+    conductor.handle(msg(1, OWNER, "Run `echo fresh`."))
+
+    pending = conductor.approvals.get(CHAT_OWNER)
+    assert reasoner.calls == 3
+    assert pending is not None and pending.req.args["command"] == "echo fresh"
+
+
+def test_long_successful_shell_receipt_is_bound_by_command_digest(tmp_path) -> None:
+    command = "printf x" + ("x" * 452)
+    conductor, _sent = _build(tmp_path, QueueReasoner("unused"))
+    run_id = "long-command"
+    conductor.log.append(Event(
+        run_id,
+        "executor",
+        "exec.intent",
+        {"tool": "run_shell", "args": audit_args({"command": command}, "run_shell")},
+    ))
+    conductor.log.append(Event(
+        run_id,
+        "executor",
+        "exec.result",
+        {"tool": "run_shell", "status": Status.DONE.value},
+    ))
+
+    check = conductor._completion_check(f"Run `{command}`.", run_id)
+
+    assert check is not None
+    verdict = check("Executed successfully.", ())
+    assert verdict.ok and not verdict.note
+
+    other_command = command[:400] + ("y" * (len(command) - 400))
+    other_check = conductor._completion_check(f"Run `{other_command}`.", run_id)
+    assert other_check is not None
+    other_verdict = other_check("Executed successfully.", ())
+    assert not other_verdict.ok and other_verdict.retry_action
+
+
+def test_failed_shell_receipt_repairs_the_report_without_replaying(tmp_path) -> None:
+    command = "echo fresh"
+    reasoner = QueueReasoner(
+        "Executed successfully.",
+        "The command failed with a timeout.",
+    )
+    conductor, sent = _build(tmp_path, reasoner)
+    original = conductor._completion_check
+
+    def with_failure(user_text: str, run_id: str):
+        conductor.log.append(Event(
+            run_id,
+            "executor",
+            "exec.intent",
+            {"tool": "run_shell", "args": audit_args({"command": command}, "run_shell")},
+        ))
+        conductor.log.append(Event(
+            run_id,
+            "executor",
+            "exec.result",
+            {"tool": "run_shell", "status": Status.ERROR.value},
+        ))
+        return original(user_text, run_id)
+
+    object.__setattr__(conductor, "_completion_check", with_failure)
+    conductor.handle(msg(1, OWNER, f"Run `{command}`."))
+
+    assert reasoner.calls == 2
+    assert "Do not emit another TOOL_CALL" in reasoner.prompts[1]
+    assert conductor.approvals.get(CHAT_OWNER) is None
+    assert sent[-1][1].startswith("The command failed with a timeout.")
+
+
+def test_open_shell_intent_enters_report_only_mode(tmp_path) -> None:
+    command = "echo fresh"
+    conductor, _sent = _build(tmp_path, QueueReasoner("unused"))
+    run_id = "open-intent"
+    conductor.log.append(Event(
+        run_id,
+        "executor",
+        "exec.intent",
+        {"tool": "run_shell", "args": audit_args({"command": command}, "run_shell")},
+    ))
+
+    check = conductor._completion_check(f"Run `{command}`.", run_id)
+
+    assert check is not None
+    verdict = check("Executed successfully.", ())
+    assert not verdict.ok and not verdict.retry_action
+    assert "uncertain" in verdict.note
+
+
+def test_repeated_unsupported_completion_claim_ends_without_delivering_it(tmp_path) -> None:
+    reasoner = QueueReasoner("Executed successfully.", "Executed successfully.")
+    conductor, sent = _build(tmp_path, reasoner)
+
+    conductor.handle(msg(1, OWNER, "Run `echo fresh`."))
+
+    assert reasoner.calls == 2
+    assert conductor.approvals.get(CHAT_OWNER) is None
+    assert "Task unfinished" in sent[-1][1]
+    assert "Executed successfully" not in sent[-1][1]
+
+
+def test_status_readback_uses_conversation_tail_after_revoke_state(tmp_path) -> None:
+    reasoner = QueueReasoner("must not be called")
+    conductor, sent = _build(tmp_path, reasoner)
+    conductor.memory.remember_interrupted(
+        CHAT_OWNER,
+        asked="long task",
+        detail="Stopped: exact blocker from the prior run",
+    )
+    conductor.memory.remember_control_state(CHAT_OWNER, "a standing approval was revoked")
+
+    conductor.handle(msg(1, OWNER, "status?"))
+
+    assert reasoner.calls == 0
+    assert sent[-1][1].startswith("exact blocker from the prior run")
+    assert "No retry was started" in sent[-1][1]

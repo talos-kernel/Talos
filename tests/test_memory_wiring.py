@@ -175,6 +175,35 @@ def test_kommandos_stehen_nicht_im_verlauf(tmp_path):
     assert memory.recall(CHAT) == ()
 
 
+def test_control_state_is_separate_bounded_context_and_new_clears_it(tmp_path):
+    conductor, _r, sent, memory = build(tmp_path)
+    for number in range(8):
+        memory.remember_control_state(CHAT, f"revoked {number}")
+
+    assert memory.recall(CHAT) == ()
+    context = memory.context(CHAT)
+    assert len(context) == 6
+    assert context[0].text == "revoked 2" and context[-1].text == "revoked 7"
+
+    conductor.handle(msg(1, "/new"))
+    assert memory.context(CHAT) == ()
+    assert "History cleared" in sent[-1][1]
+
+
+def test_control_state_keeps_the_actual_prompt_inside_memory_limits():
+    memory = Memory(max_turns=4, max_chars=180)
+    memory.remember("chat", asked="a" * 50, answered="b" * 50)
+    memory.remember("chat", asked="c" * 50, answered="d" * 50)
+    for number in range(6):
+        memory.remember_control_state("chat", f"revoked {number} " + "x" * 40)
+
+    context = memory.context("chat")
+    turns, chars = memory.stats("chat")
+    assert turns == len(context) <= 4
+    assert chars == sum(turn.size for turn in context) <= 180
+    assert context[-1].text.startswith("revoked 5")
+
+
 def test_conversational_yes_uses_and_updates_memory(tmp_path):
     conductor, reasoner, sent, memory = build(tmp_path)
     memory.remember(CHAT, asked="Explain permissions", answered="Would you like an example?")

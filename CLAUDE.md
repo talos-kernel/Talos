@@ -14,7 +14,7 @@ preferences live in `USER.md`. All three are operator-owned prompt state and rel
 |---|---|
 | Gate path | `policy.py`, **985 lines** — has to stay readable in one sitting |
 | Tools | **33**, every one gated |
-| Suites | **3222** collected tests · **263** adversarial · 44 end-to-end |
+| Suites | **3269** collected tests · **263** adversarial · 44 end-to-end |
 | Home | <https://talos-agent.ch> · docs at `/docs/` |
 | Repository | `talos-kernel/talos` is the public source tree |
 
@@ -137,6 +137,16 @@ In practice:
   undo it. ⚠️ `updater._carry_state` uses `shutil.copy2`, which carries the mode but not
   the owner — only root can do that. If that ownership was the boundary, the copy after
   an update belongs to the agent again. The updater says so instead of pretending.
+- **A file runner touches the kernel-derived target or nothing.** `read_file` and
+  `write_file` freeze `guard_targets` expansion, verifier digest, real path and parent
+  inode into the granted request; the runner does not resolve a mutable symlink again.
+  `write_file` publishes a same-directory 0600 temporary file with file and directory
+  `fsync`; it preserves a caller symlink and the existing mode (with a fresh mtime), and
+  refuses ACLs/xattrs/flags it cannot preserve, inherited temp ACLs, special files,
+  hardlinks, read-only targets and files owned by another uid rather than gaining power
+  through delete-and-recreate. Before the runner boundary a binding or mint failure has
+  no effect, so the executor must not restore a snapshot over the external change that
+  caused the refusal.
 - **Never leave the agent's own config file outside the floor.** `talos.env` carries the
   bot token, the API keys *and* `TALOS_ALLOWED_PRINCIPALS`. Until 2026-08-05 it was an
   ordinary `write_file` target with ALLOW — the kernel stayed intact while its identity
@@ -213,7 +223,10 @@ In practice:
   `before_reply` hook can only withhold a reply, never grant anything — a hook that
   raises delivers.
 - **Steering is a turn, not a right.** `delegate_steer` queues text on the background
-  desk; the run reads it at the same step boundary as a typed correction (`redirect`),
+  desk; a revision gate discards any older, not-yet-admitted proposal before parsing or
+  execution. It deliberately does not call a provider-wide cancel hook: synchronous
+  network close can block control, while a late global cancel can hit the next run. The
+  run reads the correction at the same seam as a typed correction (`redirect`),
   framed "no additional rights", and every tool call it provokes passes the kernel under
   the run's own ceiling. Only `/background` runs are steerable — the only runs with a step
   boundary in this process; an unknown id is a refusal with a reason, never a pretend
@@ -261,7 +274,7 @@ properties covered by `test_fallback_control.py` and `test_runtime_failure_repai
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install --require-hashes -r requirements.lock -r requirements-dev.lock
 
-python -m pytest tests/ -q   # 3222 collected tests; platform-specific skips are explicit
+python -m pytest tests/ -q   # 3269 collected tests; platform-specific skips are explicit
 python redteam.py            # 263 adversarial cases — mandatory for any kernel change
 python e2e.py                # 44 cases against a real model (costs tokens and time)
 python -m talos --once       # single cycle, for diagnosis

@@ -7,7 +7,13 @@ from pathlib import Path
 import pytest
 
 from talos import agent_loop, tools
-from talos.agent_loop import AgentStatus, ProgressStage, parse_tool_call, run_agent
+from talos.agent_loop import (
+    AgentStatus,
+    CompletionVerdict,
+    ProgressStage,
+    parse_tool_call,
+    run_agent,
+)
 from talos.capability import CapabilityMint, GrantedRunner
 from talos.eventlog import EventLog
 from talos.executor import Executor
@@ -417,6 +423,86 @@ def test_fact_review_retries_once_then_marks_unverified_instead_of_looping(tmp_p
 
     assert result.status is AgentStatus.ANSWERED and calls == 2
     assert "NOT VERIFIED" in result.text and "no Atlas API evidence" in result.text
+
+
+def test_completion_gate_stops_instead_of_delivering_repeated_false_success(tmp_path: Path) -> None:
+    calls = 0
+
+    def propose(_history: list[str]) -> str:
+        nonlocal calls
+        calls += 1
+        return "Executed successfully."
+
+    result = run_agent(
+        propose,
+        _executor(tmp_path),
+        OWNER,
+        "completion-1",
+        completion_check=lambda _answer, _history: CompletionVerdict(
+            False, "no matching receipt"
+        ),
+        max_steps=4,
+    )
+
+    assert result.status is AgentStatus.STEP_LIMIT and calls == 2
+    assert "Task unfinished" in result.text
+    assert "Executed successfully" not in result.text
+
+
+def test_completion_receipt_read_failure_never_retries_the_action(tmp_path: Path) -> None:
+    calls = 0
+
+    def propose(_history: list[str]) -> str:
+        nonlocal calls
+        calls += 1
+        return "Executed successfully."
+
+    def broken(_answer: str, _history: tuple[str, ...]) -> tuple[bool, str]:
+        raise OSError("event log unavailable")
+
+    result = run_agent(
+        propose,
+        _executor(tmp_path),
+        OWNER,
+        "completion-2",
+        completion_check=broken,
+        max_steps=4,
+    )
+
+    assert result.status is AgentStatus.STEP_LIMIT and calls == 1
+    assert "receipts could not be verified" in result.text
+    assert "No action was repeated" in result.text
+
+
+def test_completion_report_only_latch_blocks_an_adversarial_tool_replay(tmp_path: Path) -> None:
+    replies = iter((
+        "Executed successfully.",
+        _tool_call("run_shell", {"command": "echo fresh"}, []),
+    ))
+    executor = _executor(tmp_path)
+
+    result = run_agent(
+        lambda _history: next(replies),
+        executor,
+        OWNER,
+        "completion-no-replay",
+        completion_check=lambda _answer, _history: CompletionVerdict(
+            False,
+            "the command has an error receipt",
+            retry_action=False,
+        ),
+        max_steps=4,
+    )
+
+    assert result.status is AgentStatus.STEP_LIMIT
+    assert "no uncertain action was repeated" in result.text
+    assert not any(
+        row["type"] == "exec.intent" for row in executor.log.by_run("completion-no-replay")
+    )
+    assert any(
+        row["type"] == "completion.replay_blocked"
+        for row in executor.log.by_run("completion-no-replay")
+    )
 
 
 # --- Native TOOL_CALL mit kaputter JSON ------------------------------------------------

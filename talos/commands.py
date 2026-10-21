@@ -103,6 +103,9 @@ class CommandResult:
     forward_as: str | None = None
     request: ToolRequest | None = None
     structured: StructuredMessage | None = None
+    # Deterministisch erzeugter Sicherheitszustand fuer den naechsten Modellkontext.
+    # Kein Chat-Zug und niemals eine Erlaubnisquelle; der Kernel bleibt massgeblich.
+    context_notice: str | None = None
     # `/background <auftrag>`: der Conductor startet daraufhin einen Lauf NEBEN dem
     # laufenden Gespraech. Ein eigenes Feld statt `forward_as`, weil der Unterschied
     # genau der Punkt ist — `forward_as` behandelt den Text, als haette der Betreiber ihn
@@ -118,7 +121,7 @@ Control
 /stopall (also /estop) — stop everything stoppable: thought, queue, background jobs,
   pending approvals. Schedules are not touched.
 /queue (also /q) — what is running, what is waiting; /queue <task> queues a separate next turn
-/steer <instruction> — correct the running task at its next step, without restarting it
+/steer <instruction> — supersede the running thought before its next action
 /tasks — your running background jobs; /steer <bg_id> <instruction> redirects one
 /cancel <bg_id> (also /stop <bg_id>) — stop one background job; the foreground continues
 /status — runtime, queue, pending approval, usage, background jobs, next schedules
@@ -283,7 +286,17 @@ class CommandCenter:
         if name == "allowed":
             return CommandResult(reply=self._allowed(conversation, principal=principal))
         if name == "revoke":
-            return CommandResult(reply=self._revoke(rest, conversation, principal=principal))
+            reply = self._revoke(rest, conversation, principal=principal)
+            notice = None
+            if reply.startswith("Revoked:"):
+                notice = (
+                    "The operator successfully revoked a standing approval in this "
+                    "conversation. Any later matching "
+                    "action is a new request and must pass the current kernel decision "
+                    "again. An older successful receipt proves only what ran before the "
+                    "revocation; it must not be reported as a result of a new request."
+                )
+            return CommandResult(reply=reply, context_notice=notice)
         if name == "log":
             return CommandResult(reply=self._log(rest))
         if name == "undo":
@@ -1211,9 +1224,11 @@ class CommandCenter:
         lines.append(
             "\nDenktiefe wird automatisch pro Zug geroutet: kurze Antworten laufen mit low, "
             "Status-/Recherchefragen mit medium und komplexe Analyse mit high. Auf dem "
-            "Hermes-Weg setzt Talos dafuer wirklich Hermes --reasoning; es ist kein "
-            "Anzeige-Schalter. Das aendert nur Rechenaufwand, nie Rechte — /autonomy "
-            "bleibt die Leine."
+            "Hermes-Weg gibt Talos das als --reasoning mit, wenn die installierte CLI "
+            "dieses Flag unterstuetzt; aktuelle Versionen ohne Flag verwenden ihr "
+            "konfiguriertes Profil. Ein unbekanntes Flag darf nie den Modelllauf "
+            "abwuergen. Das aendert nur Rechenaufwand, nie Rechte — /autonomy bleibt "
+            "die Leine."
         )
         return "\n".join(lines)
 

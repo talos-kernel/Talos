@@ -137,7 +137,7 @@ def test_a_steer_cannot_widen_the_ceiling_of_the_run_it_reaches(tmp_path: Path) 
     assert _warten(lambda: bool(log.recent(50, types=("background.finished",))))
 
     assert bg.STEER_FRAME in prompts[1]                   # die Anweisung kam an …
-    assert gelaufen == ["read_file"]                     # … und bewirkte kein Schreiben
+    assert gelaufen == []                                 # … die alte Proposal lief nicht
     urteile = [e for e in log.recent(50, types=("exec.result",)) if e["payload"].get("tool") == "write_file"]
     assert urteile and urteile[0]["payload"]["status"] == Status.DENIED.value
     assert "unattended" in urteile[0]["payload"].get("detail", "")
@@ -221,6 +221,29 @@ def test_an_instruction_is_queued_and_taken_exactly_once() -> None:
     assert steer.text == "schau zuerst in /var/log" and steer.origin == str(OWNER)
     (genommen,) = desk.take_steering(task.task_id)
     assert genommen == steer
+    assert desk.take_steering(task.task_id) == ()
+
+
+def test_background_admission_is_invalidated_by_a_winning_steer() -> None:
+    desk, task = _desk_with_task()
+    revision, pending = desk.take_steering_with_revision(task.task_id)
+    assert pending == ()
+
+    _steer(desk, task.task_id, "anders")
+    assert desk.admit(task.task_id, revision) is False
+    current, steers = desk.take_steering_with_revision(task.task_id)
+    assert steers[0].text == "anders"
+    assert desk.admit(task.task_id, current) is True
+
+
+def test_background_terminal_admission_closes_the_steering_mailbox() -> None:
+    desk, task = _desk_with_task()
+    revision, pending = desk.take_steering_with_revision(task.task_id)
+    assert pending == ()
+
+    assert desk.finish_proposal(task.task_id, revision) is True
+    with pytest.raises(bg.SteerRefused, match="already finalizing"):
+        _steer(desk, task.task_id, "too late")
     assert desk.take_steering(task.task_id) == ()
 
 
@@ -312,7 +335,7 @@ def test_the_runner_takes_the_origin_from_the_thread_context_never_from_the_argu
         "task_id": task.task_id, "instruction": "nimm die zweite Datei",
         "principal": "telegram:666", "conversation": "chat-fremd",
     }))
-    assert task.task_id in quittung and "next step" in quittung
+    assert task.task_id in quittung and "next action" in quittung
     (steer,) = desk.take_steering(task.task_id)
     assert steer.origin == str(OWNER) and steer.text == "nimm die zweite Datei"
 
@@ -355,12 +378,14 @@ def test_run_agent_injects_a_steer_between_two_steps_on_the_redirect_seam(tmp_pa
         return "fertig"
 
     policy = PolicyKernel(tools.default_manifest(), frozenset({OWNER}))
+    executor = _executor(tmp_path, policy)
     ergebnis = run_agent(
-        propose, _executor(tmp_path, policy), OWNER, "run-naht",
+        propose, executor, OWNER, "run-naht",
         redirect=desk.inbox(task.task_id), max_steps=4,
         progress=lambda p: stationen.append(p.stage),
     )
     assert ergebnis.status is AgentStatus.ANSWERED
+    assert not [event for event in executor.log.recent(20) if event["type"] == "exec.intent"]
     assert not any(bg.STEER_FRAME in z for z in gesehen[0])
     zweiter = "\n".join(gesehen[1])
     assert bg.STEER_FRAME in zweiter and "nimm die zweite Datei" in zweiter

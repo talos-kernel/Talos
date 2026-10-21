@@ -26,6 +26,18 @@ def test_a_correction_from_the_same_person_in_the_same_chat_arrives() -> None:
     assert postfach.take() == (), "das Postfach wurde nicht geleert"
 
 
+def test_admission_is_invalidated_only_by_a_correction_that_won_the_race() -> None:
+    postfach = _offen()
+    revision, pending = postfach.take_with_revision()
+    assert pending == ()
+
+    assert postfach.offer("telegram:1000", "chat-7", "anders") is True
+    assert postfach.admit(revision) is False
+    current, corrections = postfach.take_with_revision()
+    assert corrections[0].text == "anders"
+    assert postfach.admit(current) is True
+
+
 def test_a_second_allowed_person_cannot_steer_someone_elses_run() -> None:
     """Erlaubt zu sein heisst, eigene Auftraege geben zu duerfen — nicht, fremde zu lenken."""
     postfach = _offen()

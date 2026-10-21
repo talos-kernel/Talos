@@ -1,15 +1,18 @@
 """Executor: die gegatete Pipeline rollt bei jedem Fehlpfad zurück und loggt Intent + Receipt."""
 from __future__ import annotations
 
+import os
+import stat
 from pathlib import Path
 
-from talos.capability import CapabilityMint, GrantedRunner
+from talos.capability import CapabilityError, CapabilityMint, GrantedRunner
 from talos.eventlog import EventLog
 from talos.executor import APPROVED_DETAIL, Executor, Status
 from talos.manifest import Effect, ToolManifest, ToolSpec
 from talos.policy import PolicyKernel, ToolRequest
 from talos.snapshot import Snapshotter
 from talos.channel import Principal
+from talos import tools
 
 OWNER = Principal("telegram", "100000001")
 
@@ -84,6 +87,51 @@ def test_runner_exception_rolls_back(tmp_path: Path) -> None:
     assert target.read_text(encoding="utf-8") == "original"  # zurückgerollt
 
 
+def test_binding_change_before_runner_never_restores_over_external_state(
+    tmp_path: Path, monkeypatch
+) -> None:
+    target = tmp_path / "cfg.txt"
+    target.write_text("snapshot", encoding="utf-8")
+    calls: list[int] = []
+    ex = _executor(tmp_path, lambda _req: calls.append(1))
+
+    def changed(_bindings) -> bool:
+        target.write_text("external", encoding="utf-8")
+        return False
+
+    monkeypatch.setattr("talos.executor.verifier.recheck", changed)
+    out = ex.run(ToolRequest("write_file", OWNER, {"path": str(target)}), "run-binding")
+
+    assert out.status is Status.BINDING_CHANGED
+    assert calls == []
+    assert target.read_text(encoding="utf-8") == "external"
+
+
+def test_mint_refusal_before_runner_never_restores_over_external_state(tmp_path: Path) -> None:
+    target = tmp_path / "cfg.txt"
+    target.write_text("snapshot", encoding="utf-8")
+    calls: list[int] = []
+    policy = PolicyKernel(_manifest(), frozenset({OWNER}))
+
+    class RefusingMint:
+        def issue(self, _req, *, human_approved=False):
+            target.write_text("external", encoding="utf-8")
+            raise CapabilityError("refused before effect")
+
+    ex = Executor(
+        policy=policy,
+        log=EventLog(tmp_path / "mint-events.db"),
+        snapshotter=Snapshotter(tmp_path / ".mint-snap"),
+        runner=lambda _req, _grant: calls.append(1),
+        mint=RefusingMint(),  # type: ignore[arg-type]
+    )
+    out = ex.run(ToolRequest("write_file", OWNER, {"path": str(target)}), "run-mint")
+
+    assert out.status is Status.DENIED
+    assert calls == []
+    assert target.read_text(encoding="utf-8") == "external"
+
+
 def test_verify_failed_rolls_back(tmp_path: Path) -> None:
     target = tmp_path / "cfg.txt"
     target.write_text("original", encoding="utf-8")
@@ -96,6 +144,151 @@ def test_verify_failed_rolls_back(tmp_path: Path) -> None:
     out = ex.run(ToolRequest("write_file", OWNER, {"path": str(target)}), "run5", expected="other")
     assert out.status is Status.VERIFY_FAILED
     assert target.read_text(encoding="utf-8") == "original"
+
+
+def test_write_file_runner_refusal_does_not_delete_a_fifo(tmp_path: Path) -> None:
+    target = tmp_path / "pipe"
+    os.mkfifo(target)
+    ex = _executor(tmp_path, tools.write_file)
+
+    out = ex.run(
+        ToolRequest("write_file", OWNER, {"path": str(target), "content": "x"}),
+        "run-fifo",
+    )
+
+    assert out.status is Status.ERROR
+    assert target.exists()
+    assert stat.S_ISFIFO(target.stat().st_mode)
+
+
+def test_verify_failure_via_broken_symlink_restores_the_real_target(tmp_path: Path) -> None:
+    target = tmp_path / "missing-target.txt"
+    link = tmp_path / "link.txt"
+    link.symlink_to(target)
+    ex = _executor(tmp_path, tools.write_file)
+
+    out = ex.run(
+        ToolRequest("write_file", OWNER, {"path": str(link), "content": "new"}),
+        "run-broken-link",
+        expected="not the runner receipt",
+    )
+
+    assert out.status is Status.VERIFY_FAILED
+    assert link.is_symlink()
+    assert not target.exists()
+
+
+def test_write_file_runner_refusal_does_not_try_to_restore_readonly_file(tmp_path: Path) -> None:
+    target = tmp_path / "readonly.txt"
+    target.write_text("old", encoding="utf-8")
+    target.chmod(0o444)
+    ex = _executor(tmp_path, tools.write_file)
+
+    out = ex.run(
+        ToolRequest("write_file", OWNER, {"path": str(target), "content": "new"}),
+        "run-readonly",
+    )
+
+    assert out.status is Status.ERROR
+    assert target.read_text(encoding="utf-8") == "old"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o444
+
+
+def test_file_runner_uses_verifier_bound_target_after_symlink_swap(tmp_path: Path) -> None:
+    safe = tmp_path / "safe.txt"
+    safe.write_text("safe", encoding="utf-8")
+    protected_dir = tmp_path / ".secrets"
+    protected_dir.mkdir()
+    secret = protected_dir / "token.txt"
+    secret.write_text("SECRET", encoding="utf-8")
+    link = tmp_path / "selected.txt"
+    link.symlink_to(safe)
+    policy = PolicyKernel(_manifest(), frozenset({OWNER}))
+    real_mint = CapabilityMint(policy)
+
+    class SwappingMint:
+        def issue(self, req, *, human_approved=False):
+            grant = real_mint.issue(req, human_approved=human_approved)
+            link.unlink()
+            link.symlink_to(secret)
+            return grant
+
+        def redeem(self, grant, req):
+            return real_mint.redeem(grant, req)
+
+    mint = SwappingMint()
+    ex = Executor(
+        policy=policy,
+        log=EventLog(tmp_path / "swap-events.db"),
+        snapshotter=Snapshotter(tmp_path / ".swap-snap"),
+        runner=GrantedRunner(mint=mint, runners={"write_file": tools.write_file}),  # type: ignore[arg-type]
+        mint=mint,  # type: ignore[arg-type]
+    )
+
+    out = ex.run(
+        ToolRequest("write_file", OWNER, {"path": str(link), "content": "PWNED"}),
+        "run-swap",
+    )
+
+    assert out.status is Status.DONE
+    assert safe.read_text(encoding="utf-8") == "PWNED"
+    assert secret.read_text(encoding="utf-8") == "SECRET"
+    assert link.resolve() == secret
+
+
+def test_file_runner_refuses_parent_directory_swap_after_binding(tmp_path: Path) -> None:
+    approved = tmp_path / "approved"
+    approved.mkdir()
+    target = approved / "note.txt"
+    target.write_text("old", encoding="utf-8")
+    moved = tmp_path / "moved"
+    policy = PolicyKernel(_manifest(), frozenset({OWNER}))
+    real_mint = CapabilityMint(policy)
+
+    class SwappingMint:
+        def issue(self, req, *, human_approved=False):
+            grant = real_mint.issue(req, human_approved=human_approved)
+            approved.rename(moved)
+            approved.mkdir()
+            (approved / "note.txt").write_text("old", encoding="utf-8")
+            return grant
+
+        def redeem(self, grant, req):
+            return real_mint.redeem(grant, req)
+
+    mint = SwappingMint()
+    ex = Executor(
+        policy=policy,
+        log=EventLog(tmp_path / "parent-swap-events.db"),
+        snapshotter=Snapshotter(tmp_path / ".parent-swap-snap"),
+        runner=GrantedRunner(mint=mint, runners={"write_file": tools.write_file}),  # type: ignore[arg-type]
+        mint=mint,  # type: ignore[arg-type]
+    )
+
+    out = ex.run(
+        ToolRequest("write_file", OWNER, {"path": str(target), "content": "new"}),
+        "run-parent-swap",
+    )
+
+    assert out.status is Status.ERROR
+    assert "parent changed" in out.detail
+    assert (approved / "note.txt").read_text(encoding="utf-8") == "old"
+    assert (moved / "note.txt").read_text(encoding="utf-8") == "old"
+
+
+def test_file_runner_refuses_an_unbound_missing_parent(tmp_path: Path) -> None:
+    parent = tmp_path / "not-created"
+    target = parent / "note.txt"
+    ex = _executor(tmp_path, tools.write_file)
+
+    out = ex.run(
+        ToolRequest("write_file", OWNER, {"path": str(target), "content": "new"}),
+        "run-missing-parent",
+    )
+
+    assert out.status is Status.ERROR
+    assert "parent did not exist at verifier binding" in out.detail
+    assert not parent.exists()
 
 
 def test_approved_run_receipt_does_not_still_ask_for_approval(tmp_path: Path) -> None:

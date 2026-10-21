@@ -21,10 +21,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3222).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3269).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-3222-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-3269-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-263%2F263-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-985%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-33%20gated-8a4318.svg" alt="Tools">
@@ -420,8 +420,8 @@ If no ceiling is wired, the task is **refused** rather than run uncapped. A forg
 parameter may only ever allow less.
 
 A running background task can be **steered**: `delegate_steer` queues a course correction,
-and the task reads it at its next step boundary — the same seam where a typed correction
-enters a foreground run, only from its own mailbox. The instruction arrives as a framed
+and supersedes unfinished reasoning before its next action — the same seam where a typed
+correction enters a foreground run, only from its own mailbox. The instruction arrives as a framed
 turn ("no additional rights"); every tool call it provokes passes the same kernel under
 the same ceiling. Only the person and conversation that started the task may steer it,
 a delegated run may not steer at all, and anything without a step boundary in this
@@ -768,7 +768,7 @@ tool that skips the kernel — a tool without a target extractor is `DENY` by co
 | `git` | clone / fetch / pull / push with credentials — every op a human's yes, binding to exact op+repo+remote; local git work stays in the sandboxed shell |
 | `cli_anything` | a pinned CLI-Anything harness (curated third-party CLI) from the operator-owned registry — unknown harness or subcommand is `DENY`, the rest always a human's yes, binding to exact name+subcommand; [registry format](docs/cli-anything.md) |
 | `entity_status` | a known name resolved to an operator-configured fixed read-only probe |
-| `read_file` / `write_file` / `undo_last` | ordinary work, with a snapshot behind the write |
+| `read_file` / `write_file` / `undo_last` | ordinary work on the kernel-derived path, with atomic publication and a snapshot behind the write |
 | `browse` / `web_fetch` / `web_search` | render-only, guarded URL, keyless search by default |
 | `see_image` / `grab_frame` / `hear` / `speak` | a picture, one still out of a video, a recording, a voice |
 | `read_document` | a PDF, Word, Excel or PowerPoint file turned into text — locally, framed as untrusted |
@@ -778,7 +778,7 @@ tool that skips the kernel — a tool without a target extractor is `DENY` by co
 | `delegate_code` / `delegate_dag` / `delegate_status` | a bounded coding job — or a small acyclic graph of them — for a confined Claude worker: opt-in, off by default, writes only into a kernel-derived disposable workspace |
 | `delegate_agy` | the same confined worker's second backend (the agy CLI): same trust form and workspace, behind its own opt-in gates on agent and worker, no MCP |
 | `delegate_codex` | bounded implementation and independent review with Codex: the same kernel and sandbox, isolated auth, verified stream completion and originating-chat notifications; [setup](docs/codex-worker.md) |
-| `delegate_steer` | a course correction into a *running* `/background` task — a framed turn it reads at its next step, never a new right |
+| `delegate_steer` | a course correction into a *running* `/background` task — a framed turn that supersedes unfinished reasoning, never a new right |
 | `agent_consult` | bounded advice from a second, operator-configured agent — data, never permission |
 | `ask_operator` | the one way it can ask you something on purpose |
 | `skill_write` | a new skill, written exactly once — and never without a human's yes |
