@@ -10,17 +10,20 @@ talos setup terminal
 talos chat
 ```
 
-The source archive is pinned by SHA256. Dependencies come from an additional pinned
-wheel bundle; installation is offline with respect to Python packages and checks each
-wheel against the hashed lock in the release. Downloads still require the network.
+The source archive is pinned by SHA256. Homebrew fetches individually pinned original
+wheel files from PyPI, then installs these staged files offline. Each wheel is checked
+against the hashed lock in the release. Fetching the files still requires the network.
 Installing the formula does not configure identities, start Talos or enable services.
+Third-party dependencies retain their own licenses; the tap does not redistribute a
+combined wheel bundle or a prebuilt Talos bottle. The repository's bundle-based formula
+renderer is a packaging helper, not the published tap's resource manifest.
 
 ## Code and private state are separate
 
 Homebrew owns the code in its versioned Cellar. The invoking user's private state is
 `~/.talos/homebrew`: configuration, identity files, event log, selected model, projects,
-workspace and local vault. The profile and its data/workspace directories are0700;
-new identity/configuration files are0600. A shared or symlinked profile is refused,
+workspace and local vault. The profile and its data/workspace directories are 0700;
+new identity/configuration files are 0600. A shared or symlinked profile is refused,
 not silently repaired. Other Talos installations are not imported automatically.
 
 Diagnostic commands do not create a new profile. Explicit setup writes configuration;
