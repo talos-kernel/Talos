@@ -21,6 +21,8 @@ ALLOWED_ENDPOINT_FIXTURE_HOSTS = {
     # Das Beispiel im Modulkopf zeigt genau den Fall, fuer den es das Modul gibt:
     # ein OAuth-Proxy des Betreibers auf loopback.
     "talos/customproviders.py": frozenset({"127.0.0.1"}),
+    # The privacy probe is restricted to loopback; these are protocol defaults.
+    "talos/localcheck.py": frozenset({"127.0.0.1"}),
     # Der isolierte Computer hat feste interne Adressen: QEMU-User-Net-Proxy
     # (10.0.2.100) und lokaler DevTools-Endpunkt (127.0.0.1) — keine Geheimnisse,
     # sondern die feste Verdrahtung der Sandbox.
@@ -68,6 +70,8 @@ ALLOWED_ENDPOINT_FIXTURE_HOSTS = {
     "tests/test_computer_cli.py": frozenset({"127.0.0.1", "localhost"}),
     "tests/test_fallback.py": frozenset({"localhost"}),
     "tests/test_first_run.py": frozenset({"localhost"}),
+    # Positive loopback fixtures and a negative LAN-rejection fixture.
+    "tests/test_localcheck.py": frozenset({"127.0.0.1", "192.168.1.10", "localhost", "::1"}),
     "tests/test_model_overrides.py": frozenset({"localhost"}),
     "tests/test_web.py": frozenset({
         "127.0.0.1", "127.9.9.9", "169.254.169.254", "::1", "localhost",

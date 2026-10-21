@@ -53,11 +53,13 @@ HELP = f"""
   doctor [--online]                  what is missing — changes nothing
   config list|get|set|describe|validate    find, explain and change settings
   models [--refresh]                 which models a provider offers
+  local-check [--provider ollama|lm-studio]    probe local endpoint without operator data
 
   SEE WHAT HAPPENED
   status                             what it did last
   health [--json]                    is it well — runs, errors, schedules, anchor
   dashboard                          live view — observing only, localhost only
+  proof [--run <id>] [--format markdown|json]    compact outcome receipt, content excluded
   computer [status|open|setup]        your private desktop and verified project work
   events [--limit n] [--tool t] [--since 4h]    what happened — filterable, read-only
   why <event-id>                     why that was allowed or refused
@@ -280,11 +282,13 @@ TABLE: dict[str, object] = {
     "doctor": _lazy("doctor", "run_doctor"),
     "config": _lazy("configcli", "run_config"),
     "models": _lazy("models", "run_models"),
+    "local-check": _lazy("localcheck", "run_local_check"),
     "ask": cmd_ask,
     "chat": cmd_chat,
     "status": lambda _rest: cmd_status(),
     "health": _lazy("health", "run_health"),
     "dashboard": _lazy("dashboard", "run_dashboard"),
+    "proof": _lazy("proof", "run_proof"),
     "computer": _lazy("computer.cli", "run_computer"),
     "events": _lazy("eventscli", "run_events"),
     "why": _lazy("eventscli", "run_why"),

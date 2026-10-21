@@ -188,6 +188,30 @@ def test_entity_status_has_a_targetless_kernel_extractor() -> None:
     assert kernel.guard_targets(ToolRequest("entity_status", OWNER, {"name": "Atlas API"})) == ()
 
 
+def test_mailbox_tools_are_read_only_and_mutations_do_not_exist() -> None:
+    from talos import tools
+
+    kernel = PolicyKernel(tools.default_manifest(), frozenset({OWNER}))
+
+    for name, args in (("mailbox_list", {"limit": 5}), ("mailbox_read", {"uid": "42"})):
+        spec = kernel.manifest.get(name)
+        decision = kernel.decide(ToolRequest(name, OWNER, args))
+        assert spec is not None and spec.effect is Effect.READ and spec.reversible is True
+        assert decision.verdict is Verdict.ALLOW
+        assert kernel.guard_targets(ToolRequest(name, OWNER, args)) == ()
+    for name in ("mailbox_delete", "mailbox_move", "mailbox_mark_seen", "mailbox_send"):
+        assert kernel.decide(ToolRequest(name, OWNER, {})).verdict is Verdict.DENY
+
+
+def test_mailbox_tools_do_not_exist_without_complete_operator_config() -> None:
+    from talos import tools
+
+    manifest = tools.default_manifest(mail_enabled=False)
+
+    assert manifest.get("mailbox_list") is None
+    assert manifest.get("mailbox_read") is None
+
+
 # --- Executor: Undo haengt am Kernel, nicht am LLM --------------------------------
 
 

@@ -182,6 +182,34 @@ def test_runs_route_separates_running_from_completed(server, tmp_path: Path) -> 
     assert satz["tool_calls"] == 1
 
 
+def test_outcomes_route_shows_receipts_without_prompts_or_results(server, tmp_path: Path) -> None:
+    run, _open, _waiting = _seed_runs(tmp_path)
+    log = EventLog(tmp_path / "eventlog.db")
+    log.append(Event(run, "executor", "exec.intent", {
+        "tool": "write_file", "verdict": "allow",
+        "args": {"content": "PRIVATE-PROMPT"},
+    }))
+    log.append(Event(run, "executor", "snapshot.taken", {
+        "tool": "write_file", "snapshot_id": "s1",
+        "entries": [[str(tmp_path / "report.md"), None]],
+    }))
+    log.append(Event(run, "executor", "exec.result", {
+        "tool": "write_file", "status": "done", "detail": "PRIVATE-RESULT",
+    }))
+    log.close()
+
+    code, _typ, body = _get(server, "/api/outcomes")
+    data = json.loads(body)
+
+    assert code == 200
+    assert data["available"] is True
+    item = next(item for item in data["items"] if item["run_id"] == run)
+    assert item["successful_calls"] >= 1
+    assert any(path.endswith("report.md") for path in item["artifacts"])
+    assert "PRIVATE-PROMPT" not in body
+    assert "PRIVATE-RESULT" not in body
+
+
 def test_approvals_route_labels_the_heuristic_honestly(server, tmp_path: Path) -> None:
     _fertig, _offen, wartend = _seed_runs(tmp_path)
     code, _typ, body = _get(server, "/api/approvals")
@@ -253,6 +281,7 @@ def test_index_serves_a_self_contained_page(server) -> None:
     for ref in re.findall(r'(?:src=|url\()\s*"([^"]+)"', body):
         assert ref.startswith("data:"), ref
     assert "/api/status" in body  # die Seite pollt die eigenen Endpunkte
+    assert "/api/outcomes" in body
 
 
 # --- Fehlende Quellen: benannte Leere statt 500 ---------------------------------------------
@@ -261,6 +290,7 @@ def test_missing_databases_yield_named_emptiness(server) -> None:
     for pfad, felder in (
         ("/api/status", ("ts", "status", "version")),
         ("/api/runs", ("available", "running", "completed")),
+        ("/api/outcomes", ("available", "items", "basis")),
         ("/api/approvals", ("standing", "open")),
         ("/api/events", ("available", "events")),
         ("/api/schedules", ("available", "count", "blueprints")),

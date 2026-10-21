@@ -1,0 +1,21 @@
+{
+  "name": "repo-guardian",
+  "title": "Repository guardian",
+  "description": "Diagnose one repository objective, make the smallest isolated change and return tests plus a reviewable diff.",
+  "version": 1,
+  "project_required": true,
+  "prompt": "Work in repository {source}. Objective: {objective}. Inspect its instructions first. Make only the smallest change needed, preserve unrelated work, run the narrow target test twice and then the relevant suite once, and write a handover at {output} containing changed files, commands, actual outcomes, remaining risk and the final diff summary. Do not push or merge.",
+  "inputs": [
+    {"name": "source", "description": "Repository folder inside the project", "kind": "relative-path", "required": false, "default": "."},
+    {"name": "objective", "description": "Concrete bug or feature objective", "kind": "text", "required": true},
+    {"name": "output", "description": "Review handover artifact", "kind": "relative-path", "required": false, "default": "talos-reports/repo-guardian.md"}
+  ],
+  "effects": ["read", "write", "exec"],
+  "artifacts": ["{output}"],
+  "checks": [
+    "Repository instructions were read before editing.",
+    "The target test passed twice consecutively after the change.",
+    "The relevant suite passed once.",
+    "No push, merge or deployment occurred."
+  ]
+}

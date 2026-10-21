@@ -59,6 +59,7 @@ EVENTS_LIMIT = 50
 RUNS_DONE_LIMIT = 25
 RUNS_OPEN_LIMIT = 25
 APPROVALS_OPEN_LIMIT = 25
+OUTCOMES_LIMIT = 25
 SCHEDULES_SHOWN = 5
 # Ein Feld im Response ist eine Zeile im Maschinenraum, nie ein Dokument.
 FIELD_CHARS = 140
@@ -228,6 +229,25 @@ class Collector:
             "basis": "heuristic — reason.started without reason.done counts as running",
             "running": laufend[:RUNS_OPEN_LIMIT],
             "completed": fertig,
+        }
+
+    # --- /api/outcomes ---------------------------------------------------------------
+    def outcomes(self) -> dict:
+        """Compact receipts: counts and successful snapshot targets, never content."""
+        from .proof import collect
+
+        if not Path(self.eventlog_db).is_file():
+            return {"available": False, "reason": f"missing: {Path(self.eventlog_db).name}",
+                    "basis": "event-log evidence only", "items": []}
+        try:
+            items = list(collect(self.eventlog_db, limit=OUTCOMES_LIMIT))
+        except sqlite3.Error as error:
+            return {"available": False, "reason": f"query failed ({type(error).__name__})",
+                    "basis": "event-log evidence only", "items": []}
+        return {
+            "available": True,
+            "basis": "event-log evidence only — prompts, arguments and result bodies excluded",
+            "items": items,
         }
 
     # --- /api/approvals ----------------------------------------------------------------
@@ -619,6 +639,7 @@ footer .sp{flex:1}
     <span class="brand"><img class="mark" src="data:image/png;base64,__SIGIL__" alt="" width="24" height="24">TALOS</span>
     <a class="lnk" href="#status">Status</a>
     <a class="lnk" href="#runs">Runs</a>
+    <a class="lnk" href="#outcomes">Outcomes</a>
     <a class="lnk" href="#approvals">Approvals</a>
     <a class="lnk" href="#schedules">Schedules</a>
     <a class="lnk" href="#events">Events</a>
@@ -662,19 +683,25 @@ footer .sp{flex:1}
     <div id="runs-body"><div class="note">…</div></div>
   </section>
 
+  <section id="outcomes">
+    <h2><span class="n">03</span>Outcome inbox</h2>
+    <div class="basis" id="outcomes-basis"></div>
+    <div id="outcomes-body"><div class="note">…</div></div>
+  </section>
+
   <section id="approvals">
-    <h2><span class="n">03</span>Approvals</h2>
+    <h2><span class="n">04</span>Approvals</h2>
     <div class="basis" id="approvals-basis"></div>
     <div id="approvals-body"><div class="note">…</div></div>
   </section>
 
   <section id="schedules">
-    <h2><span class="n">04</span>Schedules &amp; blueprints</h2>
+    <h2><span class="n">05</span>Schedules &amp; blueprints</h2>
     <div id="schedules-body"><div class="note">…</div></div>
   </section>
 
   <section id="events">
-    <h2><span class="n">05</span>Event log</h2>
+    <h2><span class="n">06</span>Event log</h2>
     <div class="basis">the last entries — capped, redacted, run ids shortened</div>
     <div id="events-body"><div class="note">…</div></div>
   </section>
@@ -822,7 +849,39 @@ function renderRuns(data) {
   }
 }
 
-// --- 03 approvals ----------------------------------------------------------
+// --- 03 outcome inbox ------------------------------------------------------
+function renderOutcomes(data) {
+  $("outcomes-basis").textContent = data.basis || "";
+  const body = $("outcomes-body");
+  clear(body);
+  const items = data.items || [];
+  if (!items.length) {
+    body.appendChild(noteBox("", "empty", "no completed outcome evidence yet"));
+    return;
+  }
+  const grid = el("div", "cards");
+  for (const item of items) {
+    const card = el("article", "card");
+    card.appendChild(el("b", "", String(item.run_id || "").slice(0, 8)));
+    const summary = (item.successful_calls || 0) + "/" + (item.tool_calls || 0) +
+      " successful · " + (item.failed_calls || 0) + " failed";
+    card.appendChild(el("span", "", summary));
+    const tools = item.tools || [];
+    if (tools.length) {
+      card.appendChild(el("br"));
+      card.appendChild(el("span", "", tools.map(t => t.tool).join(", ")));
+    }
+    const artifacts = item.artifacts || [];
+    if (artifacts.length) {
+      card.appendChild(el("br"));
+      card.appendChild(el("span", "", "artifacts: " + artifacts.join(", ")));
+    }
+    grid.appendChild(card);
+  }
+  body.appendChild(grid);
+}
+
+// --- 04 approvals ----------------------------------------------------------
 function renderApprovals(data) {
   const basis = $("approvals-basis");
   basis.textContent = (data.open && data.open.basis) || "";
@@ -867,7 +926,7 @@ function renderApprovals(data) {
   }
 }
 
-// --- 04 schedules & blueprints ----------------------------------------------
+// --- 05 schedules & blueprints ----------------------------------------------
 function renderSchedules(data) {
   const body = $("schedules-body");
   clear(body);
@@ -908,7 +967,7 @@ function renderSchedules(data) {
   }
 }
 
-// --- 05 events ---------------------------------------------------------------
+// --- 06 events ---------------------------------------------------------------
 function renderEvents(data) {
   const body = $("events-body");
   clear(body);
@@ -948,6 +1007,7 @@ async function poll() {
   const jobs = [
     ["/api/status", $("status-body"), renderStatus],
     ["/api/runs", $("runs-body"), renderRuns],
+    ["/api/outcomes", $("outcomes-body"), renderOutcomes],
     ["/api/approvals", $("approvals-body"), renderApprovals],
     ["/api/schedules", $("schedules-body"), renderSchedules],
     ["/api/events", $("events-body"), renderEvents],
@@ -1023,6 +1083,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     ROUTES = {
         "/api/status": Collector.status,
         "/api/runs": Collector.runs,
+        "/api/outcomes": Collector.outcomes,
         "/api/approvals": Collector.approvals,
         "/api/events": Collector.events,
         "/api/schedules": Collector.schedules,

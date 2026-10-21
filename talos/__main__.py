@@ -32,12 +32,14 @@ from .api_reasoner import ApiReasoner, supports_api_provider
 from .approval import ApprovalPicker, ApprovalStore
 from .autonomy import AutonomyGovernor, GovernedKernel, restore_level
 from .blueprints import BlueprintBook
+from .missions import MissionCatalog
+from .projects import ProjectStore
 from .standing import restore as restore_standing
 from .capability import CapabilityMint, GrantedRunner
 from .channel import ChannelRegistry, Inbound, Principal
 from .commands import CommandCenter, is_command, parse
 from .conductor import Conductor, reply_starter
-from .config import BLUEPRINTS_DIR, DATA_DIR, ENTITIES_FILE, MCP_SERVERS_FILE, MODEL_CACHE, PIPER_BIN, RECALL_DB, SCHEDULE_DB, TRANSCRIPT_DB, VOICE_DIR, load_config
+from .config import BLUEPRINTS_DIR, DATA_DIR, ENTITIES_FILE, MCP_SERVERS_FILE, MISSIONS_DIR, MODEL_CACHE, PIPER_BIN, PROJECTS_FILE, RECALL_DB, SCHEDULE_DB, TRANSCRIPT_DB, VOICE_DIR, load_config
 from .eventlog import Event, EventLog, new_run_id
 from .executor import Executor
 from .fallback import FallbackReasoner, parse_chain
@@ -72,7 +74,7 @@ from .snapshot import Snapshotter
 from .telegram import TelegramChannel, TelegramClient
 from . import browser, documents, frames, hearing, models, speech, vision, web
 from .usage import UsageMeter, event_payload as usage_event_payload
-from .mail import MailChannel
+from .mail import MailChannel, make_mailbox_runners
 from .whatsapp import WhatsAppChannel
 from .wabroker import BrokerWhatsAppChannel
 from .ux import SYM_FAIL, SYM_GATE, SYM_OK
@@ -352,7 +354,12 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     )
     kernel = PolicyKernel(
         manifest=tools.default_manifest(agy_backend=config.agy_backend,
-                                        codex_backend=config.codex_backend),
+                                        codex_backend=config.codex_backend,
+                                        mail_enabled=bool(
+                                            config.mail_host
+                                            and config.mail_user
+                                            and config.mail_password
+                                        )),
         allowed_identities=config.allowed_principals,
         vault_dir=config.vault_dir,
         shell_needs_human=config.shell_needs_human,
@@ -375,6 +382,8 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     # einzige Ausfuehrungspfad, Decke inklusive. Der Installations-Stand liegt bei den
     # Laufzeitdaten, die Vorlagen im Installationsverzeichnis.
     blueprint_book = BlueprintBook(BLUEPRINTS_DIR, DATA_DIR / "blueprints.json", schedules)
+    mission_catalog = MissionCatalog(MISSIONS_DIR)
+    project_store = ProjectStore(PROJECTS_FILE)
     # Die vierte Decke. Sie wirkt nur waehrend eines delegierten Laufs — dann darf
     # ausschliesslich gelesen werden. Ein Untergebener entsteht aus Modelltext, nicht
     # aus einem getippten Auftrag; ihm die Rechte seines Auftraggebers zu geben, waere
@@ -440,6 +449,8 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     runners = {
         **tools.RUNNERS,
         **tools.make_vault_runners(config.vault_dir, config.qmd_bin),
+        **(make_mailbox_runners(config.mail_host, config.mail_user, config.mail_password)
+           if config.mail_host and config.mail_user and config.mail_password else {}),
         "undo_last": tools.make_undo_runner(log),
         # Der API-Connector bekommt dieselbe Netz-Konfiguration wie web_fetch:
         # Freigabe-Adressen und die http-Erlaubnis kommen aus der Config, nie
@@ -642,6 +653,8 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
         transcript_db=TRANSCRIPT_DB,
         schedules=schedules,
         blueprints=blueprint_book,
+        missions=mission_catalog,
+        projects=project_store,
         background=background_desk,
         start_status=lambda: _start_status(reasoner, config),
         model_picker=model_picker,

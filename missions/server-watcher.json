@@ -1,0 +1,20 @@
+{
+  "name": "server-watcher",
+  "title": "Server health watcher",
+  "description": "Inspect an allowlisted host and produce a concise exceptions-first operations brief.",
+  "version": 1,
+  "project_required": true,
+  "prompt": "Inspect the operator-configured remote host alias {host} using read-only commands only. Check failed services, disk and inode pressure, memory pressure, pending security updates and recent high-priority errors. Write {output} with measured values, exact command receipts, exceptions and recommended next actions. Do not restart, install, upgrade or edit anything.",
+  "inputs": [
+    {"name": "host", "description": "Host alias from TALOS_REMOTE_HOSTS", "kind": "text", "required": true},
+    {"name": "output", "description": "Operations brief inside the project", "kind": "relative-path", "required": false, "default": "talos-reports/server-health.md"}
+  ],
+  "effects": ["read", "exec", "write"],
+  "artifacts": ["{output}"],
+  "checks": [
+    "Every remote command is read-only.",
+    "Every reported threshold includes its measured value.",
+    "The brief separates findings from recommendations.",
+    "No remote state was changed."
+  ]
+}

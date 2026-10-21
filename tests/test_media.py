@@ -532,7 +532,7 @@ def test_every_tool_in_the_manifest_has_a_runner_in_the_composition_root() -> No
     import ast
 
     from talos import __main__ as hauptmodul
-    from talos import web
+    from talos import mail, web
 
     baum = ast.parse(Path(hauptmodul.__file__).read_text(encoding="utf-8"))
     lauf = next(k for k in ast.walk(baum) if isinstance(k, ast.FunctionDef) and k.name == "run")
@@ -543,13 +543,14 @@ def test_every_tool_in_the_manifest_has_a_runner_in_the_composition_root() -> No
                 s.value for s in knoten.keys
                 if isinstance(s, ast.Constant) and isinstance(s.value, str)
             }
-    # Drei Gruppen kommen als `**…` herein — ihre Namen stehen nicht im Quelltext, also
+    # Vier Gruppen kommen als `**…` herein — ihre Namen stehen nicht im Quelltext, also
     # werden sie an derselben Quelle gefragt, aus der `run()` sie zur Laufzeit nimmt.
     from talos import tools as werkzeuge
 
     verdrahtet |= set(web.make_web_runners(search_api_key=""))
     verdrahtet |= set(werkzeuge.RUNNERS)
     verdrahtet |= set(werkzeuge.make_vault_runners(Path("/tmp"), "qmd"))
+    verdrahtet |= set(mail.make_mailbox_runners("imap.example", "user", "password"))
 
     fehlend = sorted(s.name for s in default_manifest().tools if s.name not in verdrahtet)
     assert not fehlend, f"Werkzeuge im Manifest ohne Runner in run(): {fehlend}"

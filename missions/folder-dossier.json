@@ -1,0 +1,20 @@
+{
+  "name": "folder-dossier",
+  "title": "Verified folder dossier",
+  "description": "Turn a folder into a source-linked dossier, open-question list and proof-ready artifact.",
+  "version": 1,
+  "project_required": true,
+  "prompt": "Inspect {source} without modifying it. Build a concise dossier at {output}: scope, source inventory, findings with file references, contradictions, missing information and next actions. Read the finished file back before reporting completion.",
+  "inputs": [
+    {"name": "source", "description": "Folder to inspect inside the project", "kind": "relative-path", "required": false, "default": "."},
+    {"name": "output", "description": "Markdown artifact inside the project", "kind": "relative-path", "required": false, "default": "talos-reports/dossier.md"}
+  ],
+  "effects": ["read", "write"],
+  "artifacts": ["{output}"],
+  "checks": [
+    "Every material claim cites at least one source path.",
+    "Unknown facts remain explicitly unknown.",
+    "The artifact is read back after writing.",
+    "No source file is modified."
+  ]
+}

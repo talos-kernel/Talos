@@ -21,13 +21,13 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3269).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3335).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-3269-2e7d32.svg" alt="Tests">
-  <img src="https://img.shields.io/badge/red%20team-263%2F263-2e7d32.svg" alt="Red team">
-  <img src="https://img.shields.io/badge/gate%20path-985%20lines-8a4318.svg" alt="Gate path">
-  <img src="https://img.shields.io/badge/tools-33%20gated-8a4318.svg" alt="Tools">
+  <img src="https://img.shields.io/badge/tests-3335-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/red%20team-267%2F267-2e7d32.svg" alt="Red team">
+  <img src="https://img.shields.io/badge/gate%20path-989%20lines-8a4318.svg" alt="Gate path">
+  <img src="https://img.shields.io/badge/tools-35%20gated-8a4318.svg" alt="Tools">
   <img src="https://img.shields.io/badge/default%20identities-0-c62828.svg" alt="Default identities">
   <img src="https://img.shields.io/badge/python-3.11%2B-1565c0.svg" alt="Python">
   <a href="https://github.com/talos-kernel/talos/releases"><img src="https://img.shields.io/github/v/release/talos-kernel/talos?include_prereleases&amp;color=1565c0" alt="Latest release, including beta"></a>
@@ -58,6 +58,12 @@ operation or a substitute for reviewing permissions and keeping backups.
 a handover, save and read back a local note, and compare release notes without inventing
 missing facts. Already tried it? [Share your first-run result](https://github.com/talos-kernel/Talos/issues/new?template=first_run.yml),
 including installation blockers. No star or positive review required.
+
+**New in beta.5:** [missions and projects](docs/missions.md) for repository work,
+source-linked dossiers, read-only mailbox briefs with local drafts, and server health
+checks. Resume saved project context with `/continue` and inspect recorded outcomes
+with `talos proof`. Templates grant no extra permissions; external sends and protected
+actions retain their existing gates.
 
 ## Is Talos right for you?
 
@@ -146,7 +152,7 @@ authorised individually, bound to its exact arguments and targets, valid once, f
 seconds. Forgetting to call the gate does not produce an unchecked effect — it produces no
 effect at all, because the raw runners are unreachable without a token.
 
-That design is testable, and it is tested: 263 adversarial scenarios run on every change and
+That design is testable, and it is tested: 267 adversarial scenarios run on every change and
 try to get an effect past the kernel. They are in [`redteam.py`](redteam.py). Read them
 before you trust anything written above.
 
@@ -364,7 +370,7 @@ come from `stdin` instead of `getUpdates`.
 ```
 $ talos chat
 
-  ◉  Talos / 0.20.0-beta.4
+  ◉  Talos / 0.20.0-beta.5
      Your terminal. Your rules.
   ──────────────────────────────────────────────────────────────────────────
   model      claude-cli/claude-opus-4-1
@@ -768,6 +774,7 @@ tool that skips the kernel — a tool without a target extractor is `DENY` by co
 | `git` | clone / fetch / pull / push with credentials — every op a human's yes, binding to exact op+repo+remote; local git work stays in the sandboxed shell |
 | `cli_anything` | a pinned CLI-Anything harness (curated third-party CLI) from the operator-owned registry — unknown harness or subcommand is `DENY`, the rest always a human's yes, binding to exact name+subcommand; [registry format](docs/cli-anything.md) |
 | `entity_status` | a known name resolved to an operator-configured fixed read-only probe |
+| `mailbox_list` / `mailbox_read` | the configured inbox, read-only through IMAP EXAMINE and BODY.PEEK; no sending, marking, moving or deletion |
 | `read_file` / `write_file` / `undo_last` | ordinary work on the kernel-derived path, with atomic publication and a snapshot behind the write |
 | `browse` / `web_fetch` / `web_search` | render-only, guarded URL, keyless search by default |
 | `see_image` / `grab_frame` / `hear` / `speak` | a picture, one still out of a video, a recording, a voice |
@@ -867,7 +874,7 @@ by `decide()` and cannot approve an action.
 
 ## Architecture
 
-Small modules on purpose. The gate path (`policy.py`, 985 lines) has to be readable in one
+Small modules on purpose. The gate path (`policy.py`, 989 lines) has to be readable in one
 sitting — a gate you cannot read is not a gate.
 
 | Module | Role |
