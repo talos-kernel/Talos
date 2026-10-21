@@ -9,6 +9,15 @@ remain historical snapshots. Beta does not mean error-free operation.
 
 ## [Unreleased]
 
+## [0.20.0-beta.5] — candidate
+
+### Security
+
+- Ship the audited dependency pins from the current source tree, including
+  certifi 2026.10.19 (fixes PYSEC-2026-4320 / GHSA-6q48-6c7w-9gw2).
+- Preserve the no-replay execution latch, bounded conversation memory and
+  per-request approval binding from the execution-reliability update.
+
 ### Fixed
 
 - Stop repeated `delegate_status` polling after three identical pending results. The
