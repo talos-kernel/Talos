@@ -17,3 +17,4 @@ scripts/* export-ignore
 # The read-only observer is operator tooling and is exercised by shipped tests.
 # Keep the directory traversable so this exception reaches the archive.
 scripts/beta-observe.py -export-ignore
+scripts/render-homebrew.py -export-ignore

@@ -900,8 +900,14 @@ def run_update(
     Ohne `--check` laeuft der volle Weg aus dem Modul-Docstring. Nichts an diesem Ablauf
     ist automatisch: es gibt keinen Zeitplan, keinen stillen Modus und keinen Neustart.
     """
-    opts = _parse_args(list(sys.argv[1:] if argv is None else argv))
+    from .paths import install_manager
+
     out = _Writer(stdout if stdout is not None else sys.stdout)
+    if install_manager():
+        out.fail("This installation is managed by Homebrew. Use `brew upgrade talos`; "
+                 "operator state stays in your profile across upgrades and rollbacks.")
+        return EXIT_FAILED
+    opts = _parse_args(list(sys.argv[1:] if argv is None else argv))
     fetch = http or _urlopen_fetch
     run = runner or _subprocess_runner
     running = __version__

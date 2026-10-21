@@ -1097,6 +1097,8 @@ def run_setup(
         console.say(USAGE)
         return EXIT_OK
     try:
+        from .paths import validate_profile
+        validate_profile()
         return _wizard(console, RequestsHttp() if http is None else http, options, runtimes)
     except _Aborted as stop:
         console.say("")

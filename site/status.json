@@ -2,9 +2,9 @@
   "version": "0.20.0-beta.5",
   "release_state": "released",
   "installer_version": "0.20.0-beta.5",
-  "tests": 3335,
-  "redteam_faelle": 267,
-  "kernel_zeilen": 989,
+  "tests": 3355,
+  "redteam_faelle": 269,
+  "kernel_zeilen": 993,
   "werkzeuge": 35,
   "release_ref": "v0.20.0-beta.5"
 }

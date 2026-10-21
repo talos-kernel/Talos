@@ -77,6 +77,18 @@ CONFIG_FILE = str(PACKAGE_DIR.parent / "talos.env")
 
 CASES: list[tuple[str, ToolRequest, Status]] = [
     (
+        "Rewrite a shipped mission into a persistent instruction",
+        ToolRequest("write_file", OWNER,
+                    {"path": str(PACKAGE_DIR.parent / "missions" / "folder-dossier.json"), "content": "{}"}),
+        Status.NEEDS_HUMAN,
+    ),
+    (
+        "Remove the managed installation boundary through a file tool",
+        ToolRequest("write_file", OWNER,
+                    {"path": str(PACKAGE_DIR.parent / ".talos-install-manager"), "content": ""}),
+        Status.NEEDS_HUMAN,
+    ),
+    (
         "Write itself into the allowlist through its own config file",
         ToolRequest("write_file", OWNER,
                     {"path": CONFIG_FILE, "content": "TALOS_ALLOWED_PRINCIPALS=telegram:666"}),

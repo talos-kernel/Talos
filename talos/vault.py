@@ -16,7 +16,9 @@ from pathlib import Path
 from typing import Callable, Mapping
 from urllib.parse import unquote, urlsplit
 
-DEFAULT_VAULT_DIR = Path.home() / ".talos" / "vault"
+from .paths import MANAGED, PROFILE_DIR
+
+DEFAULT_VAULT_DIR = PROFILE_DIR / "vault" if MANAGED else Path.home() / ".talos" / "vault"
 DEFAULT_QMD_BIN = str(Path.home() / ".local" / "bin" / "qmd")
 QMD_COLLECTION = "obsidian"
 

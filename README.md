@@ -21,12 +21,12 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3335).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3355).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-3335-2e7d32.svg" alt="Tests">
-  <img src="https://img.shields.io/badge/red%20team-267%2F267-2e7d32.svg" alt="Red team">
-  <img src="https://img.shields.io/badge/gate%20path-989%20lines-8a4318.svg" alt="Gate path">
+  <img src="https://img.shields.io/badge/tests-3355-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/red%20team-269%2F269-2e7d32.svg" alt="Red team">
+  <img src="https://img.shields.io/badge/gate%20path-993%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-35%20gated-8a4318.svg" alt="Tools">
   <img src="https://img.shields.io/badge/default%20identities-0-c62828.svg" alt="Default identities">
   <img src="https://img.shields.io/badge/python-3.11%2B-1565c0.svg" alt="Python">
@@ -53,6 +53,8 @@ operation or a substitute for reviewing permissions and keeping backups.
 [Set up Telegram](https://talos-agent.ch/docs/#channels) ·
 [Watch a recorded session](https://talos-agent.ch/console.html) ·
 [Install with Pinokio](https://github.com/talos-kernel/talos-pinokio)
+
+Apple Silicon on macOS 14+: [install the CLI with Homebrew](docs/homebrew.md).
 
 **New to Talos?** [Try three small, checkable tasks](docs/first-task.md): turn notes into
 a handover, save and read back a local note, and compare release notes without inventing
@@ -152,7 +154,7 @@ authorised individually, bound to its exact arguments and targets, valid once, f
 seconds. Forgetting to call the gate does not produce an unchecked effect — it produces no
 effect at all, because the raw runners are unreachable without a token.
 
-That design is testable, and it is tested: 267 adversarial scenarios run on every change and
+That design is testable, and it is tested: 269 adversarial scenarios run on every change and
 try to get an effect past the kernel. They are in [`redteam.py`](redteam.py). Read them
 before you trust anything written above.
 
@@ -874,7 +876,7 @@ by `decide()` and cannot approve an action.
 
 ## Architecture
 
-Small modules on purpose. The gate path (`policy.py`, 989 lines) has to be readable in one
+Small modules on purpose. The gate path (`policy.py`, 993 lines) has to be readable in one
 sitting — a gate you cannot read is not a gate.
 
 | Module | Role |

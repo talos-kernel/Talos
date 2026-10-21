@@ -22,6 +22,7 @@ from .wabroker import DEFAULT_CLI_DIR as DEFAULT_WA_BROKER_CLI_DIR
 from .wabroker import DEFAULT_QUEUE_PATH as DEFAULT_WA_BROKER_QUEUE
 from .wabroker import ENV_SSH as ENV_WA_BROKER_SSH
 from .web import parse_allowed_addresses
+from .paths import INSTALL_DIR, PROFILE_DIR, MANAGED
 
 HOME = Path.home()
 # Wo die Zugangsdaten liegen. Ueberschreibbar, weil eine zweite Instanz auf demselben
@@ -29,7 +30,9 @@ HOME = Path.home()
 # fest im Quelltext, ueberschrieb ihn jeder Deploy und der Agent startete nicht mehr,
 # mit einer Meldung, die auf die falsche Datei zeigte.
 SECRETS_ENV = Path(
-    os.environ.get("TALOS_SECRETS_ENV") or (HOME / ".secrets" / "talos-telegram.env")
+    os.environ.get("TALOS_SECRETS_ENV") or (
+        PROFILE_DIR / "talos.env" if MANAGED else HOME / ".secrets" / "talos-telegram.env"
+    )
 ).expanduser()
 # Der Installer legt seine Konfiguration NEBEN den Code (`~/talos/talos.env`) und sagt dem
 # Nutzer, er solle genau die editieren. Gelesen wurde bisher nur `SECRETS_ENV` — der
@@ -40,8 +43,7 @@ SECRETS_ENV = Path(
 # ein Dienst gezielt), danach `~/.secrets` (der private, ausserhalb des Codes liegende Ort),
 # zuletzt die Datei im Installationsverzeichnis. Ein liegengebliebenes `talos.env` aus einer
 # alten Installation darf eine bewusst gesetzte private Konfiguration nicht verdraengen.
-INSTALL_DIR = Path(__file__).resolve().parent.parent
-LOCAL_ENV = INSTALL_DIR / "talos.env"
+LOCAL_ENV = PROFILE_DIR / "talos.env"
 
 # Skills liegen dort, wo der Betreiber sie ohnehin hat — Talos liefert KEINE mit.
 # Das ist eine Lizenzentscheidung, keine Bequemlichkeit: „Agent Skills" ist ein offener
@@ -50,7 +52,7 @@ LOCAL_ENV = INSTALL_DIR / "talos.env"
 # einzige Schritt, der rechtlich heikel wuerde. Gelesen wird in dieser Reihenfolge;
 # bei Namensgleichheit gewinnt die erste Wurzel. Fehlende Verzeichnisse sind still.
 SKILLS_DIRS: tuple[Path, ...] = (
-    INSTALL_DIR / "skills",
+    PROFILE_DIR / "skills",
     HOME / ".talos" / "skills",
     HOME / ".claude" / "skills",
 )
@@ -61,7 +63,7 @@ SKILLS_DIRS: tuple[Path, ...] = (
 # damit ohne Autonomie-Stand, ohne stehende Freigaben, ohne Modellwahl und ohne
 # Zeitplaene. Nichts davon meldet sich; ein Agent ohne Gedaechtnis sieht aus wie ein
 # frisch installierter.
-DATA_DIR = INSTALL_DIR / "data"
+DATA_DIR = PROFILE_DIR / "data"
 EVENTLOG_DB = DATA_DIR / "eventlog.db"
 # Das Langzeitgedaechtnis liegt neben dem Event-Log — beides gehoert dem Betreiber
 # und beides ist gitignored. Ein Update kopiert `data/`, ersetzt es nie.
@@ -99,7 +101,7 @@ MCP_SERVERS_FILE = DATA_DIR / "mcp-servers.json"
 # gehoeren und ein Update sie mitnimmt statt sie zu ersetzen.
 VOICE_DIR = DATA_DIR / "voices"
 PIPER_BIN = str(INSTALL_DIR / ".venv" / "bin" / "piper")
-VAULT_DIR = HOME / ".talos" / "vault"
+VAULT_DIR = PROFILE_DIR / "vault" if MANAGED else HOME / ".talos" / "vault"
 QMD_BIN = str(HOME / ".local" / "bin" / "qmd")
 HERMES_BIN = str(HOME / ".local" / "bin" / "hermes")
 DEFAULT_MODEL_PROVIDER = "openai-codex"
@@ -368,7 +370,10 @@ def load_config(*, require_channel: bool = True) -> TalosConfig:
         if raw_skill_dirs
         else SKILLS_DIRS
     )
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    # Diagnostics also load config. Only explicit setup/runtime creates a
+    # managed profile; preserve the legacy installation's existing behavior.
+    if PROFILE_DIR == INSTALL_DIR:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
     def _value(name: str) -> str:
         return (os.environ.get(name) or secrets.get(name, "")).strip()
 

@@ -24,6 +24,10 @@ remain historical snapshots. Beta does not mean error-free operation.
 
 ### Added
 
+- A Homebrew-managed profile layout separates versioned code from private operator
+  state. Package replacement and rollback retain identities, projects and events;
+  self-update refuses managed installations. The own-tap formula is limited to
+  Apple Silicon on macOS 14+ and installs only hash-locked offline wheels.
 - Four bundled missions: repository guardian, folder dossier, mailbox brief with
   local drafts, and server health watcher. Missions are validated prompt templates,
   not executable plugins or blanket approval; every proposed tool call remains gated.

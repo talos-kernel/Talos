@@ -120,6 +120,10 @@ def _model_overrides(value: str) -> str:
 
 
 KEYS: tuple[Key, ...] = (
+    Key("TALOS_PROFILE_DIR", POLICY,
+        "operator state root; set only in the launching process environment", validate=_one_line),
+    Key("TALOS_INSTALL_MANAGER", POLICY,
+        "package manager owns this installation; set by its launcher", validate=_one_line),
     Key("TALOS_DASHBOARD_ALLOWED_HOSTS", POLICY,
         "exact proxy host[:port] authorities for the read-only dashboard; set in its process environment",
         validate=_one_line),

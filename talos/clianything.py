@@ -68,7 +68,9 @@ CLI_ANYTHING_REGISTRY_ENV = "TALOS_CLI_ANYTHING_REGISTRY"
 # (policy.py) laedt dieses Modul, und sandbox.py laedt policy.py. Ein Import der
 # Konfigurationsschicht von hier waere der Anfang eines Zyklus. Beide Ableitungen
 # muessen uebereinstimmen; ein Test in tests/test_clianything.py haelt das fest.
-DEFAULT_REGISTRY = Path(__file__).resolve().parent.parent / "data" / "cli-anything.json"
+from .paths import PROFILE_DIR
+
+DEFAULT_REGISTRY = PROFILE_DIR / "data" / "cli-anything.json"
 
 # Die Datei ist deklarativ und klein; was groesser ist, ist keine Konfiguration
 # mehr, sondern ein Unfall oder ein Angriff — fail-closed leer.
