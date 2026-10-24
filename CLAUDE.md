@@ -31,8 +31,7 @@ skills. All mutations remain irreversible WRITE tools requiring human approval; 
 runs deny them. Expected hashes reject stale changes, and content-addressed history supports
 restoration. Delete deactivates `SKILL.md`, retaining support files and history. Skills are
 untrusted guidance loaded on demand, never permission. See `talos/skillmanage.py` and the
-README for bounds and the external-editor race limitation. These source additions do not
-change the contents of the already signed Beta.5 release.
+README for bounds and the external-editor race limitation. These capabilities ship in the signed Beta.6 release.
 
 Beta.5 introduced [missions and projects](docs/missions.md), `/continue`, outcome
 receipts and a loopback local-model check. Mission templates and saved project context
