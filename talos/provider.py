@@ -952,7 +952,8 @@ def safe_talos_registry(registry: ProviderRegistry | None) -> ProviderRegistry:
     # nicht. ⚠️ Die gepinnte Fassung kann leben, waehrend der Alias stirbt:
     # `claude-opus-4` gilt als stillgelegt, `claude-opus-4-20250514` antwortet.
     # Deshalb steht hier die exakte Kennung, nie eine Familie.
-    for kuratiert in ("claude-opus-5", "claude-opus-4-1"):
+    # claude-opus-5-5 verified through the official OAuth CLI on 2026-10-24.
+    for kuratiert in ("claude-opus-5-5", "claude-opus-5", "claude-opus-4-1"):
         if kuratiert not in claude_models:
             claude_models += (kuratiert,)
     STILLGELEGT = ("claude-sonnet-4-20250514",)

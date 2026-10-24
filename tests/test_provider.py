@@ -385,7 +385,7 @@ def test_safe_registry_routes_claude_only_through_cli_and_blocks_antigravity() -
     assert safe.get("claude-cli") == Provider(
         "claude-cli",
         "Anthropics Max (CLI OAuth)",
-        ("claude-fable-5", "claude-sonnet-5", "claude-opus-5",
+        ("claude-fable-5", "claude-sonnet-5", "claude-opus-5-5", "claude-opus-5",
          "claude-opus-4-1", "claude-fable-5-1"),
     )
 
@@ -400,7 +400,7 @@ def test_a_lagging_catalog_hides_the_flagship_model() -> None:
     raw = ProviderRegistry((Provider("anthropic", "Anthropic", ("claude-sonnet-5",)),))
     safe = safe_talos_registry(raw)
     modelle = safe.get("claude-cli").models
-    for kuratiert in ("claude-opus-5", "claude-opus-4-1", "claude-fable-5-1"):
+    for kuratiert in ("claude-opus-5-5", "claude-opus-5", "claude-opus-4-1", "claude-fable-5-1"):
         assert kuratiert in modelle, f"{kuratiert} fehlt in der Auswahl"
 
 
