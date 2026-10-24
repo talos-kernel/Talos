@@ -21,13 +21,13 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3356).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3428).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-3356-2e7d32.svg" alt="Tests">
-  <img src="https://img.shields.io/badge/red%20team-269%2F269-2e7d32.svg" alt="Red team">
-  <img src="https://img.shields.io/badge/gate%20path-993%20lines-8a4318.svg" alt="Gate path">
-  <img src="https://img.shields.io/badge/tools-35%20gated-8a4318.svg" alt="Tools">
+  <img src="https://img.shields.io/badge/tests-3428-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/red%20team-277%2F277-2e7d32.svg" alt="Red team">
+  <img src="https://img.shields.io/badge/gate%20path-996%20lines-8a4318.svg" alt="Gate path">
+  <img src="https://img.shields.io/badge/tools-37%20gated-8a4318.svg" alt="Tools">
   <img src="https://img.shields.io/badge/default%20identities-0-c62828.svg" alt="Default identities">
   <img src="https://img.shields.io/badge/python-3.11%2B-1565c0.svg" alt="Python">
   <a href="https://github.com/talos-kernel/talos/releases"><img src="https://img.shields.io/github/v/release/talos-kernel/talos?include_prereleases&amp;color=1565c0" alt="Latest release, including beta"></a>
@@ -158,7 +158,7 @@ authorised individually, bound to its exact arguments and targets, valid once, f
 seconds. Forgetting to call the gate does not produce an unchecked effect — it produces no
 effect at all, because the raw runners are unreachable without a token.
 
-That design is testable, and it is tested: 269 adversarial scenarios run on every change and
+That design is testable, and it is tested: 277 adversarial scenarios run on every change and
 try to get an effect past the kernel. They are in [`redteam.py`](redteam.py). Read them
 before you trust anything written above.
 
@@ -795,6 +795,8 @@ tool that skips the kernel — a tool without a target extractor is `DENY` by co
 | `agent_consult` | bounded advice from a second, operator-configured agent — data, never permission |
 | `ask_operator` | the one way it can ask you something on purpose |
 | `skill_write` | a new skill, written exactly once — and never without a human's yes |
+| `skill_view` | inspect managed skills, supporting files, hashes and archived revisions |
+| `skill_manage` | create, edit, patch, deactivate and restore skills; every change needs approval |
 
 ### Operator-owned entity knowledge
 
@@ -813,13 +815,28 @@ the fixed URL or systemd user unit comes from this file and cannot be supplied b
 
 ### Skills it writes for itself
 
-`skill_write` is the one write path into the skills directory — and the hardest gate in the
-house. A skill is the strongest persistence there is: its text lands in *every* prompt from
-the next turn on. So the tool is declared irreversible, the kernel answers `NEEDS_HUMAN`
-without exception, and under the unattended ceiling that becomes `DENY`. It creates only —
-never overwrites (atomically, not by looking first), never writes `allowed-tools` (a second
-permission source next to the kernel), never anything that looks like a credential, and
-never outside the skills root. Improving a skill means the operator deletes it first.
+Talos can turn verified successful workflows into reusable skills and improve them later.
+The prompt receives a compact catalog; skill bodies are read on demand. Skills remain
+untrusted guidance: every suggested action still passes the kernel.
+
+`skill_view` lists the managed library, reads a skill or supporting file, and returns
+`expected_sha256` plus archived revisions. `skill_manage` supports `create`, `edit`,
+`patch`, `write_file`, `remove_file`, `delete` and `restore`. Every mutation is declared
+irreversible: it needs operator approval, cannot receive attended auto-approval, and is
+denied during unattended runs. The original create-only `skill_write` stays compatible.
+
+Changes require the current hash from `skill_view` (or `"absent"` for a new file).
+Patches require a unique match unless `replace_all` is explicit. Prior content is archived
+under `.history`; restoration verifies its hash. `delete` deactivates the skill by removing
+`SKILL.md`, retaining supporting files and history so it can be restored. It is not secure
+erasure. Text files may live under `references/`, `scripts/`, `templates/` and `assets/`;
+scripts are stored as data and never run automatically. Files stay inside the managed
+root, private by default, and secret-shaped content and `allowed-tools` are refused.
+
+Concurrent manager calls are serialized. Hash checks reject stale edits, but they are
+not an atomic compare-and-swap against external editors: avoid editing the same file
+while approving a change. History is bounded to 200 revisions per skill; reaching the
+limit requires operator maintenance, never silent pruning.
 
 Two blueprints use it on a schedule. `skill-distillation` ("every sunday 20:15") reads the
 week's event log and distils at most one repeated, proven workflow into a skill candidate —
@@ -880,7 +897,7 @@ by `decide()` and cannot approve an action.
 
 ## Architecture
 
-Small modules on purpose. The gate path (`policy.py`, 993 lines) has to be readable in one
+Small modules on purpose. The gate path (`policy.py`, 996 lines) has to be readable in one
 sitting — a gate you cannot read is not a gate.
 
 | Module | Role |

@@ -1,20 +1,20 @@
-"""skill_write — der eine, gegatete Schreibweg in die Skills-Ablage.
+"""skill_write — der kompatible, create-only Schreibweg in die Skills-Ablage.
 
 `skills.py` liest Skills von der Platte, sonst nichts („von der Platte lesen, sonst
 nichts"). Dieses Modul ist die bewusste, schmale Ausnahme: der Agent darf einen Skill
 NEU anlegen — nie aendern, nie ueberschreiben, und nie ohne den Menschen. Der Grund
 steht im Manifest: `skill_write` ist irreversible deklariert, der Kernel antwortet
 darum ausnahmslos NEEDS_HUMAN, und unter der UnattendedCeiling wird daraus DENY. Ein
-Skill ist die haerteste Persistenz im Haus — sein Text steht ab dem naechsten Zug in
-JEDEM Prompt. Koennte sich der Agent unbeaufsichtigt einen Skill schreiben, waere die
+Skill ist dauerhafte Anleitung — sein Katalog wird pro Zug neu geladen, der Body
+bei Bedarf gelesen. Koennte sich der Agent unbeaufsichtigt einen Skill schreiben, waere die
 Umkehrung des Kernsatzes („das Modell schlaegt vor, der Kernel entscheidet") zur
 Dauereinrichtung geworden.
 
 Vier harte Weigerungen, alle fail-closed mit ehrlichem Grund:
 
   1. **Kein Ueberschreiben.** Existiert die Datei, wird abgelehnt — atomar per
-     `O_EXCL`, nicht per vorherigem Blick (ein Blick ist ein Wettlauf). Verbessern
-     heisst: der Betreiber loescht, danach darf neu geschrieben werden.
+     `O_EXCL`, nicht per vorherigem Blick (ein Blick ist ein Wettlauf). Verbesserungen
+     laufen separat ueber `skill_manage`, ebenfalls mit Betreiberfreigabe.
   2. **Kein `allowed-tools`.** Nirgends — weder im Body noch in der Beschreibung,
      die ins Frontmatter wandert. Das Feld ist woertlich eine zweite Erlaubnisquelle
      neben dem Kernel (die Doktrin von `skills.py` und `tests/test_skills.py`); ein

@@ -25,6 +25,7 @@ from .channel import Principal
 from .manifest import Effect, ToolManifest
 from .vault import DEFAULT_VAULT_DIR, VaultPathError, canonical_target_from_args
 from .paths import INSTALL_DIR, PROFILE_DIR
+from .skillmanage import manage_targets as skill_manage_targets, view_targets as skill_view_targets
 
 HOME = Path.home()
 
@@ -500,10 +501,12 @@ TARGET_EXTRACTORS = {
     ),
     # Ein neuer Skill: das Ziel ist der kernel-abgeleitete Pfad der SKILL.md —
     # das Modell nennt einen Namen, nie einen Pfad (skill_write_path). Es ist die
-    # haerteste Persistenz im Haus: der Text steht ab dem naechsten Zug in JEDEM
-    # Prompt. Das Manifest deklariert das Werkzeug darum irreversible — der
+    # dauerhafte Anleitung: der Katalog erscheint im Prompt, Inhalte bei Bedarf.
+    # Das Manifest deklariert das Werkzeug darum irreversible — der
     # Kernel antwortet ausnahmslos NEEDS_HUMAN, konfigurierbar ist das nicht.
     "skill_write": lambda args: (skill_write_path(args.get("name", "")),),
+    "skill_view": skill_view_targets,
+    "skill_manage": skill_manage_targets,
     # Web: bewusst KEIN Ziel, wie bei `run_shell` und `vault_search`. Der Kernel schickt
     # jedes Ziel durch `os.path.realpath`; aus `https://example.com/x` wuerde dabei ein
     # Pfad `<cwd>/https:/example.com/x`, und der Snapshotter legte einen Undo-Eintrag auf

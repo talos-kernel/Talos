@@ -260,7 +260,10 @@ class ApprovalPicker:
         expires_at = min(pending.expires_at, now + self._ttl_s)
         buttons: list[Button] = []
         choices = [("✓ Allow once", "yes"), ("∞ Always allow", "always"), ("✕ Deny", "no")]
-        if pending.task_id and pending.resume_agent:
+        per_change = pending.req.tool in {"skill_write", "skill_manage"}
+        if per_change:
+            choices = [("✓ Allow once", "yes"), ("✕ Deny", "no")]
+        if pending.task_id and pending.resume_agent and not per_change:
             from .task_approval import TASK_NOTICE
             text += "\n\n" + TASK_NOTICE
             choices.insert(1, ("▶ Allow this task", "allow this task"))
