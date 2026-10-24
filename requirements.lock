@@ -413,10 +413,12 @@ ddgs==9.16.0 \
 faster-whisper==1.2.1 \
     --hash=sha256:79a66ad50688c0b794dd501dc340a736992a6342f7f95e5811be60b5224a26a7
     # via -r requirements.txt
-filelock==3.32.5 \
-    --hash=sha256:142cd9fa77a872c5e78c62329a0d15278fadc686eb89e760017968961a4fd6b2 \
-    --hash=sha256:f6a6a28f743f9b95ce19db5abe0f376f75eb56517dff21e1a4751e2657d3e83d
-    # via huggingface-hub
+filelock==4.2.4 \
+    --hash=sha256:301241438c57936ef93f4243a94f2559022268bfcf9b375a9a72eb0f8db8358e \
+    --hash=sha256:c6d8663535e1650ee430507b4ffbac7b464dd64b7647ea0112a9f406499d163d
+    # via
+    #   -r requirements.txt
+    #   huggingface-hub
 flatbuffers==25.12.19 \
     --hash=sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4
     # via onnxruntime
