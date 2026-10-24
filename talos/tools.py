@@ -26,6 +26,7 @@ from .computer.client import runner as computer_runner
 from .policy import ToolRequest, claude_job_workspace, guard_targets
 from .question import Answer, AnswerReason, QuestionDesk
 from .skillwrite import skill_write
+from .skillmanage import skill_manage, skill_view
 from .snapshot import Entries, restore_entries
 from .vault import (
     make_vault_get_runner,
@@ -575,6 +576,8 @@ RUNNERS = {
     # (`policy.skill_write_root`, dieselbe Ableitung wie im Kernel) — er braucht
     # keine Verdrahtung aus __main__.
     "skill_write": skill_write,
+    "skill_view": skill_view,
+    "skill_manage": skill_manage,
     # `remote_exec` liest seine Allowlist pro Aufruf selbst (`policy.remote_hosts`)
     # und waehlt sein einsperrendes Backend selbst — dieselbe Selbstaufloesung.
     "remote_exec": remoteexec.remote_exec,
@@ -634,14 +637,14 @@ def default_manifest(
         .with_tool(ToolSpec("vault_get", Effect.READ, reversible=True))
         .with_tool(ToolSpec("vault_write_note", Effect.WRITE, reversible=True))
         .with_tool(ToolSpec("undo_last", Effect.WRITE, reversible=True))
-        # Ein neuer Skill ist die haerteste Persistenz im Haus: Text, der ab dem
-        # naechsten Zug in JEDEM Prompt mitredet. Deshalb irreversible deklariert —
-        # der Kernel antwortet ausnahmslos NEEDS_HUMAN, und das ist an keinen
-        # Schalter koppelbar: die Attended-Auto-Freigabe greift nur bei reversiblen
-        # Werkzeugen (`attended_routine`), unter der UnattendedCeiling wird aus
-        # NEEDS_HUMAN ohnehin DENY. Geschrieben wird genau einmal; verbessern
-        # heisst: der Betreiber loescht, danach darf neu geschrieben werden.
+        # Skills are persistent guidance, loaded on demand. Every mutation still
+        # needs a human, including edits, support files, deletion and restoration.
+        # Irreversible excludes attended auto-approval; the unattended ceiling
+        # denies the request. Standing/task approval also exclude these writes,
+        # so changing future guidance always requires a fresh operator decision.
         .with_tool(ToolSpec("skill_write", Effect.WRITE, reversible=False))
+        .with_tool(ToolSpec("skill_view", Effect.READ, reversible=True))
+        .with_tool(ToolSpec("skill_manage", Effect.WRITE, reversible=False))
         # Ein Kommando auf einer ANDEREN Maschine (ssh auf einen Alias aus der
         # Betreiber-Allowlist TALOS_REMOTE_HOSTS). EXEC — aber bewusst OHNE
         # sandbox_required: das Flag deklariert „die Wirkung entsteht hinter

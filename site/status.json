@@ -3,9 +3,9 @@
   "release_state": "released",
   "source_state": "unreleased_changes",
   "installer_version": "0.20.0-beta.5",
-  "tests": 3356,
-  "redteam_faelle": 269,
-  "kernel_zeilen": 993,
-  "werkzeuge": 35,
+  "tests": 3428,
+  "redteam_faelle": 277,
+  "kernel_zeilen": 996,
+  "werkzeuge": 37,
   "release_ref": "v0.20.0-beta.5"
 }

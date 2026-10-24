@@ -652,6 +652,9 @@ class Conductor:
         negative = is_negative(text)
         always = is_always(text)
         task = is_task_approval(text)
+        per_change = rec.req.tool in {"skill_write", "skill_manage"}
+        if task and per_change:
+            return self._approval_reply(update, run_id, "Skill changes require approval each time. Choose yes or no; no task approval was created.")
         if task and not (rec.task_id and rec.resume_agent):
             return self._approval_reply(update, run_id, "Task approval requires a foreground agent task. Choose yes, always or no.")
         if not negative and not always and not task and not is_affirmative(text):
@@ -659,7 +662,8 @@ class Conductor:
             # This still requests consent: Markdown must not rewrite the kernel's command.
             return self._reply_structured(
                 update, run_id,
-                StructuredMessage("Bitte nur ja, immer oder nein. Für die ganze Aufgabe: diese Aufgabe erlauben.\n\n" + rec.prompt),
+                StructuredMessage(("Choose yes or no for this skill change.\n\n" if per_change else
+                                   "Bitte nur ja, immer oder nein. Für die ganze Aufgabe: diese Aufgabe erlauben.\n\n") + rec.prompt),
             )
 
         with self.execution_lock:
@@ -784,6 +788,8 @@ class Conductor:
             update.conversation, req, principal=update.principal, run_id=run_id
         )
         if rule is None:
+            if req.tool in {"skill_write", "skill_manage"}:
+                return "Skill changes require approval each time. This change ran once; no standing approval was created."
             return (
                 "No \'always\' possible: this request has nothing exact to pin down "
                 "(kein ableitbares Ziel, kein Kommando). Sie lief einmal."
@@ -906,7 +912,7 @@ class Conductor:
                     Event(run_id, "conductor", "error",
                           {"stage": "approval.buttons", "error": str(error)})
                 )
-        if task_id:
+        if task_id and req.tool not in {"skill_write", "skill_manage"}:
             text += "\n\n" + TASK_NOTICE + '\nType "allow this task" to choose it.'
         return self._reply(update, run_id, text)
 
@@ -2081,6 +2087,29 @@ class Conductor:
         Ziele wortwörtlich, den vollen Command-String und den Grund aus der Decision."""
         reason = self.executor.policy.decide(pending).reason
         lines = [f"{SYM_GATE} Approval required — kernel facts:", f"Tool: {pending.tool}"]
+        per_change = pending.tool in {"skill_write", "skill_manage"}
+        if per_change:
+            import json
+            from .recall import looks_secret
+            fields = ["action", "name", "path", "expected_sha256", "revision"]
+            action = "create" if pending.tool == "skill_write" else pending.args.get("action")
+            fields += {"create": ["description", "body"], "edit": ["content"],
+                       "write_file": ["content"], "patch": ["old_string", "new_string", "replace_all"]}.get(str(action), [])
+            proposed = {key: pending.args[key] for key in fields if key in pending.args}
+            for key, value in proposed.items():
+                if isinstance(value, str) and looks_secret(value):
+                    proposed[key] = "[secret-shaped value omitted from this preview]"
+                elif isinstance(value, str) and len(json.dumps(value, ensure_ascii=True)) > 600:
+                    preview = value[:600]
+                    while len(json.dumps(preview, ensure_ascii=True)) > 600:
+                        preview = preview[:-1]
+                    proposed[key] = {"preview": preview, "characters_not_shown": len(value) - len(preview),
+                                     "sha256": hashlib.sha256(value.encode("utf-8", errors="surrogatepass")).hexdigest()}
+                elif not isinstance(value, (str, bool, int, float, type(None))):
+                    proposed[key] = "[invalid argument type; inspect the request]"
+            # JSON escapes newlines/control characters so content cannot impersonate
+            # kernel facts. Long values carry an explicit omission count and full hash.
+            lines.append("Proposed skill change (untrusted data): " + json.dumps(proposed, ensure_ascii=True))
         if pending.tool == "http_request":
             # Adresse und Methode sind die Tatsachen, ueber die der Mensch urteilt.
             # Header und Body stehen hier bewusst NICHT: sie koennen Zugangsdaten
@@ -2136,7 +2165,7 @@ class Conductor:
 
         lines.append(f"Reason: {reason}")
         wiederholt = self._approved_before(pending)
-        if wiederholt >= lessons.REPEAT_HINT_AT:
+        if wiederholt >= lessons.REPEAT_HINT_AT and not per_change:
             # ⚠️ Ein HINWEIS, keine Vorauswahl und erst recht keine Erteilung. Die vierte
             # Rueckfrage zu einer dreimal erteilten Freigabe schuetzt niemanden mehr, sie
             # erzieht zum Wegklicken — aber die Regel legt weiterhin der Mensch an, mit
@@ -2146,10 +2175,13 @@ class Conductor:
                 "'always' would make it a standing rule you can list with /allowed "
                 "and take back with /revoke."
             )
-        lines.append(
-            "Reply yes (run once), always (run and allow exactly this from now on) "
-            "or no (discard). Expires in 5 min."
-        )
+        if per_change:
+            lines.append("Reply yes (approve this change once) or no (discard). Every skill change needs approval. Expires in 5 min.")
+        else:
+            lines.append(
+                "Reply yes (run once), always (run and allow exactly this from now on) "
+                "or no (discard). Expires in 5 min."
+            )
         return "\n".join(lines)
 
     def _approved_before(self, pending: ToolRequest) -> int:
