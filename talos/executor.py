@@ -20,6 +20,7 @@ Executor nicht.
 from __future__ import annotations
 
 import hashlib
+import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
@@ -49,6 +50,18 @@ def _bound_runner_request(
     req: ToolRequest, bindings: tuple[verifier.Binding, ...]
 ) -> ToolRequest:
     """Freeze file runners to the verifier-bound object, not a mutable symlink."""
+    if req.tool in {"skill_manage", "skill_view"}:
+        args = dict(req.args)
+        # Overwrite any model-supplied value. The grant binds this exact list;
+        # the runner checks its derived destinations again before any effect.
+        targets = [binding.realpath for binding in bindings]
+        if req.tool == "skill_view" and not bindings:
+            # Catalog reads target a directory, deliberately omitted by the file
+            # snapshotter. Still bind that root into the capability before minting.
+            from .skillmanage import view_targets
+            targets = [os.path.realpath(path) for path in view_targets(req.args)]
+        args["__talos_bound_skill_targets_v1"] = targets
+        return ToolRequest(req.tool, req.identity, args, req.targets)
     if req.tool not in {"read_file", "write_file"} or len(bindings) != 1:
         return req
     binding = bindings[0]

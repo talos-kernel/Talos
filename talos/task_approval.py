@@ -25,7 +25,8 @@ TASK_WORDS = frozenset({"allow this task", "diese aufgabe erlauben"})
 TASK_NOTICE = (
     "▶ Allow this task: automatically approve all approval-required actions in this "
     "task until it ends or you stop it; no time limit. Later commands and targets "
-    "are included. Kernel denials still apply. New tasks need their own approval."
+    "are included, except skill changes, which still need approval each time. "
+    "Kernel denials still apply. New tasks need their own approval."
 )
 
 
@@ -108,6 +109,8 @@ an already admitted action remains subject to the existing cancellation backend.
             self.log.append(Event(run_id, "policy", "approval.task_refused",
                                   {"task_id": self.task_id, "tool": req.tool}))
             return Outcome(Status.DENIED, "Task approval ended or does not belong to this request.")
+        if req.tool in {"skill_write", "skill_manage"}:
+            approved = False  # Persistent guidance requires per-change approval.
         if approved:
             self.log.append(Event(run_id, "human", "approval.task_used",
                                   {"task_id": self.task_id, "tool": req.tool}))

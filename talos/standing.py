@@ -54,6 +54,10 @@ def action_key(req: ToolRequest) -> str | None:
     Werkzeug ohne ableitbares Ziel). Dann gibt es keine stehende Freigabe. Lieber
     einmal mehr fragen als eine Regel, die auf mehr passt als gemeint.
     """
+    if req.tool in {"skill_write", "skill_manage"}:
+        # Persistent guidance needs a fresh decision for each proposed change.
+        # File-only keys would silently cover a different action or future body.
+        return None
     if req.tool == "run_shell":
         command = req.args.get("command")
         if not isinstance(command, str) or not command:

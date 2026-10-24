@@ -12,9 +12,9 @@ preferences live in `USER.md`. All three are operator-owned prompt state and rel
 
 | | |
 |---|---|
-| Gate path | `policy.py`, **993 lines** — has to stay readable in one sitting |
-| Tools | **35**, every one gated |
-| Suites | **3356** collected tests · **269** adversarial · 44 end-to-end |
+| Gate path | `policy.py`, **996 lines** — has to stay readable in one sitting |
+| Tools | **37**, every one gated |
+| Suites | **3428** collected tests · **277** adversarial · 44 end-to-end |
 | Home | <https://talos-agent.ch> · docs at `/docs/` |
 | Repository | `talos-kernel/talos` is the public source tree |
 
@@ -24,6 +24,15 @@ sanitized tree through `scripts/sync-public.sh` into a separate public clone; ne
 private history. Inspect the remotes and current branch instead of assuming their names.
 
 ## Current capabilities and installation context
+
+The source tree includes managed skill authoring: `skill_view` reads the managed library;
+`skill_manage` creates, edits, patches, maintains support files, deactivates and restores
+skills. All mutations remain irreversible WRITE tools requiring human approval; unattended
+runs deny them. Expected hashes reject stale changes, and content-addressed history supports
+restoration. Delete deactivates `SKILL.md`, retaining support files and history. Skills are
+untrusted guidance loaded on demand, never permission. See `talos/skillmanage.py` and the
+README for bounds and the external-editor race limitation. These source additions do not
+change the contents of the already signed Beta.5 release.
 
 Beta.5 introduced [missions and projects](docs/missions.md), `/continue`, outcome
 receipts and a loopback local-model check. Mission templates and saved project context
@@ -300,8 +309,8 @@ properties covered by `test_fallback_control.py` and `test_runtime_failure_repai
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install --require-hashes -r requirements.lock -r requirements-dev.lock
 
-python -m pytest tests/ -q   # 3356 collected tests; platform-specific skips are explicit
-python redteam.py            # 269 adversarial cases — mandatory for any kernel change
+python -m pytest tests/ -q   # 3428 collected tests; platform-specific skips are explicit
+python redteam.py            # 277 adversarial cases — mandatory for any kernel change
 python e2e.py                # 44 cases against a real model (costs tokens and time)
 python -m talos --once       # single cycle, for diagnosis
 python -m talos              # run
@@ -397,7 +406,7 @@ covers the packages only through it. `pip` is never upgraded unpinned first.
 
 - Comments and docstrings explain **why**, especially where a rule looks counterintuitive.
   Those are the ones that get argued away six months later.
-- Small modules. The gate path (`policy.py`, 993 lines) must stay readable in one sitting.
+- Small modules. The gate path (`policy.py`, 996 lines) must stay readable in one sitting.
 - Glyphs come from `talos/ux.py` only, one meaning each, **never inside an answer's prose**.
 - Telegram edit interval stays ≥ 1.2 s; the API tolerates roughly one edit per second
   per chat.

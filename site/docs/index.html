@@ -244,10 +244,10 @@ html.js .rv.in{opacity:1; transform:none}
     <p class="lede">That one decision shapes the rest of this manual. It is why the
     command list is short, and why a few obvious conveniences are missing on purpose.</p>
     <div class="spec-row">
-      <div class="spec"><b>3356</b>automated tests</div>
-      <div class="spec"><b>269/269</b>adversarial</div>
-      <div class="spec"><b>993</b>gate lines</div>
-      <div class="spec"><b>35</b>gated tools</div>
+      <div class="spec"><b>3428</b>automated tests</div>
+      <div class="spec"><b>277/277</b>adversarial</div>
+      <div class="spec"><b>996</b>gate lines</div>
+      <div class="spec"><b>37</b>gated tools</div>
       <div class="spec"><b>30s</b>token life</div>
       <div class="spec"><b>0</b>default identities</div>
     </div>
@@ -505,16 +505,21 @@ You:                  and add the offsite copy</pre>
     the searchable archive stay  ·  “forgotten” here means precisely: out of the prompt.</p>
 
     <h3>Skills it writes for itself</h3>
-    <p>Longest-lived memory of all: a skill on disk is read into <em>every</em> prompt
-    from the next turn on. So the one write path into the skills directory,
-    <code>skill_write</code>, is declared irreversible  ·  the kernel answers
-    <code>NEEDS_HUMAN</code> without exception, and an unattended run gets a
-    <code>DENY</code>. It creates only: never overwrites (atomically, not by looking
-    first), never writes <code>allowed-tools</code>, never anything that looks like a
-    credential, never outside the skills root. Improving a skill means the operator
-    deletes it first. The weekly <code>skill-distillation</code> blueprint (“every sunday
-    20:15”) turns the week's event log into at most one candidate and takes exactly this
-    path  ·  or parks the candidate as a vault note when nobody is there to approve.</p>
+    <p>Talos can preserve proven workflows as skills and improve them later. A compact
+    catalog enters the prompt; bodies load on demand. <code>skill_view</code> reads the
+    managed library, current file hashes and archived revisions. <code>skill_manage</code>
+    creates, edits, patches, deactivates and restores skills, and manages text files in
+    <code>references/</code>, <code>scripts/</code>, <code>templates/</code> and
+    <code>assets/</code>. Scripts never execute automatically.</p>
+    <p>Every mutation requires operator approval and the expected current hash; unattended
+    runs get <code>DENY</code>. Prior content is archived, and restore verifies its hash.
+    Delete removes <code>SKILL.md</code> while retaining support files and history.
+    Secret-shaped content and <code>allowed-tools</code> are refused. Skills are guidance,
+    never authority. Avoid simultaneous external edits: the hash check is not an atomic
+    compare-and-swap against another editor.</p>
+    <p>The original create-only <code>skill_write</code> remains available. The weekly
+    <code>skill-distillation</code> blueprint checks existing skills before proposing at
+    most one proven workflow, or parks the candidate in the vault when approval is unavailable.</p>
   </section>
 
   <section id="commands" class="rv">
