@@ -7,13 +7,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The 0.20.0 beta line follows the frozen operator contract; earlier alpha releases
 remain historical snapshots. Beta does not mean error-free operation.
 
-## [Unreleased]
+## [0.20.0-beta.6] — 2026-10-24
 
 ### Security
 
 - Raise the transitive `filelock` floor to 4.2.1 and pin 4.2.4 with hashes, replacing
-  vulnerable 3.32.5. No unrelated dependency upgrades. This source change does not
-  replace the existing signed Beta.5 archive or its package-manager installations.
+  vulnerable 3.32.5 in the signed release and package-manager installations.
+  No unrelated dependency upgrades.
+
+### Added
+
+- Managed skill creation, editing, patching, support files, deactivation and
+  content-addressed restoration through `skill_view` and `skill_manage`.
+- Each skill mutation requires fresh human approval; standing and task-wide grants
+  cannot authorize it. Expected hashes reject stale edits, and bound targets prevent
+  model-supplied paths from bypassing the kernel.
+- Action-specific approval previews show the actual change, redact secrets and bind
+  truncated values to their complete hash. Unattended skill writes remain denied.
+- Explicit Claude Opus 5.5 CLI model selection.
 
 ### Documentation
 
