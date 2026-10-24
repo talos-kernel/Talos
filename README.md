@@ -67,9 +67,12 @@ checks. Resume saved project context with `/continue` and inspect recorded outco
 with `talos proof`. Templates grant no extra permissions; external sends and protected
 actions retain their existing gates.
 
-**Source versus release:** `main` can contain fixes newer than the signed installer.
-The [unreleased changelog](CHANGELOG.md#unreleased) records the `filelock` security
-update; the existing Beta.5 archive and Homebrew package retain their published pins.
+**New in beta.6:** Talos can create, edit and restore managed skills, including support
+files, with a fresh approval for every change. This release also ships the `filelock`
+security update. See the [changelog](CHANGELOG.md#0200-beta6--2026-10-24).
+
+**Source versus release:** `main` can contain newer changes. Signed installers and
+package managers follow their pinned release; older archives remain immutable.
 
 ## Is Talos right for you?
 
