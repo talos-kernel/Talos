@@ -4,6 +4,9 @@ Talos's own tap packages the beta CLI, not a notarized desktop application or a
 Homebrew/core formula. Intel Macs and Linux are not supported by this formula;
 use the signed installer for the other supported environments.
 
+Homebrew 7 or newer is required. Run `brew update` before installing with an older
+Homebrew installation.
+
 ```sh
 brew install talos-kernel/tap/talos
 talos setup terminal
