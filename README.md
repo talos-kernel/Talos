@@ -21,10 +21,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3355).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3356).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-3355-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-3356-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-269%2F269-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-993%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-35%20gated-8a4318.svg" alt="Tools">
@@ -54,7 +54,7 @@ operation or a substitute for reviewing permissions and keeping backups.
 [Watch a recorded session](https://talos-agent.ch/console.html) ·
 [Install with Pinokio](https://github.com/talos-kernel/talos-pinokio)
 
-Apple Silicon on macOS 14+: [install the CLI with Homebrew](docs/homebrew.md).
+Apple Silicon on macOS 14+ with Homebrew 7+: [install the CLI with Homebrew](docs/homebrew.md).
 
 **New to Talos?** [Try three small, checkable tasks](docs/first-task.md): turn notes into
 a handover, save and read back a local note, and compare release notes without inventing
@@ -66,6 +66,10 @@ source-linked dossiers, read-only mailbox briefs with local drafts, and server h
 checks. Resume saved project context with `/continue` and inspect recorded outcomes
 with `talos proof`. Templates grant no extra permissions; external sends and protected
 actions retain their existing gates.
+
+**Source versus release:** `main` can contain fixes newer than the signed installer.
+The [unreleased changelog](CHANGELOG.md#unreleased) records the `filelock` security
+update; the existing Beta.5 archive and Homebrew package retain their published pins.
 
 ## Is Talos right for you?
 

@@ -9,6 +9,19 @@ remain historical snapshots. Beta does not mean error-free operation.
 
 ## [Unreleased]
 
+### Security
+
+- Raise the transitive `filelock` floor to 4.2.1 and pin 4.2.4 with hashes, replacing
+  vulnerable 3.32.5. No unrelated dependency upgrades. This source change does not
+  replace the existing signed Beta.5 archive or its package-manager installations.
+
+### Documentation
+
+- Document the Beta.5 mission, project, proof and local-check boundaries in the agent
+  guide; clarify Homebrew 7 requirements, profile ownership and update commands.
+- Separate public pull-request workflows from sanitized private exports and document
+  the explicit OSV scan of all four shipped lockfiles.
+
 ## [0.20.0-beta.5] — 2026-10-21
 
 ### Security
