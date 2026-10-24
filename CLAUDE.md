@@ -14,13 +14,39 @@ preferences live in `USER.md`. All three are operator-owned prompt state and rel
 |---|---|
 | Gate path | `policy.py`, **993 lines** — has to stay readable in one sitting |
 | Tools | **35**, every one gated |
-| Suites | **3355** collected tests · **269** adversarial · 44 end-to-end |
+| Suites | **3356** collected tests · **269** adversarial · 44 end-to-end |
 | Home | <https://talos-agent.ch> · docs at `/docs/` |
 | Repository | `talos-kernel/talos` is the public source tree |
 
-⚠️ **`public` is blocked for pushing.** Its push url is a deliberate dead end — the
-published state is only ever produced by `scripts/sync-public.sh` into a separate clone.
-A direct push from here would carry 108 commits and a real author address across.
+**Check the checkout before publishing.** Contributors to the public repository use
+a branch and pull request. A private development checkout must publish only a reviewed,
+sanitized tree through `scripts/sync-public.sh` into a separate public clone; never push
+private history. Inspect the remotes and current branch instead of assuming their names.
+
+## Current capabilities and installation context
+
+Beta.5 introduced [missions and projects](docs/missions.md), `/continue`, outcome
+receipts and a loopback local-model check. Mission templates and saved project context
+grant no permission: each action still passes the kernel. Mailbox missions read mail
+and prepare local drafts; they do not send mail. A recorded successful action is
+historical evidence, not proof that an artifact remains unchanged. Receipts omit prompts
+and result bodies, but artifact paths can still need redaction before sharing.
+
+`talos local-check` tests a loopback endpoint without user content and refuses redirects;
+it cannot prove that another process never uses the network. See the mission guide for
+the exact commands and limitations.
+
+[Homebrew](docs/homebrew.md) requires Homebrew 7+, Apple Silicon and macOS 14+. The tap
+owns the code; private state lives in `~/.talos/homebrew` (directories 0700, newly created
+identity/configuration files 0600). A shared or symlinked profile is refused. Explicit
+`TALOS_PROFILE_DIR` overrides must be absolute. Existing installations are not imported
+automatically; do not overwrite operator state with repository templates. Homebrew
+installations update through `brew upgrade talos-kernel/tap/talos`; `talos update`
+refuses them. Source installations retain their own profile and update path.
+
+The source branch can contain fixes newer than the latest signed release. Check
+`CHANGELOG.md`, the release tag and `site/status.json` before claiming a fix is shipped;
+a source commit does not change an existing signed archive.
 
 ## The rule everything rests on
 
@@ -274,7 +300,7 @@ properties covered by `test_fallback_control.py` and `test_runtime_failure_repai
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install --require-hashes -r requirements.lock -r requirements-dev.lock
 
-python -m pytest tests/ -q   # 3355 collected tests; platform-specific skips are explicit
+python -m pytest tests/ -q   # 3356 collected tests; platform-specific skips are explicit
 python redteam.py            # 269 adversarial cases — mandatory for any kernel change
 python e2e.py                # 44 cases against a real model (costs tokens and time)
 python -m talos --once       # single cycle, for diagnosis
@@ -287,6 +313,8 @@ python -m talos status       # what the event log says it did last
 python -m talos health       # runs, errors, schedules, last anchor — no network, exit 1 on a broken chain
 python -m talos report       # the event log as a record a third party can read
 python -m talos review       # what this installation should change — writes nothing
+python -m talos proof --format json  # recorded outcomes; inspect paths before sharing
+python -m talos local-check --help  # options for a loopback-only model check
 python -m talos ask "…"      # one turn, no chat — cli:<uid> must be in the allowlist
 python -m talos chat         # a session here; the ceiling hangs on the tty, not the command
 python -m talos events       # what happened — read-only, filterable
@@ -306,9 +334,18 @@ mock HTTP endpoints in new tests use reserved example domains, not private IP li
 
 ## Dependencies: intent vs. what gets installed
 
-Scan the shipped pins explicitly with OSV: `osv-scanner scan source --no-resolve
---lockfile requirements.txt:requirements.lock --lockfile requirements.txt:requirements-dev.lock`.
+Scan all four lockfiles explicitly with OSV:
+
+```sh
+osv-scanner scan source --no-resolve \
+  -L requirements.txt:requirements.lock \
+  -L requirements.txt:requirements-dev.lock \
+  -L requirements.txt:requirements-verifier.lock \
+  -L requirements.txt:deploy/computer-requirements.lock
+```
+
 Automatic discovery scans the range files and misses these nonstandard lock names.
+Record the scan date and result; a previous clean scan does not cover new advisories.
 
 `requirements*.txt` is the statement of intent (ranges). `requirements*.lock` is what
 gets installed: every version pinned, every file hashed, resolved for every platform
@@ -345,20 +382,11 @@ covers the packages only through it. `pip` is never upgraded unpinned first.
    that did not survive an update makes a deliberately configured install answer with the
    shipped default. The fallback stays, but it leaves a trace — and a real deployment
    names its model in `talos.env` so the fallback is *its* model, not this repo's.
-9. **Two repositories, and the remotes say which is which.** In this working tree
-   `private` carries the full history and the real author address; `public` is
-   `talos-kernel/talos`, an own clean history from zero. Run `git remote -v` for the
-   addresses — ⚠️ they are deliberately **not** written out here, because this file is
-   published with the tree, and the private one has no business being in it. The
-   deployment target is neither: it is a running instance fed by `rsync`, and a third
-   remote for it no longer exists.
-   ⚠️ Moved into the organisation on 2026-08-06 by pushing fresh, **not** by transfer:
-   a transfer leaves a permanent redirect from the personal account, and with zero stars
-   it would have bought nothing. The old repo was deleted, so no redirect exists.
-   ⚠️ **`public` is blocked
-   for pushing** — its push url is a deliberate dead end. The public state is only ever
-   produced by `scripts/sync-public.sh` into a separate clone; a direct push from here
-   would carry the whole private history across.
+9. **Private and public history stay separate.** Public contributors work on the
+   public tree through branches and pull requests. Private development uses the
+   sanitized export described above. Never merge a private branch into the public
+   repository or publish local machine paths, operator identities or private remotes.
+   A running operator installation is a separate deployment, not a Git remote.
 10. **An operator installation is not this repo.** The instance on the operator's machine has
    its own `SOUL.md` (its first heading is the agent's *name*), its own `CLAUDE.md`,
    its own env file and its own `data/`. Sync the **package** (`talos/` → `talos/`), never

@@ -127,6 +127,18 @@ def test_pypdf_lock_includes_denial_of_service_security_fixes() -> None:
                for version, _ in _pins(RUNTIME[1])["pypdf"])
 
 
+def test_filelock_floor_and_lock_exclude_known_vulnerable_versions() -> None:
+    """The transcription cache must keep the October file-locking fixes."""
+    requirement = next((r for r in _declared(RUNTIME[0])
+                        if _canonical(r.name) == "filelock"), None)
+    assert requirement is not None, "filelock needs an explicit security floor"
+    assert not requirement.specifier.contains(Version("3.32.5"))
+    assert not requirement.specifier.contains(Version("4.2.0"))
+    assert requirement.specifier.contains(Version("4.2.1"))
+    assert all(version >= Version("4.2.1")
+               for version, _ in _pins(RUNTIME[1])["filelock"])
+
+
 @pytest.mark.parametrize("lock", [RUNTIME[1], DEV[1]], ids=["runtime", "dev"])
 def test_the_lock_carries_no_machine_path(lock: Path) -> None:
     """Der Kopf zitiert die Kommandozeile — erzeugt mit relativen Pfaden, oder gar nicht."""
