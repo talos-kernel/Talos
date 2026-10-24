@@ -601,6 +601,8 @@ PROVIDERS: tuple[ProviderInfo, ...] = (
         #     Frage „womit hat er das beantwortet" waere nachtraeglich nicht mehr
         #     beantwortbar. Namen im Katalog benennen genau ein Modell.
         models=(
+            # Official CLI model identity verified on 2026-10-24.
+            "claude-opus-5-5",
             "claude-opus-5",
             "claude-fable-5",
             "claude-sonnet-5",
