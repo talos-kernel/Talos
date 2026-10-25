@@ -21,10 +21,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3428).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3437).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-3428-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-3437-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-277%2F277-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-996%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-37%20gated-8a4318.svg" alt="Tools">
@@ -379,7 +379,7 @@ come from `stdin` instead of `getUpdates`.
 ```
 $ talos chat
 
-  ◉  Talos / 0.20.0-beta.6
+  ◉  Talos / 0.20.0-beta.7
      Your terminal. Your rules.
   ──────────────────────────────────────────────────────────────────────────
   model      claude-cli/claude-opus-4-1
