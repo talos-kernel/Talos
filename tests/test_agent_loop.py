@@ -543,7 +543,8 @@ def test_a_malformed_tool_call_is_retried_not_delivered(tmp_path: Path) -> None:
     assert result.status is AgentStatus.ANSWERED
     assert result.text == "Fertig, nichts lief."
     assert "TOOL_CALL" not in result.text
-    assert MALFORMED_NOTE in gesehen[1]
+    assert any(note.startswith(MALFORMED_NOTE) for note in gesehen[1])
+    assert any("JSON syntax error at line" in note for note in gesehen[1])
 
 
 def test_malformed_tool_call_nagging_is_bounded(tmp_path: Path) -> None:

@@ -103,7 +103,7 @@ STOPPED_NOTE = "[Stopped by the operator before the next step.]"
 # einziges Budget, damit ein Wechsel der Schreibweise keine neuen Versuche kauft.
 MAX_CONTROL_REPAIRS = 2
 # Oeffentlicher Kompatibilitaetsname fuer bestehende Integrationen. Es gibt trotzdem nur
-# den einen Zaehler `control_repairs` im Lauf.
+# den einen Zaehler `control_repairs` seit dem letzten erfolgreichen Werkzeugschritt.
 MAX_FOREIGN_RETRIES = MAX_CONTROL_REPAIRS
 CONTROL_REPAIR_FAILED = (
     "Task unfinished: the model could not produce a valid tool request. "
@@ -220,12 +220,28 @@ def malformed_tool_note(text: str) -> str:
     """
     controls = _outside_tool_lines(text)
     if len(controls) != 1:
-        return MALFORMED_NOTE
+        return MALFORMED_NOTE + " [Send one request, never a batch of TOOL_CALL lines.]"
+    if _final_tool_payload(text) is None:
+        return MALFORMED_NOTE + (
+            " [The request must be the final physical line: no prose after it, no "
+            "pretty-printed multiline JSON. Escape line breaks inside string arguments.]"
+        )
     match = _TOOL_LINE.fullmatch(controls[0][1])
     if match is None:
         return MALFORMED_NOTE
     try:
         obj = _load_control_json(match.group("payload"))
+    except json.JSONDecodeError as error:
+        # Positions and fixed guidance survive a stateless CLI retry; neither the
+        # rejected command nor JSON decoder excerpts enter history, logs or replies.
+        return MALFORMED_NOTE + (
+            f" [JSON syntax error at line {error.lineno}, column {error.colno}. "
+            "Escape embedded double quotes, backslashes and line breaks inside strings. "
+            "For shell commands, prefer a short single operation instead of nested quoting. "
+            "Do not repair by executing code or replaying an earlier action.]"
+        )
+    except _DuplicateJsonKey:
+        return MALFORMED_NOTE + " [Duplicate JSON keys are invalid at every nesting level.]"
     except (ValueError, TypeError):
         return MALFORMED_NOTE
     if not isinstance(obj, dict):
@@ -926,6 +942,10 @@ def run_agent(
             # A new receipt is real progress. Permit one correction at the next
             # step, while two announcements without intervening progress still stop.
             announcement_repairs = 0
+            # Isolated syntax mistakes separated by executed steps are not a stuck
+            # model. Keep one shared consecutive-control budget; DENIED/ERROR never
+            # replenish it. The overall step/plan limits and every kernel gate remain.
+            control_repairs = 0
             observation_note = observations.record(tool, args, outcome.result)
             if observation_note:
                 history.append(observation_note)
