@@ -1,11 +1,11 @@
 {
-  "version": "0.20.0-beta.7",
+  "version": "0.20.0-beta.8",
   "release_state": "released",
   "source_state": "release",
-  "installer_version": "0.20.0-beta.7",
-  "tests": 3437,
+  "installer_version": "0.20.0-beta.8",
+  "tests": 3438,
   "redteam_faelle": 277,
   "kernel_zeilen": 996,
   "werkzeuge": 37,
-  "release_ref": "v0.20.0-beta.7"
+  "release_ref": "v0.20.0-beta.8"
 }

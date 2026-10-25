@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import re
 import os
 import stat
 import subprocess
@@ -50,6 +52,16 @@ def main() -> int:
         if version.returncode or version.stdout.strip() != args.current:
             print("Installed version read-back failed", file=sys.stderr)
             return 1
+        expected_pip = re.search(r"^pip==([^\s\\]+)", (ROOT / "requirements.lock").read_text(), re.M).group(1)
+        pip_probe = subprocess.run(
+            [str(prefix / ".venv/bin/python"), "-I", "-c",
+             "import json,pip,importlib.metadata as m;print(json.dumps({"
+             "'module':pip.__version__,'distributions':[d.version for d in m.distributions() "
+             "if d.metadata['Name'].lower()=='pip']}))"],
+            capture_output=True, text=True, check=True)
+        if json.loads(pip_probe.stdout) != {"module": expected_pip, "distributions": [expected_pip]}:
+            print("Installed pip differs from its lock or has stale duplicate metadata", file=sys.stderr)
+            return 1
         config = prefix / "talos.env"
         if not config.is_file() or stat.S_IMODE(config.stat().st_mode) != 0o600:
             print("Installed configuration mode read-back failed", file=sys.stderr)
@@ -57,7 +69,7 @@ def main() -> int:
         if not (bin_dir / "talos").is_symlink() or not (prefix / "data").is_dir():
             print("Installed command or data directory missing", file=sys.stderr)
             return 1
-        print(f"Clean install: {args.current}, suites passed, config 0600, command and data read back")
+        print(f"Clean install: {args.current}, suites passed, config 0600, command and data read back; pip {expected_pip} unique")
     return 0
 
 
