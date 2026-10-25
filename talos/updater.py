@@ -532,7 +532,7 @@ def _prepare(run: Runner, plan: _Plan, out: _Writer) -> None:
         raise UpdateError("venv failed — is python3-venv installed?")
     venv_python = plan.staging / VENV_PYTHON
     for name, args in dependency_installs(plan.staging):
-        argv = [str(venv_python), "-m", "pip", "install", "--quiet", *args]
+        argv = [str(venv_python), "-I", "-m", "pip", "--isolated", "install", "--quiet", *args]
         if run(argv, plan.staging) != 0:
             raise UpdateError(f"{name} could not be installed. Nothing was switched.")
     out.ok(f".venv in {plan.staging.name} — {plan.prefix} untouched so far")

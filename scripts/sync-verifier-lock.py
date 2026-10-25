@@ -10,7 +10,7 @@ END = "# END PINNED VERIFIER\n"
 
 
 def verifier_lock(runtime: str) -> str:
-    wanted = {"cryptography", "cffi", "pycparser"}
+    wanted = {"cryptography", "cffi", "pycparser", "pip"}
     blocks = re.split(r"(?=^[a-zA-Z0-9][a-zA-Z0-9_.-]*==)", runtime, flags=re.M)
     selected = []
     found = set()

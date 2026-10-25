@@ -77,7 +77,7 @@ def _extract_old(payload: bytes, destination: Path) -> None:
 def _python(code: str, tree: Path, *args: str) -> subprocess.CompletedProcess[str]:
     environment = {key: os.environ[key] for key in
                    ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "SSL_CERT_FILE",
-                    "REQUESTS_CA_BUNDLE")
+                    "REQUESTS_CA_BUNDLE", "PIP_CONFIG_FILE")
                    if key in os.environ}
     environment.update({"PIP_NO_INPUT": "1", "PIP_DISABLE_PIP_VERSION_CHECK": "1",
                         "PYTHONNOUSERSITE": "1"})

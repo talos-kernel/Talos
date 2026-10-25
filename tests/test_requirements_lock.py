@@ -174,6 +174,7 @@ def test_the_installer_installs_from_the_locks_and_upgrades_nothing_unpinned() -
     assert '--require-hashes -r "$PREFIX/requirements-dev.lock"' in text
     assert "-r \"$PREFIX/requirements.txt\"" not in text
     assert "--upgrade pip" not in text
+    assert text.count("-I -m pip --isolated install") == 3
 
 
 @pytest.mark.skipif(not WORKFLOW.exists(), reason="kein Workflow in diesem Baum")
@@ -186,7 +187,7 @@ def test_ci_installs_from_the_locks() -> None:
 def test_verifier_lock_is_a_hashed_subset_of_audited_runtime() -> None:
     lock = ROOT / "requirements-verifier.lock"
     pins = _pins(lock)
-    assert set(pins) == {"cryptography", "cffi", "pycparser"}
+    assert set(pins) == {"cryptography", "cffi", "pycparser", "pip"}
     runtime = _pins(RUNTIME[1])
     assert all(pins[name] == runtime[name] for name in pins)
     assert all(count > 0 for entries in pins.values() for _, count in entries)
@@ -201,3 +202,13 @@ def test_verifier_pins_are_embedded_before_archive_execution() -> None:
     assert command in text
     assert text.index(command) < text.index('tar -xzf')
     assert '--quiet cryptography' not in text
+
+
+def test_python_seeded_pip_is_replaced_by_a_hash_locked_safe_version() -> None:
+    """A clean application lock must not leave the interpreter's vulnerable pip seed."""
+    requirement = next(r for r in _declared(RUNTIME[0]) if _canonical(r.name) == "pip")
+    assert not requirement.specifier.contains(Version("26.1.2"))
+    assert requirement.specifier.contains(Version("26.2.0"))
+    for name in ("requirements.lock", "requirements-verifier.lock"):
+        assert all(version >= Version("26.2.0") and hashes > 0
+                   for version, hashes in _pins(ROOT / name)["pip"])

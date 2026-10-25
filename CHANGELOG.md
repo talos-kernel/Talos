@@ -7,6 +7,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The 0.20.0 beta line follows the frozen operator contract; earlier alpha releases
 remain historical snapshots. Beta does not mean error-free operation.
 
+## [0.20.0-beta.8] — 2026-10-25
+
+### Security
+
+- Hash-lock pip 26.2.2 in the runtime and temporary signature-verifier environments.
+  Fresh virtual environments previously retained the pip version bundled with the
+  operator's Python, which could remain vulnerable even when application locks were clean.
+  Installation and update now replace that seed through the signed/pinned locks;
+  no unpinned self-upgrade or system-Python modification is introduced.
+- Installer and updater pip subprocesses ignore user configuration and Python import overrides, preventing stale duplicate metadata or redirected installs. Older updaters with custom pip settings can upgrade once using `PIP_CONFIG_FILE=/dev/null talos update`.
+- Retains all Beta.7 task-recovery and monitoring-guidance fixes.
+
 ## [0.20.0-beta.7] — 2026-10-25
 
 ### Fixed
