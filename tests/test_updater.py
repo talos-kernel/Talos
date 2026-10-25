@@ -430,6 +430,8 @@ def test_nothing_is_started_and_nothing_is_scheduled(tmp_path: Path) -> None:
     # Der ganze Lauf besteht aus venv, pip, pytest, redteam — nichts startet den Agenten.
     assert set(runner.steps) == {"venv", "pip", "pytest", "redteam"}
     for argv, _ in runner.calls:
+        if "pip" in argv:
+            assert argv[1:6] == ["-I", "-m", "pip", "--isolated", "install"]
         # These are subprocess argv, not shell text. An '&' in a path is data.
         assert not {"crontab", "systemctl", "launchctl", "nohup", "&"}.intersection(argv)
         assert not any(a == "-m" and b == "talos" for a, b in zip(argv, argv[1:]))

@@ -827,6 +827,10 @@ packaging==26.3 \
     # via
     #   huggingface-hub
     #   onnxruntime
+pip==26.2.2 \
+    --hash=sha256:3a8e5c800492787f33a4114ef54444546c340df428974ebba17e0fd47e11af2f \
+    --hash=sha256:fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70
+    # via -r requirements.txt
 primp==2.0.0 \
     --hash=sha256:0776fd400adcc940e47bb70896fb474f6607ffa545f5f7107ccda8d055fa02c9 \
     --hash=sha256:0ea78a7a2fc5d48a825fa73182911b956bcb58940297cbd60958963ec30375d4 \

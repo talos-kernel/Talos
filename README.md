@@ -21,10 +21,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3437).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3438).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-3437-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-3438-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-277%2F277-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-996%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-37%20gated-8a4318.svg" alt="Tools">
@@ -73,6 +73,8 @@ security update. See the [changelog](CHANGELOG.md#0200-beta6--2026-10-24).
 
 **Source versus release:** `main` can contain newer changes. Signed installers and
 package managers follow their pinned release; older archives remain immutable.
+
+Beta.8 also pins pip 26.2.2 with hashes, including the temporary verifier, and isolates pip from per-user configuration. When upgrading from Beta.7 or older with custom pip settings, use `PIP_CONFIG_FILE=/dev/null talos update` once; those older updaters still inherit pip configuration.
 
 ## Is Talos right for you?
 
@@ -379,7 +381,7 @@ come from `stdin` instead of `getUpdates`.
 ```
 $ talos chat
 
-  ◉  Talos / 0.20.0-beta.7
+  ◉  Talos / 0.20.0-beta.8
      Your terminal. Your rules.
   ──────────────────────────────────────────────────────────────────────────
   model      claude-cli/claude-opus-4-1
