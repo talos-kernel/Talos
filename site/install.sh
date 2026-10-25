@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-VERSION="0.20.0-beta.7"
+VERSION="0.20.0-beta.8"
 BASE="${TALOS_BASE:-https://talos-agent.ch}"
 TARBALL="${BASE}/dist/talos-${VERSION}.tar.gz"
 PREFIX="${TALOS_PREFIX:-$HOME/talos}"
@@ -326,12 +326,15 @@ cryptography==50.0.1 \
     --hash=sha256:fc3ed7ebd2a8c96f5b166de0ab9b624996bef3b07bbeb19364dfb78222c22c80 \
     --hash=sha256:fd3718b960d0b5dd213cdf03f3bcb7000e69dda0de8b956061947ff6bcff5558 \
     --hash=sha256:ff838d62ec1bfce4f9ba7fa16f4a7b554cd8d0c299e6be37502161a660c84eef
+pip==26.2.2 \
+    --hash=sha256:3a8e5c800492787f33a4114ef54444546c340df428974ebba17e0fd47e11af2f \
+    --hash=sha256:fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70
 pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy' \
     --hash=sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29 \
     --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
 VERIFIER_LOCK
 # END PINNED VERIFIER
-spin "verifier deps" "$TMP/verify/bin/python" -m pip install --quiet --require-hashes --only-binary=:all: --no-deps -r "$TMP/verifier.lock" \
+spin "verifier deps" "$TMP/verify/bin/python" -I -m pip --isolated install --quiet --require-hashes --only-binary=:all: --no-deps -r "$TMP/verifier.lock" \
   || die "could not install the signature verifier — an install is not the place to skip this."
 "$TMP/verify/bin/python" - "$TMP/talos.tar.gz" "$TMP/sig" <<'VERIFY' || die "the release signature does not match this archive. Nothing was unpacked, nothing was changed."
 import base64, pathlib, sys
@@ -362,17 +365,18 @@ VPY="$PREFIX/.venv/bin/python"
 # Every version pinned, every file hashed, resolved for every platform when the
 # release was cut — installed under --require-hashes, so the signature checked
 # above also covers what pip fetches now. pip itself is not upgraded first: that
-# would be one unpinned download ahead of all the pinned ones.
+# would be one unpinned download ahead of all the pinned ones. The lock includes pip.
+# Isolated mode ignores per-user pip settings (such as ignore-installed/target).
 [ -f "$PREFIX/requirements.lock" ] \
   || die "this archive ships no requirements.lock — refusing to install unpinned dependencies."
-spin "dependencies" "$VPY" -m pip install --quiet --require-hashes -r "$PREFIX/requirements.lock" \
+spin "dependencies" "$VPY" -I -m pip --isolated install --quiet --require-hashes -r "$PREFIX/requirements.lock" \
   || die "dependencies failed — a hash mismatch here means a package did not arrive as released."
 # The proofs below need a test runner. It is a separate lock because the agent
 # itself never imports it — installing it here is the price of not asking you
 # to take the claims on faith.
 [ -f "$PREFIX/requirements-dev.lock" ] \
   || die "this archive ships no requirements-dev.lock — the proofs below would run unpinned."
-spin "test runner" "$VPY" -m pip install --quiet --require-hashes -r "$PREFIX/requirements-dev.lock" \
+spin "test runner" "$VPY" -I -m pip --isolated install --quiet --require-hashes -r "$PREFIX/requirements-dev.lock" \
   || die "could not install the test runner — the proofs below would be skipped."
 ok "$PREFIX/.venv — no system packages touched"
 
