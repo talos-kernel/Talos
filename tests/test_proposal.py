@@ -29,6 +29,78 @@ def test_invalid_proposals_stop_after_two_repairs_without_effects(tmp_path):
     assert not any(r['type']=='exec.intent' for r in executor.log.recent(20))
 
 
+def test_control_repairs_recover_between_successful_steps_without_replaying(tmp_path):
+    """Three isolated syntax mistakes must not abort a progressing long run."""
+    executor = _executor(tmp_path)
+    paths = [tmp_path / f'proof-{n}.txt' for n in range(3)]
+    replies = []
+    for n, path in enumerate(paths):
+        replies.extend(['TOOL_CALL: {broken', 'TOOL_CALL: ' + json.dumps({
+            'tool': 'write_file', 'args': {'path': str(path), 'content': str(n)},
+        })])
+    replies.append('All three files were saved once.')
+    turns = iter(replies)
+    result = run_agent(lambda _: next(turns), executor, OWNER, 'progress-repair')
+    assert result.status is AgentStatus.ANSWERED
+    assert [path.read_text() for path in paths] == ['0', '1', '2']
+    records = executor.log.by_run('progress-repair')
+    assert sum(r['type'] == 'exec.intent' for r in records) == 3
+    repairs = [r['payload'] for r in records if r['type'] == 'protocol.repair']
+    assert [r['attempt'] for r in repairs] == [1, 1, 1]
+
+
+@pytest.mark.parametrize('path', ['/etc/shadow', 'missing-file.txt'])
+def test_denied_or_failed_tools_do_not_replenish_control_repairs(tmp_path, path):
+    executor = _executor(tmp_path)
+    if path == 'missing-file.txt':
+        path = str(tmp_path / path)
+    read = 'TOOL_CALL: ' + json.dumps({'tool': 'read_file', 'args': {'path': path}})
+    replies = iter(['TOOL_CALL: {broken', read, 'Read(/tmp/foreign)', read,
+                    'TOOL_CALL: {broken-again'])
+    result = run_agent(lambda _: next(replies), executor, OWNER, 'no-progress')
+    assert result.status is AgentStatus.STEP_LIMIT
+    repairs = [r['payload'] for r in executor.log.by_run('no-progress')
+               if r['type'] == 'protocol.repair']
+    assert [r['attempt'] for r in repairs] == [1, 2, 3]
+    assert repairs[-1]['exhausted'] is True
+
+
+def test_repaired_progress_still_obeys_the_overall_step_limit(tmp_path):
+    executor = _executor(tmp_path)
+    proof = tmp_path / 'proof.txt'
+    proof.write_text('read only')
+    read = 'TOOL_CALL: ' + json.dumps({'tool': 'read_file', 'args': {'path': str(proof)}})
+    replies = iter(['TOOL_CALL: {broken', read] * 4)
+    result = run_agent(lambda _: next(replies), executor, OWNER, 'hard-limit', max_steps=6)
+    assert result.status is AgentStatus.STEP_LIMIT and result.steps == 6
+    assert sum(r['type'] == 'exec.intent' for r in executor.log.by_run('hard-limit')) == 3
+
+
+@pytest.mark.parametrize('broken,hint', [
+    ('TOOL_CALL: {"tool":"run_shell","args":{"command":"PRIVATE_MARKER\\q"}}',
+     'JSON syntax error at line 1, column'),
+    ('TOOL_CALL: {"tool":"read_file","args":{"path":"PRIVATE_MARKER","path":"other"}}',
+     'Duplicate JSON keys'),
+    ('TOOL_CALL: {"tool":"read_file","args":{"path":"PRIVATE_MARKER"}}\nDone.',
+     'final physical line'),
+    ('TOOL_CALL: {"tool":"read_file",\n"args":{"path":"PRIVATE_MARKER"}}',
+     'final physical line'),
+    ('TOOL_CALL: {"tool":"read_file","args":{"path":"PRIVATE_MARKER"}}\n'
+     'TOOL_CALL: {}', 'never a batch'),
+])
+def test_malformed_feedback_pinpoints_format_without_retaining_values(tmp_path, broken, hint):
+    from talos.agent_loop import malformed_tool_note, parse_tool_call
+    assert parse_tool_call(broken) is None
+    note = malformed_tool_note(broken)
+    assert hint in note and 'PRIVATE_MARKER' not in note
+    executor = _executor(tmp_path)
+    replies = iter([broken, 'No request ran.'])
+    result = run_agent(lambda _: next(replies), executor, OWNER, 'syntax-hint')
+    assert result.status is AgentStatus.ANSWERED
+    assert not any(r['type'] == 'exec.intent' for r in executor.log.by_run('syntax-hint'))
+    assert 'PRIVATE_MARKER' not in json.dumps(result.history)
+
+
 def test_repair_does_not_invent_values_or_reclassify_a_denial(tmp_path):
     executor=_executor(tmp_path)
     replies=iter(['TOOL_CALL: {"tool":"remote_exec","args":{}}',

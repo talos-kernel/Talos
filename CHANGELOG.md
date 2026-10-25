@@ -7,6 +7,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The 0.20.0 beta line follows the frozen operator contract; earlier alpha releases
 remain historical snapshots. Beta does not mean error-free operation.
 
+## [0.20.0-beta.7] — 2026-10-25
+
+### Fixed
+
+- Reset the shared control-syntax repair budget after a successful tool step. Three
+  isolated format errors no longer abort an otherwise progressing task. Consecutive
+  malformed, foreign and incomplete proposals still share two repairs; denied and
+  failed calls do not replenish them. Overall step/plan limits and all approval gates
+  remain unchanged, and completed effects are never automatically replayed.
+- Give value-free JSON error positions and specific single-line, duplicate-key and
+  batch guidance. Invalid proposals still execute nothing and do not retain argument
+  values in repair history or expose them in operator messages.
+- Clarify that periodic status updates require an actual `/every` schedule; a one-time
+  inspection is not a timer. Unattended execution cannot inherit attended approval or
+  gain rights through a suggested standing grant.
+- Distinguish a desktop screenshot from evidence about a remote terminal/session.
+  Use an available configured inspection route through its normal approval boundary.
+
 ## [0.20.0-beta.6] — 2026-10-24
 
 ### Security
