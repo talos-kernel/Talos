@@ -27,7 +27,7 @@ from .channel import (
 )
 from .identity import agent_name
 from .tgmarkup import to_telegram_html
-from .ux import EXPRESSIVE, GEOMETRIC, Style, style_for
+from .ux import EXPRESSIVE, GEOMETRIC, SYM_PENDING, Style, style_for
 
 _BASE = "https://api.telegram.org/bot{token}/{method}"
 CHANNEL_NAME = "telegram"
@@ -829,12 +829,16 @@ class TelegramActivity:
         max_lines: int = DEFAULT_ACTIVITY_LINES,
         heartbeat_s: float = DEFAULT_HEARTBEAT_S,
         update_interval_s: float = DEFAULT_PROGRESS_UPDATE_S,
+        conversation: str = "",
+        background_jobs: Callable[[str], int] | None = None,
         name: str = "",
         style: Style = GEOMETRIC,
     ) -> None:
         self._client = client
         self._style = style
         self._chat_id = chat_id
+        self._conversation = conversation
+        self._background_jobs = background_jobs
         self._clock = clock
         self._min_edit_interval = max(0.0, min_edit_interval)
         self._max_lines = max(1, max_lines)
@@ -1016,10 +1020,10 @@ class TelegramActivity:
         (der Conductor ruft `succeed` erst dann) und danach nie mehr editiert.
         Gelingt der Beleg, friert die Anzeige als reine Arbeitsspur ein — die
         Zusammenfassung steht genau einmal im Chat, im Beleg (gemessen am 18.09.2026:
-        der doppelte „Turn finished"-Kopf las sich wie zwei Ende-Meldungen). Schlaegt
+        der doppelte Abschluss-Kopf las sich wie zwei Ende-Meldungen). Schlaegt
         der Belegversand fehl, traegt die Anzeige wieder den vollen Endstand.
         `receipt=False` parkt die Anzeige an einer Freigabe: der Lauf wartet, und ein
-        „Turn finished" fuer einen wartenden Lauf waere eine falsche Quittung.
+        „Reply done" fuer einen wartenden Lauf waere eine falsche Quittung.
         """
         if self._finished:
             return
@@ -1041,16 +1045,27 @@ class TelegramActivity:
         self._edit(text=self._render(final=True, footer=footer, beleg=beleg_id is not None), force=True)
 
     def _receipt(self, footer: str) -> str:
-        """Der kompakte Abschluss-Beleg: Dauer, Werkzeug-Aktionen, Ergebnis-Status."""
+        """Receipt for this reply only; pending workers report their results separately."""
         seconds = max(0, int(self._clock() - self._start))
         duration = f"{seconds // 60}m {seconds % 60:02d}s" if seconds >= 60 else f"{seconds}s"
-        glyph, state = ("⚠️", "Finished with issues") if self._issues else ("🏁", "Turn finished")
+        glyph, state = ("⚠️", "Reply done with issues") if self._issues else ("🏁", "Reply done")
         teile = [f"{glyph} {_redact(self._name)[:60]} · {state} — ⏱ {duration} · "
                  f"{self._tool_calls} tool call{'s' if self._tool_calls != 1 else ''}"]
         if self._issues:
             teile.append(f"⚠️ {self._issues} refused or failed · /log for the record")
         if footer.strip():
             teile.append(_redact(footer))
+        if self._background_jobs is not None:
+            try:
+                count = self._background_jobs(self._conversation)
+                if type(count) is int and count > 0:
+                    teile.append(
+                        f"{SYM_PENDING} {count} background job{'s' if count != 1 else ''} "
+                        "still running · result follows separately"
+                    )
+            except Exception:
+                # Status is optional; a failed desk query must never hide the receipt.
+                pass
         return "\n".join(teile)
 
     def fail(self, error: str) -> None:
@@ -1198,9 +1213,9 @@ class TelegramActivity:
         elif self._waiting:
             glyph, state = self._style.gate, "Needs your approval"
         elif final and beleg:
-            glyph, state = self._style.talos, "Work trail — 🏁 receipt below"
+            glyph, state = self._style.talos, "Work trail — 🏁 reply receipt below"
         elif final:
-            glyph, state = ("⚠️", "Finished with issues") if self._issues else ("🏁", "Turn finished")
+            glyph, state = ("⚠️", "Reply done with issues") if self._issues else ("🏁", "Reply done")
         else:
             glyph, state = self._style.talos, "Working"
         seconds = max(0, int(elapsed))
@@ -1714,10 +1729,14 @@ class TelegramChannel:
     name = CHANNEL_NAME
     trust = Trust.FULL
 
-    def __init__(self, client: ActivityClient, *, status_style: str = "geometric") -> None:
+    def __init__(
+        self, client: ActivityClient, *, status_style: str = "geometric",
+        background_jobs: Callable[[str], int] | None = None,
+    ) -> None:
         self._client = client
         self._offset = 0
         self._style = style_for(status_style)
+        self._background_jobs = background_jobs
 
     def poll(self) -> list[Inbound]:
         # ActivityClient ist für Tests schmal; der echte Client stellt get_updates bereit.
@@ -1851,7 +1870,8 @@ class TelegramChannel:
         # Der Name wird JETZT gelesen, nicht beim Start: wer SOUL.md umbenennt, sah sonst
         # bis zum naechsten Neustart weiter den alten Namen ueber jedem Lauf stehen.
         return TelegramActivity(
-            self._client, chat_id_of(conversation), name=agent_name(), style=self._style
+            self._client, chat_id_of(conversation), name=agent_name(), style=self._style,
+            conversation=conversation, background_jobs=self._background_jobs,
         )
 
     def begin_queue_notice(self, conversation: str) -> QueueNotice:

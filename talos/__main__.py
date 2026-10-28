@@ -118,6 +118,20 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     from .paths import initialize_profile
     initialize_profile()
     log = EventLog(config.eventlog_db)
+    # Die angemeldeten delegierten Jobs, deren Endzustand gepusht wird. Eine Instanz,
+    # geteilt zwischen dem delegate_code-Runner (Anmeldung) und dem Ticker weiter unten.
+    pushes = notify.CompletionDesk()
+    # Die laufenden delegate_dag-Graphen: eine Instanz, geteilt zwischen dem
+    # delegate_dag-Runner (Anmeldung) und demselben Ticker wie die Completions.
+    # In-memory wie der BackgroundDesk — was ein Neustart verliert, behandelt
+    # der Worker ohnehin als `unknown_job`, und der Desk meldet das ehrlich.
+    dags = dag.DagDesk()
+
+    def background_jobs(conversation: str) -> int:
+        # Desk entries remain pending until the completion ticker delivers results.
+        return (sum(job.conversation == conversation for job in pushes.pending())
+                + sum(graph.conversation == conversation for graph in dags.pending()))
+
     # Der Kanal haelt seinen eigenen Cursor; die Registry kennt den Rueckweg zu jeder
     # `conversation`. Ein zweiter Kanal kostet ab hier eine Zeile und keine im Loop.
     # Ein Kanal, der beim Abholen fliegt, darf die anderen nicht mitreissen — aber er
@@ -152,6 +166,7 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
                     may_fetch=lambda user_id: str(user_id) in erlaubte_telegram_ids,
                 ),
                 status_style=config.status_style,
+                background_jobs=background_jobs,
             ),
         )
     # `talos ask "…"`: dieselbe Frage, derselbe Conductor, derselbe Kernel. Der Kanal
@@ -403,14 +418,6 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     # Antwort, der Poll-Thread löst sie ein. Zwei Instanzen hiessen, dass der Klick in
     # einem Gedächtnis landet, aus dem niemand ihn abholt.
     questions = QuestionDesk()
-    # Die angemeldeten delegierten Jobs, deren Endzustand gepusht wird. Eine Instanz,
-    # geteilt zwischen dem delegate_code-Runner (Anmeldung) und dem Ticker weiter unten.
-    pushes = notify.CompletionDesk()
-    # Die laufenden delegate_dag-Graphen: eine Instanz, geteilt zwischen dem
-    # delegate_dag-Runner (Anmeldung) und demselben Ticker wie die Completions.
-    # In-memory wie der BackgroundDesk — was ein Neustart verliert, behandelt
-    # der Worker ohnehin als `unknown_job`, und der Desk meldet das ehrlich.
-    dags = dag.DagDesk()
     # Das Gespraechsarchiv. Ueberlebt Neustart und /new — gelesen wird es nur ueber das
     # gegatete session_search-Werkzeug, nie automatisch. Faellt es aus, laeuft der Agent
     # ohne Archiv weiter (fail-open, wie Recall).

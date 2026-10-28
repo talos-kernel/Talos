@@ -7,6 +7,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The 0.20.0 beta line follows the frozen operator contract; earlier alpha releases
 remain historical snapshots. Beta does not mean error-free operation.
 
+## [0.20.0-beta.9] — 2026-10-28
+
+### Fixed
+
+- Telegram completion receipts now say "Reply done" or "Reply done with issues".
+  They describe the completed reply, never completion of a delegated worker job.
+- Receipts show the number of pending worker jobs and DAGs for the same conversation,
+  with a separate-result notice. Status-query failures cannot suppress the receipt;
+  approval waits still send no completion receipt and summaries remain single-copy.
+- The existing completion ticker and all execution, policy and approval boundaries
+  are unchanged. A job may remain counted briefly until its completion is delivered.
+
 ## [0.20.0-beta.8] — 2026-10-25
 
 ### Security

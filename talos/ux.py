@@ -25,11 +25,12 @@ SYM_OK = "✓"         # sauber fertig
 SYM_FAIL = "✕"       # fehlgeschlagen
 SYM_GATE = "⏸"       # wartet auf des Betreibers Freigabe
 SYM_BLOCKED = "⛒"    # der Kernel verbietet es
+SYM_PENDING = "⏳"   # Hintergrundarbeit wartet auf ihren eigenen Ergebnisbeleg
 SYM_UNDO = "↩"       # zurueckgerollt
 
 __all__ = [
     "SYM_TALOS", "SYM_THINKING", "SYM_PLAN", "SYM_TOOL", "SYM_OK", "SYM_FAIL",
-    "SYM_GATE", "SYM_BLOCKED", "SYM_UNDO",
+    "SYM_GATE", "SYM_BLOCKED", "SYM_UNDO", "SYM_PENDING",
     "Style", "GEOMETRIC", "EXPRESSIVE", "style_for",
 ]
 
