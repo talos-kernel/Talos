@@ -66,6 +66,9 @@ jobs:
       - name: Verify embedded signature-verifier pins
         run: python scripts/sync-verifier-lock.py --check
 
+      - name: Test release qualification tooling
+        run: python -m pytest scripts/tests/ -q
+
       - name: Run pytest
         run: python -m pytest tests/ -q
 
