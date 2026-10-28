@@ -180,6 +180,7 @@ def test_view_lists_bounded_entries_and_truncates_large_content(root: Path, view
     big = "---\nname: big\ndescription: Big.\n---\n\n" + "x" * 30_000 + "\n"
     (root / "big").mkdir(mode=0o700)
     (root / "big" / "SKILL.md").write_text(big)
+    (root / "big" / "SKILL.md").chmod(0o600)
     shown = view(name="big")
     assert shown["truncated"] is True and len(shown["content"]) == sm.MAX_VIEW_CHARS
     assert shown["expected_sha256"] == _sha(big)

@@ -18,6 +18,9 @@ remain historical snapshots. Beta does not mean error-free operation.
   four dependency locks and test the qualification tooling on Linux and macOS.
 - Documents exact-artifact installation, signed upgrade/rollback, package delivery
   and seven consecutive calendar days of RC observation before stable promotion.
+- Give the large-skill test fixture explicit owner-only permissions so installation
+  proofs also pass under a group-writable umask. The runtime still refuses insecure
+  skill files.
 
 ## [0.20.0-beta.9] — 2026-10-28
 
