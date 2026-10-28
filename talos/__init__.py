@@ -8,4 +8,4 @@ Once a candidate is released, the installer pointer must be advanced to this ver
 advertised and a released package is never left behind.
 """
 
-__version__ = "0.20.0-beta.9"
+__version__ = "0.20.0-rc.1"
