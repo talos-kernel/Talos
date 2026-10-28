@@ -284,7 +284,7 @@ html.js .push.pending{opacity:.32}
 .lg .k.c-deny{color:var(--deny)}
 .lg .k.c-allow{color:var(--allow)}
 
-/* ── this beta release, measured ── */
+/* ── this release candidate, measured ── */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin-top:44px}
 .stat{background:var(--bg);padding:28px 26px}
 .stat .n{font-family:var(--crt);font-size:clamp(30px,3.4vw,44px);color:var(--hot);line-height:1.05;
@@ -365,7 +365,7 @@ body>nav{inset:0 0 auto 0 !important;z-index:50 !important;pointer-events:auto !
 
 <header class="hero" id="top">
   <div class="wrap">
-    <p class="sys">talos 0.20.0-beta.9 · operator console · MIT</p>
+    <p class="sys">talos 0.20.0-rc.1 · operator console · MIT</p>
     <span class="rec-chip">recorded · unfurled · no live wire</span>
     <h1 id="main-content" tabindex="-1">Witness one deed from door to ledger.</h1>
     <p class="lede">This hall unfurls one true session, recorded on the working machine
@@ -553,12 +553,12 @@ body>nav{inset:0 0 auto 0 !important;z-index:50 !important;pointer-events:auto !
     embedded below. Either way the digits come from a count, not from memory.</p>
 
     <div class="stats" id="releaseStats">
-      <div class="stat rv"><div class="n" data-f="version">0.20.0-beta.9</div><div class="l">beta release</div><div class="sub-l" data-f="installer_version">public installer v0.20.0-beta.9</div></div>
+      <div class="stat rv"><div class="n" data-f="version">0.20.0-rc.1</div><div class="l">release candidate</div><div class="sub-l" data-f="installer_version">public installer v0.20.0-rc.1</div></div>
       <div class="stat rv"><div class="n" data-f="tests">3456</div><div class="l">automated tests, collected by pytest</div></div>
       <div class="stat rv"><div class="n" data-f="redteam_faelle">277</div><div class="l">adversarial cases, all behaving</div></div>
       <div class="stat rv"><div class="n" data-f="kernel_zeilen">996</div><div class="l">lines in policy.py, readable in one sitting</div></div>
       <div class="stat rv"><div class="n" data-f="werkzeuge">37</div><div class="l">tools, every one through the gate</div></div>
-      <div class="stat rv"><div class="n" data-f="release_ref">v0.20.0-beta.9</div><div class="l">release tag</div></div>
+      <div class="stat rv"><div class="n" data-f="release_ref">v0.20.0-rc.1</div><div class="l">release tag</div></div>
     </div>
 
     <div class="measure-note rv">
@@ -724,7 +724,7 @@ if (!reduced) setInterval(() => { if (Math.random() < 0.12) flickOnce(); }, 4000
   replayBtn.addEventListener('click', play);
 })();
 
-/* ─── this beta release, measured: ./status.json with an embedded fallback ─── */
+/* ─── this release candidate, measured: ./status.json with an embedded fallback ─── */
 (() => {
   const src = document.getElementById('statusSrc');
   const FIELDS = ['version', 'installer_version', 'tests', 'redteam_faelle', 'kernel_zeilen', 'werkzeuge', 'release_ref'];

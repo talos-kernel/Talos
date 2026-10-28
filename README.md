@@ -30,7 +30,7 @@
   <img src="https://img.shields.io/badge/tools-37%20gated-8a4318.svg" alt="Tools">
   <img src="https://img.shields.io/badge/default%20identities-0-c62828.svg" alt="Default identities">
   <img src="https://img.shields.io/badge/python-3.11%2B-1565c0.svg" alt="Python">
-  <a href="https://github.com/talos-kernel/talos/releases"><img src="https://img.shields.io/github/v/release/talos-kernel/talos?include_prereleases&amp;color=1565c0" alt="Latest release, including beta"></a>
+  <a href="https://github.com/talos-kernel/talos/releases"><img src="https://img.shields.io/github/v/release/talos-kernel/talos?include_prereleases&amp;color=1565c0" alt="Latest release, including prereleases"></a>
   <img src="https://img.shields.io/badge/licence-MIT-616161.svg" alt="MIT">
 </p>
 
@@ -45,8 +45,8 @@ tools — but only after a deterministic permission kernel has ruled on the acti
 Choose **Allow once**, **Allow this task**, or an exact-action standing approval;
 you do not have to approve every step individually. Sandboxed shell execution and an
 append-only audit trail keep actions bounded and reviewable. Talos is MIT-licensed;
-model-provider and hosting costs depend on your setup. It is now **beta**: the
-[operator contract](docs/beta-contract.md) is frozen; beta is not a claim of error-free
+model-provider and hosting costs depend on your setup. It is now a **release candidate**: the
+[operator contract](docs/beta-contract.md) is frozen; RC is not a claim of error-free
 operation or a substitute for reviewing permissions and keeping backups.
 
 [Install Talos](#install) · [Run local models with Ollama](https://talos-agent.ch/docs/#model) ·
@@ -84,7 +84,7 @@ Beta.8 also pins pip 26.2.2 with hashes, including the temporary verifier, and i
 - **Inspect the evidence:** review tool outcomes and the audit trail; do not mistake a confident answer for a successful action.
 
 Start with the [model, cost and permission FAQ](https://talos-agent.ch/faq/).
-Talos is not Talos Linux or Cisco Talos. It is a self-hosted AI agent, and it remains beta.
+Talos is not Talos Linux or Cisco Talos. It is a self-hosted AI agent, and it remains a prerelease.
 If this approach is useful, **star the repository to bookmark it**, try a small task and
 [report a reproducible result](https://github.com/talos-kernel/Talos/issues).
 Want to improve it? [Fork Talos](https://github.com/talos-kernel/Talos/fork) and read
@@ -381,7 +381,7 @@ come from `stdin` instead of `getUpdates`.
 ```
 $ talos chat
 
-  ◉  Talos / 0.20.0-beta.9
+  ◉  Talos / 0.20.0-rc.1
      Your terminal. Your rules.
   ──────────────────────────────────────────────────────────────────────────
   model      claude-cli/claude-opus-4-1
@@ -937,8 +937,7 @@ artifact checks and the seven-day operating observation. The frozen
 [beta contract](docs/beta-contract.md), [recovery runbook](docs/recovery.md) and
 local `python scripts/beta-gate.py --previous <published-version>` make these checks repeatable.
 The [RC and stable qualification plan](docs/stable-readiness.md) tracks the next
-transition from beta through `0.20.0-rc.1` to `0.20.0`; these versions are not yet
-published. The path to 1.0
+transition from beta through `0.20.0-rc.1` to `0.20.0`; stable remains subject to the RC observation and final-artifact gates. The path to 1.0
 requires evidence from the beta line and a verified upgrade from a previous beta;
 it is not a calendar promise.
 
