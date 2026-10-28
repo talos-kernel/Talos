@@ -7,6 +7,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The 0.20.0 beta line follows the frozen operator contract; earlier alpha releases
 remain historical snapshots. Beta does not mean error-free operation.
 
+## [0.20.0-rc.1] — 2026-10-28
+
+### Release qualification
+
+- First candidate for stable 0.20.0, retaining the Beta.9 runtime and frozen operator
+  contract. This is a prerelease; stable requires a separate operating observation
+  window and final-artifact qualification.
+- Release gates now require an explicit, different upgrade predecessor, verify all
+  four dependency locks and test the qualification tooling on Linux and macOS.
+- Documents exact-artifact installation, signed upgrade/rollback, package delivery
+  and seven consecutive calendar days of RC observation before stable promotion.
+- Give the large-skill test fixture explicit owner-only permissions so installation
+  proofs also pass under a group-writable umask. The runtime still refuses insecure
+  skill files.
+
 ## [0.20.0-beta.9] — 2026-10-28
 
 ### Fixed
