@@ -170,7 +170,7 @@ class Activity(Protocol):
     def succeed(self, footer: str = "", *, receipt: bool = True) -> None: ...
     # `receipt=False` heisst: der Lauf ist NICHT zu Ende — er parkt an einer Freigabe.
     # Die Anzeige friert ein, aber ein Abschluss-Beleg fuer einen wartenden Lauf
-    # waere eine falsche Quittung (gemessen: „Turn finished" vor der Entscheidung).
+    # waere eine falsche Quittung: „Reply done" gilt nur fuer eine beendete Antwort.
 
     def fail(self, error: str) -> None: ...
 
