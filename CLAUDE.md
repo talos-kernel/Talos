@@ -56,6 +56,11 @@ The source branch can contain fixes newer than the latest signed release. Check
 `CHANGELOG.md`, the release tag and `site/status.json` before claiming a fix is shipped;
 a source commit does not change an existing signed archive.
 
+For the transition out of beta, follow [stable readiness](docs/stable-readiness.md).
+The historical alpha RC ledger qualifies entry into beta, not a stable release.
+Full `scripts/beta-gate.py` runs require an explicit, different `--previous` version
+and scan all four locks. RC/stable labels require their own artifact evidence.
+
 ## The rule everything rests on
 
 **The model proposes, it does not decide.** The reasoner emits `TOOL_CALL` text, the kernel
