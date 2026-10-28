@@ -1,6 +1,6 @@
 # Homebrew (Apple Silicon, macOS 14+)
 
-Talos's own tap packages the beta CLI, not a notarized desktop application or a
+Talos's own tap packages the prerelease CLI, not a notarized desktop application or a
 Homebrew/core formula. Intel Macs and Linux are not supported by this formula;
 use the signed installer for the other supported environments.
 

@@ -31,6 +31,24 @@ Before publishing a branch, check that no local configuration, event log, API ke
 operator identity was added. `talos.env`, `data/` and the operator's prompt state do not
 belong in a fork.
 
+Check your commit identity before the first commit in a clone:
+
+```bash
+git config --get user.name
+git config --get user.email
+git var GIT_AUTHOR_IDENT
+```
+
+Use an email verified on your own GitHub account, or copy your exact GitHub-provided
+private commit address from your account settings. Do not invent a project-named
+`users.noreply.github.com` address: it can attribute your work to an unrelated account.
+Repository-local `user.name` and `user.email` settings avoid accidental global fallbacks;
+`git config --local user.useConfigOnly true` additionally disables identity guessing.
+Commit attribution does not grant repository access. Correct an unpublished commit
+before pushing; do not rewrite shared release history merely to change a contributor
+display. A `.mailmap` can normalize Git's local display but is not a reliable fix for
+GitHub's contributor statistics.
+
 Three suites, and they are the point — Talos sells that its claims are checked, so a change
 is not done until they are green:
 
