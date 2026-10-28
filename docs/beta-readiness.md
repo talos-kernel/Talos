@@ -1,5 +1,8 @@
 # Beta readiness
 
+This page records the historical transition into beta. The next transition is
+tracked separately in [RC and stable readiness](stable-readiness.md).
+
 Talos' beta line freezes the operator-facing contract after separate source,
 signed-artifact and operating-observation gates. Beta is not a claim that the model,
 network or service never fails. This document records the criteria instead of
@@ -88,9 +91,9 @@ Executed results for this baseline are in the [2026-09-25 evidence record](beta-
 Release-candidate accounting is in the [RC ledger](beta-rc-ledger.md). A source
 preflight is not a counted RC or a published beta.
 
-Run `python scripts/beta-gate.py` from a prepared development environment for source
+Run `python scripts/beta-gate.py --previous <published-version>` from a prepared development environment for source
 tests, red-team cases, public hygiene, locked-dependency OSV, a disposable clean
-install and an isolated signed upgrade from the previous published alpha, including
+install and an isolated signed upgrade from the explicitly selected published version, including
 schedule migration and rollback.
 The upgrade rehearsal creates and removes only a temporary installation; it does not
 restart or change the operating Pi. Use `--without-upgrade` only for a partial source
