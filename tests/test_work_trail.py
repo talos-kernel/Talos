@@ -126,7 +126,7 @@ def test_the_completion_receipt_is_a_fresh_message_never_edited_again(monkeypatc
     activity.succeed("✓ 5s · 1k tok · testmodell")
     assert len(client.sent) == vorher + 1, "kein eigener Abschluss-Beleg gesendet"
     beleg_id, beleg_text = client._next, client.sent[-1][1]
-    assert "Turn finished" in beleg_text
+    assert "Reply done" in beleg_text
     assert "1 tool call" in beleg_text
     assert "testmodell" in beleg_text           # die Quittung gehoert in den Beleg
     activity.cleanup()
@@ -148,7 +148,7 @@ def test_the_receipt_survives_even_when_its_send_is_the_only_evidence(monkeypatc
     activity = TelegramActivity(client, 42, clock=lambda: client.now[0], heartbeat_s=0)
     _arbeitet(activity)
     activity.succeed()
-    assert any("Turn finished" in text for _c, text, _k in client.sent)
+    assert any("Reply done" in text for _c, text, _k in client.sent)
 
 
 def test_a_tidy_operator_loses_the_receipt_with_the_trail(monkeypatch):
