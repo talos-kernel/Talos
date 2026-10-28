@@ -1,8 +1,8 @@
 # From beta to a stable 0.20.0
 
-The next proposed release is `0.20.0-rc.1`, followed by `0.20.0` only after the
-evidence below passes. This is a qualification plan, not an announcement that
-either version has shipped. The published baseline is `0.20.0-beta.9`.
+This tree identifies `0.20.0-rc.1`, followed by `0.20.0` only after the evidence
+below passes. Publication is established by the signed release assets, not this
+source label. The upgrade baseline is `0.20.0-beta.9`.
 
 The historical `0.20.0-alpha.rc.*` artifacts qualified the earlier transition
 **into beta**. They are not candidates for this transition out of beta. `1.0.0`
@@ -47,7 +47,7 @@ Start with the current published baseline in a prepared, hash-locked development
 environment:
 
 ```sh
-python scripts/beta-gate.py --previous 0.20.0-beta.8 --current 0.20.0-beta.9
+python scripts/beta-gate.py --previous 0.20.0-beta.9 --current 0.20.0-rc.1
 python -m pytest macos/Tests -q
 python e2e.py
 ```
@@ -90,5 +90,5 @@ installation or restart its service.
 | Artifact | State | Evidence boundary |
 |---|---|---|
 | `0.20.0-beta.9` | Published baseline | [Core main CI](https://github.com/talos-kernel/Talos/actions/runs/40661310306), [Homebrew](https://github.com/talos-kernel/homebrew-tap/actions/runs/40661911664), [Pinokio](https://github.com/talos-kernel/talos-pinokio/actions/runs/40663657826). These qualify beta.9 only. |
-| `0.20.0-rc.1` | Preparation started; not published | Needs its own commit, signed artifact, complete platform/install/recovery evidence and operator rollout. |
+| `0.20.0-rc.1` | Candidate source | Requires matching signed assets and platform/install/recovery evidence; deployed RC observations start only after rollout. |
 | `0.20.0` | Not qualified | Needs the RC observation window and final-artifact gates above. |
