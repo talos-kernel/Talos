@@ -381,7 +381,7 @@ come from `stdin` instead of `getUpdates`.
 ```
 $ talos chat
 
-  ◉  Talos / 0.20.0-rc.1
+  ◉  Talos / 0.20.0-rc.2
      Your terminal. Your rules.
   ──────────────────────────────────────────────────────────────────────────
   model      claude-cli/claude-opus-4-1
@@ -937,7 +937,7 @@ artifact checks and the seven-day operating observation. The frozen
 [beta contract](docs/beta-contract.md), [recovery runbook](docs/recovery.md) and
 local `python scripts/beta-gate.py --previous <published-version>` make these checks repeatable.
 The [RC and stable qualification plan](docs/stable-readiness.md) tracks the next
-transition from beta through `0.20.0-rc.1` to `0.20.0`; stable remains subject to the RC observation and final-artifact gates. The path to 1.0
+transition from beta through `0.20.0-rc.2` to `0.20.0`; stable remains subject to the RC observation and final-artifact gates. The path to 1.0
 requires evidence from the beta line and a verified upgrade from a previous beta;
 it is not a calendar promise.
 

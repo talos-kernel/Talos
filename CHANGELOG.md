@@ -7,6 +7,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The 0.20.0 beta line follows the frozen operator contract; earlier alpha releases
 remain historical snapshots. Beta does not mean error-free operation.
 
+## [0.20.0-rc.2] — 2026-11-01
+
+### Security
+
+- Require and hash-lock pypdf 6.21.4, excluding seven high-severity advisories
+  affecting the PDF parser in RC.1. Malformed PDF processing remains subject to
+  the existing authorization and execution boundaries.
+- Keep the remaining dependency versions and frozen operator contract unchanged.
+- This security update starts a new deployed RC observation window. Stable 0.20.0
+  still requires seven consecutive healthy calendar days and final-artifact checks.
+
 ## [0.20.0-rc.1] — 2026-10-28
 
 ### Release qualification
