@@ -3,4 +3,19 @@ Allow: /
 # Der Quell-Tarball ist erreichbar, soll aber nicht in Suchindizes landen.
 Disallow: /dist/
 
+# KI-Trainings-Crawler werden hier ausgeschlossen; der Server weist sie zudem
+# per HTTP 403 ab. Such- und Zitier-Crawler (OAI-SearchBot, Claude-SearchBot,
+# PerplexityBot, ChatGPT-User, Googlebot, Bingbot) bleiben offen.
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: Applebot-Extended
+Disallow: /
+
 Sitemap: https://talos-agent.ch/sitemap.xml
