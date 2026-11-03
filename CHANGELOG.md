@@ -7,6 +7,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 The 0.20.0 beta line follows the frozen operator contract; earlier alpha releases
 remain historical snapshots. Beta does not mean error-free operation.
 
+## [Unreleased]
+
+### Added
+
+- Add an explicit, read-only `talos import ... --dry-run` preview for portable
+  Hermes and OpenClaw profile text, memory and Agent Skills. The preview writes
+  nothing, never activates imported instructions, and excludes secrets,
+  permissions, executable configuration, schedules, sessions and databases.
+
 ## [0.20.0-rc.2] — 2026-11-01
 
 ### Security

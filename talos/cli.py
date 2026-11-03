@@ -52,6 +52,7 @@ HELP = f"""
   setup [terminal|identity|model|mail]    guided setup; preserves other settings
   doctor [--online]                  what is missing — changes nothing
   config list|get|set|describe|validate    find, explain and change settings
+  import list|hermes|openclaw           preview portable data from another agent
   models [--refresh]                 which models a provider offers
   local-check [--provider ollama|lm-studio]    probe local endpoint without operator data
 
@@ -266,6 +267,65 @@ def cmd_chat(rest: list[str], out=None) -> int:
     return 0
 
 
+def cmd_import(rest: list[str], out=None) -> int:
+    """Preview portable data from another agent without changing either home.
+
+    Import text is persistent, foreign instruction material.  The first release
+    therefore stops at a redacted plan: activation needs a separate reviewed path,
+    especially for skills.  Keeping this command before configuration loading also
+    lets a new Talos installation inspect its old home before setup.
+    """
+    schreiben = (out or sys.stdout).write
+    usage = "  usage: talos import <hermes|openclaw> --source <absolute-path> --dry-run\n"
+    if rest in (["--help"], ["-h"]):
+        schreiben(
+            usage
+            + "         talos import list\n"
+            + "  Preview only. Secrets, permissions, executable hooks, schedules and sessions are skipped.\n"
+        )
+        return 0
+    if rest == ["list"]:
+        schreiben(
+            "\n  hermes     portable profile, memory and Agent Skills\n"
+            "  openclaw   portable workspace profile, memory and Agent Skills\n\n"
+            "  Dry run only; imported text remains inactive and grants no permission.\n\n"
+        )
+        return 0
+    if not rest or rest[0] not in {"hermes", "openclaw"}:
+        schreiben(usage)
+        return 2
+    source_type = rest[0]
+    source = ""
+    dry_run = False
+    index = 1
+    while index < len(rest):
+        argument = rest[index]
+        if argument == "--source" and index + 1 < len(rest) and not source:
+            source = rest[index + 1]
+            index += 2
+            continue
+        if argument == "--dry-run" and not dry_run:
+            dry_run = True
+            index += 1
+            continue
+        schreiben(f"  unknown or repeated import option: {argument}\n{usage}")
+        return 2
+    if not source or not dry_run:
+        schreiben(usage + "  This release requires an explicit source and supports preview only.\n")
+        return 2
+
+    from .import_agents import ImportPlanError, plan_import
+    from .paths import PROFILE_DIR
+
+    try:
+        plan = plan_import(source, PROFILE_DIR, source_type=source_type)
+    except (ImportPlanError, OSError) as error:
+        schreiben(f"\n  import preview refused: {error}\n\n")
+        return 1
+    schreiben("\n" + plan.render() + "\n\n")
+    return 0
+
+
 def _help(_rest: list[str]) -> int:
     from .terminalui import heading, help_text
 
@@ -281,6 +341,7 @@ TABLE: dict[str, object] = {
     "setup": _lazy("setup_wizard", "run_setup"),
     "doctor": _lazy("doctor", "run_doctor"),
     "config": _lazy("configcli", "run_config"),
+    "import": cmd_import,
     "models": _lazy("models", "run_models"),
     "local-check": _lazy("localcheck", "run_local_check"),
     "ask": cmd_ask,
@@ -337,4 +398,4 @@ def dispatch(args: list[str]) -> int | None:
 
 COMMANDS = tuple(TABLE)
 
-__all__ = ["COMMANDS", "HELP", "TABLE", "cmd_status", "cmd_verify", "cmd_version", "dispatch"]
+__all__ = ["COMMANDS", "HELP", "TABLE", "cmd_import", "cmd_status", "cmd_verify", "cmd_version", "dispatch"]

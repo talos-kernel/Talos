@@ -125,10 +125,43 @@ def test_bad_arguments_never_dispatch_an_agent_run(args):
 
 def test_command_help_and_typo_recovery_do_not_load_configuration(monkeypatch, capsys):
     monkeypatch.setattr(config, 'load_config', lambda **kw: pytest.fail('loaded config'))
-    for command in ('config', 'setup', 'ask', 'chat', 'status', 'verify', 'version'):
+    for command in ('config', 'setup', 'import', 'ask', 'chat', 'status', 'verify', 'version'):
         assert cli.dispatch(['help', command]) == 0
     assert cli.dispatch(['doctro']) == 2
     assert 'Did you mean talos doctor?' in capsys.readouterr().out
+
+
+def test_import_command_previews_without_writing_source_or_target(tmp_path, monkeypatch, capsys):
+    from talos import paths
+
+    source = tmp_path / 'hermes-home'
+    source.mkdir()
+    (source / 'config.yaml').write_text('model: example\n', encoding='utf-8')
+    (source / 'SOUL.md').write_text('# Existing agent\n', encoding='utf-8')
+    target = tmp_path / 'talos-home'
+    before = tuple(sorted(path.relative_to(tmp_path) for path in tmp_path.rglob('*')))
+    monkeypatch.setattr(paths, 'PROFILE_DIR', target)
+
+    assert cli.dispatch(['import', 'hermes', '--source', str(source), '--dry-run']) == 0
+
+    after = tuple(sorted(path.relative_to(tmp_path) for path in tmp_path.rglob('*')))
+    text = capsys.readouterr().out
+    assert before == after and not target.exists()
+    assert 'Dry run only' in text and '[staged] identity' in text
+    assert str(source) not in text
+
+
+@pytest.mark.parametrize('args', [
+    ['import'],
+    ['import', 'hermes'],
+    ['import', 'hermes', '--source', '/tmp/example'],
+    ['import', 'hermes', '--dry-run'],
+    ['import', 'unknown', '--source', '/tmp/example', '--dry-run'],
+    ['import', 'hermes', '--source', '/tmp/example', '--source', '/tmp/other', '--dry-run'],
+])
+def test_import_command_requires_explicit_source_and_dry_run(args, capsys):
+    assert cli.dispatch(args) == 2
+    assert 'usage: talos import' in capsys.readouterr().out
 
 
 def test_config_search_and_describe_explain_without_disclosing_secrets(tmp_path):
