@@ -52,7 +52,8 @@ HELP = f"""
   setup [terminal|identity|model|mail]    guided setup; preserves other settings
   doctor [--online]                  what is missing — changes nothing
   config list|get|set|describe|validate    find, explain and change settings
-  import list|hermes|openclaw           preview portable data from another agent
+  import list|hermes|openclaw           preview or stage portable data from another agent
+  connections list|draft                public, operator-owned connector inventory
   models [--refresh]                 which models a provider offers
   local-check [--provider ollama|lm-studio]    probe local endpoint without operator data
 
@@ -268,28 +269,69 @@ def cmd_chat(rest: list[str], out=None) -> int:
 
 
 def cmd_import(rest: list[str], out=None) -> int:
-    """Preview portable data from another agent without changing either home.
+    """Preview, stage, roll back, or activate one skill from another agent home.
 
-    Import text is persistent, foreign instruction material.  The first release
-    therefore stops at a redacted plan: activation needs a separate reviewed path,
-    especially for skills.  Keeping this command before configuration loading also
-    lets a new Talos installation inspect its old home before setup.
+    Import text is persistent, foreign instruction material.  Apply therefore needs
+    the redacted plan's exact fingerprint and publishes only inactive staging; skill
+    activation is a separate local command through the managed writer.  None of these
+    mutations are available on the agent's tool surface.
     """
     schreiben = (out or sys.stdout).write
-    usage = "  usage: talos import <hermes|openclaw> --source <absolute-path> --dry-run\n"
+    usage = (
+        "  usage: talos import <hermes|openclaw> --source <absolute-path> --dry-run\n"
+        "         talos import <hermes|openclaw> --source <absolute-path> --apply --confirm <fingerprint>\n"
+        "         talos import rollback <hermes|openclaw> --confirm <fingerprint>\n"
+        "         talos import activate-skill <hermes|openclaw> <name> --confirm <fingerprint>\n"
+    )
     if rest in (["--help"], ["-h"]):
         schreiben(
             usage
             + "         talos import list\n"
-            + "  Preview only. Secrets, permissions, executable hooks, schedules and sessions are skipped.\n"
+            + "  Apply stages inactive files. Secrets and permissions are never copied.\n"
         )
         return 0
     if rest == ["list"]:
         schreiben(
             "\n  hermes     portable profile, memory and Agent Skills\n"
             "  openclaw   portable workspace profile, memory and Agent Skills\n\n"
-            "  Dry run only; imported text remains inactive and grants no permission.\n\n"
+            "  Applied imports remain inactive and grant no permission.\n\n"
         )
+        return 0
+    if rest and rest[0] in {"rollback", "activate-skill"}:
+        action = rest[0]
+        needed = 4 if action == "rollback" else 5
+        if len(rest) != needed or rest[1] not in {"hermes", "openclaw"}:
+            schreiben(usage)
+            return 2
+        if action == "rollback":
+            if rest[2] != "--confirm":
+                schreiben(usage)
+                return 2
+            source_type, name, confirmation = rest[1], "", rest[3]
+        else:
+            if rest[3] != "--confirm":
+                schreiben(usage)
+                return 2
+            source_type, name, confirmation = rest[1], rest[2], rest[4]
+        from .askcli import refuse_in_sandbox
+        if refuse_in_sandbox():
+            schreiben("  refused: import mutations cannot run inside the agent sandbox\n")
+            return 3
+        from .import_apply import ImportApplyError, activate_imported_skill, rollback_import
+        from .paths import PROFILE_DIR
+        try:
+            result = (
+                rollback_import(PROFILE_DIR, source_type=source_type, confirmation=confirmation)
+                if action == "rollback"
+                else activate_imported_skill(
+                    PROFILE_DIR, source_type=source_type, name=name, confirmation=confirmation
+                )
+            )
+        except (ImportApplyError, OSError) as error:
+            schreiben(f"\n  import {action} refused: {error}\n\n")
+            return 1
+        schreiben(f"\n  import {result['state'] if action == 'rollback' else 'skill activated'}"
+                  f" · {result['fingerprint']}\n\n")
         return 0
     if not rest or rest[0] not in {"hermes", "openclaw"}:
         schreiben(usage)
@@ -297,6 +339,8 @@ def cmd_import(rest: list[str], out=None) -> int:
     source_type = rest[0]
     source = ""
     dry_run = False
+    apply = False
+    confirmation = ""
     index = 1
     while index < len(rest):
         argument = rest[index]
@@ -308,21 +352,47 @@ def cmd_import(rest: list[str], out=None) -> int:
             dry_run = True
             index += 1
             continue
+        if argument == "--apply" and not apply:
+            apply = True
+            index += 1
+            continue
+        if argument == "--confirm" and index + 1 < len(rest) and not confirmation:
+            confirmation = rest[index + 1]
+            index += 2
+            continue
         schreiben(f"  unknown or repeated import option: {argument}\n{usage}")
         return 2
-    if not source or not dry_run:
-        schreiben(usage + "  This release requires an explicit source and supports preview only.\n")
+    if not source or dry_run == apply or (apply and not confirmation) or (dry_run and confirmation):
+        schreiben(usage + "  Choose exactly one of --dry-run or --apply. Apply needs its fingerprint.\n")
         return 2
 
     from .import_agents import ImportPlanError, plan_import
     from .paths import PROFILE_DIR
 
+    if dry_run:
+        try:
+            plan = plan_import(source, PROFILE_DIR, source_type=source_type)
+        except (ImportPlanError, OSError) as error:
+            schreiben(f"\n  import preview refused: {error}\n\n")
+            return 1
+        schreiben("\n" + plan.render() + "\n\n")
+        return 0
+    from .askcli import refuse_in_sandbox
+    if refuse_in_sandbox():
+        schreiben("  refused: import apply cannot run inside the agent sandbox\n")
+        return 3
+    from .import_apply import ImportApplyError, apply_import
     try:
-        plan = plan_import(source, PROFILE_DIR, source_type=source_type)
-    except (ImportPlanError, OSError) as error:
-        schreiben(f"\n  import preview refused: {error}\n\n")
+        result = apply_import(
+            source, PROFILE_DIR, source_type=source_type, confirmation=confirmation
+        )
+    except (ImportApplyError, ImportPlanError, OSError) as error:
+        schreiben(f"\n  import apply refused: {error}\n\n")
         return 1
-    schreiben("\n" + plan.render() + "\n\n")
+    schreiben(
+        f"\n  staged {result['copied']} inactive item(s) · {result['fingerprint']}\n"
+        "  Nothing was activated. Re-authenticate connections and approve permissions separately.\n\n"
+    )
     return 0
 
 
@@ -342,6 +412,7 @@ TABLE: dict[str, object] = {
     "doctor": _lazy("doctor", "run_doctor"),
     "config": _lazy("configcli", "run_config"),
     "import": cmd_import,
+    "connections": _lazy("connections", "run_connections"),
     "models": _lazy("models", "run_models"),
     "local-check": _lazy("localcheck", "run_local_check"),
     "ask": cmd_ask,

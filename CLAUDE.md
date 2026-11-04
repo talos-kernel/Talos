@@ -14,7 +14,7 @@ preferences live in `USER.md`. All three are operator-owned prompt state and rel
 |---|---|
 | Gate path | `policy.py`, **996 lines** — has to stay readable in one sitting |
 | Tools | **37**, every one gated |
-| Suites | **3477** collected tests · **277** adversarial · 44 end-to-end |
+| Suites | **3489** collected tests · **277** adversarial · 44 end-to-end |
 | Home | <https://talos-agent.ch> · docs at `/docs/` |
 | Repository | `talos-kernel/talos` is the public source tree |
 
@@ -53,8 +53,12 @@ installations update through `brew upgrade talos-kernel/tap/talos`; `talos updat
 refuses them. Source installations retain their own profile and update path.
 
 `talos import hermes|openclaw --source <path> --dry-run` can explicitly preview a
-small portable allowlist from another agent home. It changes neither home, imports
-no authority or secrets, and does not activate the persistent text or Agent Skills.
+small portable allowlist from another agent home. A matching fingerprint may apply
+that exact plan into inactive staging; rollback archives staging without deleting it,
+and skills activate one at a time through the managed-skill writer. Credentials and
+authority never migrate. `talos connections` inventories the existing isolated-worker
+MCP registry and creates only secret-free disabled drafts; both operator allowlists
+still have to opt in before a connection can execute.
 
 The source branch can contain fixes newer than the latest signed release. Check
 `CHANGELOG.md`, the release tag and `site/status.json` before claiming a fix is shipped;
@@ -317,7 +321,7 @@ repairs; corrections never replay an effect or grant permission. Keep those prop
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install --require-hashes -r requirements.lock -r requirements-dev.lock
 
-python -m pytest tests/ -q   # 3477 collected tests; platform-specific skips are explicit
+python -m pytest tests/ -q   # 3489 collected tests; platform-specific skips are explicit
 python redteam.py            # 277 adversarial cases — mandatory for any kernel change
 python e2e.py                # 44 cases against a real model (costs tokens and time)
 python -m talos --once       # single cycle, for diagnosis
