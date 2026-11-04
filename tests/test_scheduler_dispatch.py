@@ -1,5 +1,6 @@
 import json
 import threading
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -39,7 +40,12 @@ def test_cli_cannot_consume_slot_service_executes_once_and_restart_does_not_repl
     assert len(second.due(now=task.next_run)) == 1 and model.calls == 0
     dispatch_due(**deps, now=task.next_run)
     assert len(sent) == 1 and sent[0][0] == CHAT_OWNER
-    assert sent[0][1].startswith('Read scheduler proof.')
+    delivered = sent[0][1]
+    assert delivered.startswith('⏰ Scheduled run: Check proof\n')
+    assert f'(job_id: {task.id})' in delivered
+    assert 'Read scheduler proof.' in delivered
+    assert 'Manage: /schedules' in delivered
+    assert f'Stop: /unschedule {task.id}' in delivered
     assert model.calls == 2
     restarted = ScheduleStore(tmp_path / 'schedules.db')
     dispatch_due(**dict(deps, schedules=restarted), now=task.next_run)
@@ -48,6 +54,45 @@ def test_cli_cannot_consume_slot_service_executes_once_and_restart_does_not_repl
     assert sum(r['type'] == 'exec.result' for r in records) == 1
     assert not any(r['type'] == 'task.rejected' for r in records)
     assert restarted.count() == (0 if once else 1)
+
+
+def test_scheduled_run_is_quiet_until_its_separate_final_notification(tmp_path):
+    deps, task, sent, _model = rig(tmp_path)
+    activities: list[str] = []
+    streams: list[str] = []
+    deps['conductor'] = replace(
+        deps['conductor'],
+        begin_activity=lambda conversation: activities.append(conversation),
+        begin_reply=lambda conversation: streams.append(conversation),
+    )
+
+    dispatch_due(**deps, now=task.next_run)
+
+    assert activities == []
+    assert streams == []
+    assert len(sent) == 1
+    assert sent[0][1].count('Scheduled run:') == 1
+
+
+def test_suppressed_scheduled_run_sends_neither_wrapper_nor_progress(tmp_path):
+    deps, task, sent, _model = rig(tmp_path)
+    activities: list[str] = []
+    deps['conductor'] = replace(
+        deps['conductor'], begin_activity=lambda conversation: activities.append(conversation)
+    )
+    prepared = deps['continuity'].prepare(task, OWNER, run_id='preflight')
+    assert prepared is not None
+    suppressed = replace(prepared, before_reply=lambda *_args: False)
+    deps['continuity'].prepare = lambda *_args, **_kwargs: suppressed
+
+    dispatch_due(**deps, now=task.next_run)
+
+    assert sent == []
+    assert activities == []
+    assert any(
+        row['type'] == 'conductor.reply_suppressed'
+        for row in deps['log'].recent(50)
+    )
 
 
 @pytest.mark.parametrize('trust', [None, Trust.NOTIFY])

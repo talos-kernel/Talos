@@ -184,6 +184,23 @@ def test_shell_progress_never_contains_the_command(tmp_path: Path) -> None:
     )
     assert result.status is AgentStatus.NEEDS_HUMAN
     assert all(command not in repr(event) and "sk-topsecret" not in repr(event) for event in events)
+    tool_event = next(event for event in events if event.stage is ProgressStage.TOOL)
+    assert tool_event.summary == "shell — curl"
+
+
+def test_safe_progress_names_the_skill_but_never_its_payload() -> None:
+    from talos.agent_loop import _safe_tool_summary
+
+    named = _safe_tool_summary(
+        "skill_view", {"name": "evidence-hygiene", "content": "token=private"}, ()
+    )
+    suspicious = _safe_tool_summary(
+        "skill_view", {"name": "token=private", "content": "secret body"}, ()
+    )
+
+    assert named == "skill — evidence-hygiene"
+    assert suspicious == "skill"
+    assert "private" not in named + suspicious
 
 
 # --- Fremdsyntax: der Ausfall, der wie eine Antwort aussieht ------------------------

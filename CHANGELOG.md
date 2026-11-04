@@ -21,6 +21,17 @@ remain historical snapshots. Beta does not mean error-free operation.
 - Add Talos Connections: a native public inventory for isolated-worker MCP
   connections and secret-free disabled drafts. Drafts cannot execute and still
   require separate agent and worker allowlist opt-in.
+- Add one deterministic scheduled-result notification with the task label, job ID,
+  management command and stop command. Scheduled runs no longer stream an unlabelled
+  partial reply or live activity into the interactive conversation.
+- Show bounded work-trail detail for managed skill reads and shell executables while
+  continuing to omit shell arguments, skill contents, credentials and private paths.
+
+### Documentation
+
+- Rebuild the terminal and Telegram demos from current source. The terminal recording
+  includes Talos Connections; the Telegram recording shows the safe work trail,
+  separate delegated completion and labelled scheduled result.
 
 ## [0.20.0-rc.2] — 2026-11-01
 

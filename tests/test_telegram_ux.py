@@ -498,10 +498,18 @@ def test_expressive_status_style_uses_emoji_and_verbs() -> None:
     assert GEOMETRIC.tool_symbol("read_file") == SYM_TOOL
     assert EXPRESSIVE.tool_symbol("read_file") == "📖"
 
-    # Der Shell-Befehl bleibt in beiden Stilen generisch — nie der rohe Befehl.
-    shell = AgentProgress(ProgressStage.TOOL, tool="run_shell", summary="rm -rf /tmp/x")
-    assert _tool_text(shell, GEOMETRIC) == "shell command"
-    assert _tool_text(shell, EXPRESSIVE) == "Running command"
+    # Nur der vom Loop erzeugte, lexikalisch begrenzte Programmname wird sichtbar.
+    # Ein roher Befehl aus einem fremden Callback bleibt weiterhin generisch.
+    shell = AgentProgress(ProgressStage.TOOL, tool="run_shell", summary="shell — qmd")
+    raw_shell = AgentProgress(ProgressStage.TOOL, tool="run_shell", summary="rm -rf /tmp/x")
+    assert _tool_text(shell, GEOMETRIC) == "shell — qmd"
+    assert _tool_text(shell, EXPRESSIVE) == "Running qmd"
+    assert _tool_text(raw_shell, EXPRESSIVE) == "Running command"
+
+    skill = AgentProgress(
+        ProgressStage.TOOL, tool="skill_view", summary="skill — evidence-hygiene"
+    )
+    assert _tool_text(skill, EXPRESSIVE) == "Reading skill — evidence-hygiene"
 
     assert style_for("expressive") is EXPRESSIVE
     assert style_for("nonsense") is GEOMETRIC   # unbekannt kippt die Vorgabe nie

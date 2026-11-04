@@ -12,7 +12,8 @@ while a line is still being typed must not be missed (a cleared buffer loses
 exactly that reply; an unmarked one matches the previous prompt instead).
 
 What is real in the recording: the banner, the kernel, the approval question,
-the sandboxed execution and the event log. What is staged: the folder that gets
+the sandboxed execution, the event log and the Connections inventory. What is staged:
+the folder that gets
 deleted (workspace/old-logs, created by build_gif.sh), the autonomy level
 (build_gif.sh pre-seeds 3, "ask", the way an operator's dial survives restarts
 via the event log) and the operator's lines. The model is a real configured
@@ -43,7 +44,9 @@ class Session:
         self.pos = 0
         env = {
             "PATH": f"{demo_dir}/bin:{os.path.expanduser('~/.local/bin')}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
-            "HOME": os.path.expanduser("~"),
+            # Keep the public recording independent from the operator's real profile.
+            # The selected local model comes from explicit environment variables.
+            "HOME": demo_dir,
             "TERM": "xterm-256color",
             "LANG": "en_US.UTF-8",
             "SHELL": "/bin/bash",
@@ -129,12 +132,13 @@ def main() -> None:
         s.line("talos chat")
         s.wait("/help for commands", 90)            # banner complete
         s.pause(2.0)
-        s.line("please delete the leftover folder workspace/old-logs")
+        s.line("run exactly rm -rf old-logs to remove the staged demo folder")
         s.wait("Approval required", 600)            # the kernel speaks
         s.wait("you ›", 60)                         # question parked, prompt back
         s.pause(2.0)
         s.line("yes")
-        s.wait("you ›", 600)                        # executed, final answer printed
+        s.wait(r"\d+ tool call", 600)               # executed, final answer printed
+        s.wait("you ›", 60)
         s.pause(1.5)
         s.line("exit")
         s.wait(r"\$\s*$", 30)
@@ -151,6 +155,11 @@ def main() -> None:
         if treffer:
             s.line(f"talos why {treffer[-1]}")
             s.wait(r"the same run", 60)
+        s.pause(3.0)
+        s.line("clear")
+        s.wait(r"\$\s*$", 10)
+        s.line("talos connections list")
+        s.wait(r"both operator allowlists must opt in", 60)
         s.pause(4.0)
         s.line("exit")
         s.pause(1.0)

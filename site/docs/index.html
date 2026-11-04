@@ -244,7 +244,7 @@ html.js .rv.in{opacity:1; transform:none}
     <p class="lede">That one decision shapes the rest of this manual. It is why the
     command list is short, and why a few obvious conveniences are missing on purpose.</p>
     <div class="spec-row">
-      <div class="spec"><b>3489</b>automated tests</div>
+      <div class="spec"><b>3492</b>automated tests</div>
       <div class="spec"><b>277/277</b>adversarial</div>
       <div class="spec"><b>996</b>gate lines</div>
       <div class="spec"><b>37</b>gated tools</div>
@@ -400,6 +400,9 @@ talos connections draft --help</pre>
     One imported skill can be activated later through the managed-skill validator;
     staging can be moved intact to a recovery archive. Passwords, permissions,
     schedules, plugins, sessions, databases and live MCP access are not imported.</p>
+    <p><a href="https://github.com/talos-kernel/Talos/blob/main/docs/connections.md">Talos Connections</a>
+    lists the operator-owned isolated-worker registry and stores only disabled,
+    secret-free drafts. A draft cannot execute and grants no permission.</p>
   </section>
 
   <section id="run" class="rv">
@@ -490,6 +493,9 @@ Background #1 started: go through /var/log and summarise today's…
   id bg_a1b2c3d4e5f6 · runs unattended, so anything needing approval is refused</pre>
     <p>The result arrives later as its own message, marked as a report rather than as a
     reply to whatever you asked in the meantime.</p>
+    <p>Timed schedules are also quiet while they work. Their final result arrives once
+    as a labelled scheduled-run notification with its job ID and management commands;
+    detailed tool evidence remains in the audit log.</p>
     <div class="note warn">
       <b>A background task is a scheduled run, not a helper with your rights</b>
       <p>Nobody is sitting in front of it. So the same ceiling applies as for a timed

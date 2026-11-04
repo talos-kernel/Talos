@@ -2,7 +2,7 @@
 import threading
 import time
 
-from .channel import Inbound, Principal, Trust
+from .channel import Inbound, Principal, ScheduledRun, Trust
 from .eventlog import Event, new_run_id
 
 
@@ -39,7 +39,8 @@ def dispatch_due(*, schedules, registry, allowed_principals, unattended,
                         continue
                     update = Inbound(principal=principal, conversation=task.conversation,
                                      text=ready.text,
-                                     dedup_key=f"schedule:{task.id}:{task.next_run}")
+                                     dedup_key=f"schedule:{task.id}:{task.next_run}",
+                                     scheduled=ScheduledRun(task.id, task.prompt))
                     log.append(Event(new_run_id(), "schedule", "schedule.fired", {"id": task.id}))
                     conductor.handle(update, before_reply=ready.before_reply)
             finally:
