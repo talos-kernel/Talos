@@ -1773,7 +1773,10 @@ class Conductor:
         Freigabe-Dialog (`_approval_reply`). Eine zweite, wachsende Nachricht daneben
         waere genau die Dublette, die es nicht geben darf — also gar nicht erst anfangen.
         """
-        if self.begin_reply is None:
+        # Scheduled work has its own final notification contract. Streaming its model
+        # text into the conversation would mix that contract with an interactive turn
+        # and could leave a partial, unlabelled cron result behind after a crash.
+        if update.scheduled is not None or self.begin_reply is None:
             return None
         try:
             stream = self.begin_reply(update.conversation)
@@ -1823,7 +1826,7 @@ class Conductor:
         Anhaenge SIND die Antwort.
         """
         delivered = False
-        if text.strip() or not media:
+        if text.strip() or not media or update.scheduled is not None:
             if stream is not None:
                 try:
                     if stream.adopt(text):
@@ -1950,7 +1953,9 @@ class Conductor:
         return delivered
 
     def _begin_activity(self, update: Inbound, run_id: str) -> Activity | None:
-        if self.begin_activity is None:
+        # Interactive work shows a live trail; a scheduler run stays quiet and later
+        # sends one labelled result. Audit events still hold every tool receipt.
+        if update.scheduled is not None or self.begin_activity is None:
             return None
         try:
             return self.begin_activity(update.conversation)
@@ -2253,6 +2258,8 @@ class Conductor:
     def _reply(
         self, update: Inbound, run_id: str, text: str, *, propagate_uncertain: bool = False
     ) -> bool:
+        if update.scheduled is not None:
+            text = update.scheduled.wrap(text)
         try:
             self.send(update.conversation, text)
             self.log.append(Event(run_id, "conductor", "reply.sent", {}))
@@ -2273,6 +2280,8 @@ class Conductor:
         self, update: Inbound, run_id: str, message: StructuredMessage,
         *, propagate_uncertain: bool = False,
     ) -> bool:
+        if update.scheduled is not None:
+            message = replace(message, text=update.scheduled.wrap(message.text))
         try:
             if self.send_structured is None:
                 self.send(update.conversation, message.text)

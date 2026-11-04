@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Build the public Telegram demo without contacting Telegram.
 
-The transport and chat chrome are simulated. Talos' work-trail, reply receipt and
-background-completion text are produced by the current Python implementation, so a
-wording change in the product is visible the next time this asset is rebuilt.
+The transport and chat chrome are simulated. Talos' work-trail, reply receipt,
+background-completion text and scheduled-result wrapper are produced by the current
+Python implementation, so a wording change is visible when this asset is rebuilt.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ import textwrap
 from PIL import Image, ImageDraw, ImageFont
 
 from talos.agent_loop import AgentProgress, ProgressStage
+from talos.channel import ScheduledRun
 from talos.notify import Watch, completion_text
 from talos.telegram import TelegramActivity
 from talos.ux import EXPRESSIVE
@@ -77,16 +78,18 @@ class DemoClient:
         return
 
 
-def progress(tool: str, status: str, *, step: int) -> AgentProgress:
+def progress(tool: str, status: str, *, step: int, summary: str = "") -> AgentProgress:
     stage = ProgressStage.TOOL if status == "running" else ProgressStage.RESULT
-    return AgentProgress(stage, tool=tool, status=status, step=step, max_steps=6)
+    return AgentProgress(
+        stage, tool=tool, status=status, step=step, max_steps=7, summary=summary
+    )
 
 
 def plain(text: str) -> str:
     return html.unescape(re.sub(r"<[^>]+>", "", text))
 
 
-def talos_states() -> tuple[str, str, str, str]:
+def talos_states() -> tuple[str, str, str, str, str]:
     client = DemoClient()
     activity = TelegramActivity(
         client,
@@ -99,18 +102,24 @@ def talos_states() -> tuple[str, str, str, str]:
         name="Talos",
         style=EXPRESSIVE,
     )
-    activity.progress(progress("read_file", "running", step=1))
+    activity.progress(
+        progress("skill_view", "running", step=1, summary="skill — evidence-hygiene")
+    )
+    activity.progress(progress("skill_view", "done", step=1))
+    activity.progress(progress("read_file", "running", step=2, summary="read — notes.md"))
     client.now[0] = 3
     reading = plain(client.messages[client.sent_order[0]])
-    activity.progress(progress("read_file", "done", step=1))
-    activity.progress(progress("write_file", "running", step=2))
+    activity.progress(progress("read_file", "done", step=2))
+    activity.progress(
+        progress("write_file", "running", step=3, summary="write — summary.md")
+    )
     client.now[0] = 7
-    activity.progress(progress("write_file", "needs_human", step=2))
+    activity.progress(progress("write_file", "needs_human", step=3))
     approval = plain(client.messages[client.sent_order[0]])
-    activity.progress(progress("write_file", "done", step=2))
-    activity.progress(progress("delegate_codex", "running", step=3))
+    activity.progress(progress("write_file", "done", step=3))
+    activity.progress(progress("delegate_codex", "running", step=4))
     client.now[0] = 15
-    activity.progress(progress("delegate_codex", "done", step=3))
+    activity.progress(progress("delegate_codex", "done", step=4))
     activity.succeed()
     trail = plain(client.messages[client.sent_order[0]])
     receipt = plain(client.messages[client.sent_order[-1]])
@@ -120,7 +129,10 @@ def talos_states() -> tuple[str, str, str, str]:
         {"state": "done", "summary": "The summary matches the source notes.",
          "files": [], "returncode": 0},
     )
-    return reading, approval, trail + "\n\n" + receipt, worker
+    scheduled = ScheduledRun("41c226d2", "Daily project status").wrap(
+        "The project is healthy. The dependency scan found no known vulnerabilities."
+    )
+    return reading, approval, trail + "\n\n" + receipt, worker, scheduled
 
 
 def font(size: int) -> ImageFont.FreeTypeFont:
@@ -142,7 +154,7 @@ def rich_text(draw: ImageDraw.ImageDraw, xy: tuple[int, int], text: str,
               *, regular: ImageFont.FreeTypeFont, fill: str) -> None:
     """Draw mixed text with the native colour-emoji font instead of tofu boxes."""
     x, y = xy
-    emoji_symbols = {"⏱", "⏸", "⏳", "✅", "❌", "✍", "↩"}
+    emoji_symbols = {"⏰", "⏱", "⏸", "⏳", "✅", "❌", "✍", "↩"}
     index = 0
     while index < len(text):
         char = text[index]
@@ -215,7 +227,7 @@ def frame(messages: list[tuple[str, bool]], *, approval: bool = False,
 
 
 def main() -> None:
-    reading, approval_text, finished, worker = talos_states()
+    reading, approval_text, finished, worker, scheduled = talos_states()
     user = "Summarise notes.md, save the result, then have a worker verify it."
     approval_card = (
         "Approval required\nwrite_file · workspace/summary.md\n"
@@ -232,8 +244,10 @@ def main() -> None:
                (finished, False)], caption="5 · reply receipt separates pending work"),
         frame([(finished, False), (worker, False)],
               caption="6 · the background result arrives separately"),
+        frame([(scheduled, False)],
+              caption="7 · a scheduled result is one labelled notification"),
     ]
-    durations = [1400, 1800, 2200, 1100, 2600, 3000]
+    durations = [1400, 1800, 2200, 1100, 2600, 2800, 3200]
     frames[0].save(
         OUT,
         save_all=True,

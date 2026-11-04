@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
@@ -1076,8 +1077,32 @@ def _safe_tool_summary(tool: str, args: dict, targets: tuple[str, ...]) -> str:
         "computer_run": "computer action",
         "computer_status": "computer status",
         "ask_operator": "clarifying question",
+        "skill_view": "skill",
     }
     label = labels.get(tool, "run tool")
+    if tool == "run_shell":
+        command = args.get("command")
+        if isinstance(command, str):
+            try:
+                words = shlex.split(command, posix=True)
+            except ValueError:
+                words = []
+            # Assignments can contain the very secret this display must not reveal.
+            words = [
+                word for word in words
+                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", word)
+            ]
+            program = os.path.basename(words[0]) if words else ""
+            if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,39}", program):
+                return f"{label} — {program}"
+        return label
+    if tool == "skill_view":
+        name = args.get("name")
+        if isinstance(name, str) and re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", name
+        ):
+            return f"{label} — {name}"
+        return label
     if tool not in {"read_file", "write_file", "undo_last"}:
         return label
     raw = args.get("path")

@@ -24,6 +24,7 @@ Stufe wirkt darum wie der Autonomie-Regler: sie kann nur zumachen, nie aufmachen
 """
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 from enum import IntEnum
@@ -142,6 +143,32 @@ class StructuredMessage:
 
 
 @dataclass(frozen=True)
+class ScheduledRun:
+    """Trusted scheduler metadata used only to label the final delivery.
+
+    It grants nothing and never enters the model prompt. The scheduler constructs it
+    from the durable task row; normal channel input cannot claim to be a scheduled run.
+    """
+
+    job_id: str
+    name: str
+
+    def wrap(self, body: str) -> str:
+        """Render one deterministic result notice without exposing scheduler internals."""
+        safe_id = re.sub(r"[^A-Za-z0-9_.-]", "", str(self.job_id))[:64] or "unknown"
+        safe_name = " ".join(str(self.name).split())[:96] or "Scheduled task"
+        report = str(body).strip() or "No report was produced."
+        return (
+            f"⏰ Scheduled run: {safe_name}\n"
+            f"(job_id: {safe_id})\n"
+            "-------------\n\n"
+            f"{report}\n\n"
+            "Manage: /schedules\n"
+            f"Stop: /unschedule {safe_id}"
+        )
+
+
+@dataclass(frozen=True)
 class Inbound:
     """Eine eingegangene Nachricht — kanal-unabhängig.
 
@@ -155,6 +182,10 @@ class Inbound:
     text: str
     dedup_key: str
     callback: CallbackQuery | None = None
+    # Set only by the local scheduler. Keeping this typed and out of ``text`` means
+    # the model cannot forge a cron header and the Conductor can keep scheduled runs
+    # quiet until their separate final notification.
+    scheduled: ScheduledRun | None = None
 
     @property
     def channel(self) -> str:

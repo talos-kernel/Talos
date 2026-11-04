@@ -14,15 +14,23 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DEMO="${DEMO_DIR:-/tmp/talos-demo}"
 CAST="${DEMO}.cast"
 OUT="$REPO/assets/talos-demo.gif"
+if [[ -x "$REPO/.venv/bin/python" ]]; then
+  PYTHON_BIN="$REPO/.venv/bin/python"
+else
+  PYTHON_BIN="${TALOS_DEMO_PYTHON:-$(command -v python3)}"
+fi
+[[ -x "$PYTHON_BIN" ]] || { echo "No executable Python found for the demo" >&2; exit 2; }
 
 # 1. Sauberer Demo-Baum aus den getrackten Dateien — derselbe Weg wie sync-public.
 rm -rf "$DEMO"
 mkdir -p "$DEMO"
 git -C "$REPO" ls-files -z | (cd "$REPO" && xargs -0 tar cf -) | tar xf - -C "$DEMO"
-ln -sfn "$REPO/.venv" "$DEMO/.venv"
+mkdir -p "$DEMO/.venv/bin"
+ln -sfn "$PYTHON_BIN" "$DEMO/.venv/bin/python"
 mkdir -p "$DEMO/data" "$DEMO/workspace/old-logs"
 
-# 2. Der harmlose Schreibanlass: ein uebrig gebliebener Ordner im Workspace.
+# 2. Der harmlose Schreibanlass: ein uebrig gebliebener Ordner im Workspace. Die
+#    Shell-Sandbox startet bereits in workspace/, daher heisst das Ziel dort old-logs.
 printf '2026-08-14 nightly sync ok\n' > "$DEMO/workspace/old-logs/backup-08-14.log"
 printf '2026-08-15 nightly sync ok\n' > "$DEMO/workspace/old-logs/backup-08-15.log"
 printf 'scratch\n' > "$DEMO/workspace/old-logs/scratch.txt"
@@ -31,7 +39,7 @@ printf 'scratch\n' > "$DEMO/workspace/old-logs/scratch.txt"
 #     soll die Freigabe-Frage zeigen, und auf Stufe 5 wuerde die Attended-Routine
 #     das sandboxed rm still freigeben. Der Stand kommt ueber das Event-Log — genau
 #     so ueberlebt der Regler Neustarts, das ist also Betreiberzustand, kein Hack.
-PYTHONPATH="$DEMO" "$REPO/.venv/bin/python" - "$DEMO" <<'PY'
+PYTHONPATH="$DEMO" "$PYTHON_BIN" - "$DEMO" <<'PY'
 import sys
 from pathlib import Path
 from talos.eventlog import Event, EventLog

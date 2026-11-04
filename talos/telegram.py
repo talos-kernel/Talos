@@ -142,6 +142,7 @@ TOOL_LABELS: dict[str, str] = {
     "vault_search": "search vault",
     "vault_get": "read vault note",
     "vault_write_note": "write vault note",
+    "skill_view": "skill",
 }
 TOOL_LABEL_FALLBACK = "tool"
 LABEL_PROTECTED = "protected file"
@@ -1579,6 +1580,13 @@ def _tool_text(event: AgentProgress, style: Style = GEOMETRIC) -> str:
     if tool in ("run_shell", "remote_exec"):
         if style is EXPRESSIVE and tool == "remote_exec":
             return "Remote command"
+        if tool == "run_shell":
+            safe_program = re.fullmatch(
+                r"shell — ([A-Za-z0-9][A-Za-z0-9._+-]{0,39})", summary
+            )
+            if safe_program is not None:
+                program = safe_program.group(1)
+                return f"Running {program}" if style is EXPRESSIVE else f"shell — {program}"
         verb = style.tool_verbs.get(tool)
         return f"{verb} command" if verb else LABEL_SHELL_GENERIC
     # Der Loop liefert das Basislabel manchmal mit ("write — notes.md"); es wird abgetrennt,
