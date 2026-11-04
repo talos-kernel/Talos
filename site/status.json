@@ -3,7 +3,7 @@
   "release_state": "released",
   "source_state": "release",
   "installer_version": "0.20.0-rc.2",
-  "tests": 3477,
+  "tests": 3489,
   "redteam_faelle": 277,
   "kernel_zeilen": 996,
   "werkzeuge": 37,

@@ -15,6 +15,12 @@ remain historical snapshots. Beta does not mean error-free operation.
   Hermes and OpenClaw profile text, memory and Agent Skills. The preview writes
   nothing, never activates imported instructions, and excludes secrets,
   permissions, executable configuration, schedules, sessions and databases.
+- Add fingerprint-confirmed `--apply` into private inactive staging, recoverable
+  rollback by archive move, and one-at-a-time imported-skill activation through
+  the existing managed-skill validation and history writer.
+- Add Talos Connections: a native public inventory for isolated-worker MCP
+  connections and secret-free disabled drafts. Drafts cannot execute and still
+  require separate agent and worker allowlist opt-in.
 
 ## [0.20.0-rc.2] — 2026-11-01
 

@@ -75,6 +75,13 @@ class ImportPlan:
             "items": [item.to_dict() for item in self.items],
         }
 
+    def fingerprint(self) -> str:
+        """Stable confirmation token; contains no source root or file content."""
+        encoded = json.dumps(
+            self.to_dict(), ensure_ascii=True, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
     def render(self) -> str:
         counts = {status: 0 for status in (
             STATUS_STAGED, STATUS_CONFLICT, STATUS_REJECTED, STATUS_SKIPPED
@@ -98,6 +105,7 @@ class ImportPlan:
                 )
             )
         )
+        lines.append(f"Apply confirmation: {self.fingerprint()}")
         return "\n".join(lines)
 
 

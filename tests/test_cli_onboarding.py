@@ -125,7 +125,7 @@ def test_bad_arguments_never_dispatch_an_agent_run(args):
 
 def test_command_help_and_typo_recovery_do_not_load_configuration(monkeypatch, capsys):
     monkeypatch.setattr(config, 'load_config', lambda **kw: pytest.fail('loaded config'))
-    for command in ('config', 'setup', 'import', 'ask', 'chat', 'status', 'verify', 'version'):
+    for command in ('config', 'setup', 'import', 'connections', 'ask', 'chat', 'status', 'verify', 'version'):
         assert cli.dispatch(['help', command]) == 0
     assert cli.dispatch(['doctro']) == 2
     assert 'Did you mean talos doctor?' in capsys.readouterr().out
@@ -149,6 +149,51 @@ def test_import_command_previews_without_writing_source_or_target(tmp_path, monk
     assert before == after and not target.exists()
     assert 'Dry run only' in text and '[staged] identity' in text
     assert str(source) not in text
+
+
+def test_import_cli_applies_activates_one_skill_and_rolls_back(tmp_path, monkeypatch, capsys):
+    from talos import paths
+
+    source = tmp_path / 'hermes-home'
+    source.mkdir()
+    (source / 'config.yaml').write_text('model: example\n', encoding='utf-8')
+    skill = source / 'skills' / 'portable-helper' / 'SKILL.md'
+    skill.parent.mkdir(parents=True)
+    skill.write_text(
+        '---\nname: portable-helper\ndescription: Portable helper\n---\n\nCheck results.\n',
+        encoding='utf-8',
+    )
+    target = tmp_path / 'talos-home'
+    target.mkdir(mode=0o700)
+    monkeypatch.setattr(paths, 'PROFILE_DIR', target)
+
+    assert cli.dispatch(['import', 'hermes', '--source', str(source), '--dry-run']) == 0
+    preview = capsys.readouterr().out
+    fingerprint = preview.rsplit('Apply confirmation: ', 1)[1].splitlines()[0]
+    assert cli.dispatch([
+        'import', 'hermes', '--source', str(source), '--apply', '--confirm', fingerprint,
+    ]) == 0
+    assert (target / 'data/import-staging/hermes/import-manifest.json').is_file()
+    assert cli.dispatch([
+        'import', 'activate-skill', 'hermes', 'portable-helper', '--confirm', fingerprint,
+    ]) == 0
+    assert (target / 'skills/portable-helper/SKILL.md').is_file()
+    assert cli.dispatch(['import', 'rollback', 'hermes', '--confirm', fingerprint]) == 0
+    assert not (target / 'data/import-staging/hermes').exists()
+
+
+def test_import_cli_refuses_apply_from_agent_sandbox(tmp_path, monkeypatch, capsys):
+    from talos import paths
+
+    target = tmp_path / 'talos-home'
+    target.mkdir(mode=0o700)
+    monkeypatch.setattr(paths, 'PROFILE_DIR', target)
+    monkeypatch.setenv(MARKER, '1')
+    result = cli.dispatch([
+        'import', 'hermes', '--source', str(tmp_path / 'source'), '--apply',
+        '--confirm', 'a' * 64,
+    ])
+    assert result == 3 and 'agent sandbox' in capsys.readouterr().out
 
 
 @pytest.mark.parametrize('args', [

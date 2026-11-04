@@ -21,10 +21,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3477).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3489).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-3477-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-3489-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-277%2F277-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-996%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-37%20gated-8a4318.svg" alt="Tools">
@@ -259,11 +259,18 @@ Use `talos doctor` for missing prerequisites and `talos help <command>` for comm
 A running service needs a restart after changing its file settings.
 
 Coming from Hermes or OpenClaw? `talos import` produces a read-only, redacted plan for
-portable profile files, memory documents and Agent Skills. It does not copy anything in
-this release. Secrets, approvals, command allowlists, executable plugins and MCP commands,
-schedules, sessions and databases are skipped without reading their values. Every proposed
-skill remains inactive until a later, separately reviewed activation path passes Talos'
-existing approval boundary. See [the migration preview contract](docs/import-agents.md).
+portable profile files, memory documents and Agent Skills. Repeating its fingerprint with
+`--apply` copies that exact plan into private inactive staging; it neither overwrites active
+state nor inherits authority. Staging can be moved intact into a recovery archive, and an
+imported skill activates only by name through the existing managed-skill validator. Secrets
+are re-entered, permissions are approved again, and schedules/plugins/connections remain
+disabled review tasks. See [the migration contract](docs/import-agents.md).
+
+**Talos Connections** is the public connector surface built into Talos. It inventories the
+existing isolated-worker MCP registry and stores secret-free connector drafts in a disabled
+state. It bundles no account, endpoint, credential or private service, and a draft cannot run
+until the operator separately installs it and opts in through both allowlists. See
+[the Connections contract](docs/connections.md).
 
 Later, a single part can be redone without repeating the rest:
 
@@ -281,6 +288,8 @@ python -m talos models --refresh         # force the same provider-catalogue syn
 python -m talos import list              # supported agent-home previews
 python -m talos import hermes --source "$HOME/.hermes" --dry-run
 python -m talos import openclaw --source "$HOME/.openclaw" --dry-run
+python -m talos import hermes --source "$HOME/.hermes" --apply --confirm <fingerprint>
+python -m talos connections list         # active worker registry + disabled drafts
 python -m talos status                   # what it did last
 python -m talos chat                     # a session here; approvals at a terminal
 python -m talos ask "how many …?"        # one turn from here, answer on stdout
@@ -899,7 +908,8 @@ command centre.
 | `chat` | a session here; approvals at a terminal |
 | `ask "…"` | one turn, for scripts and cron |
 | `setup` · `doctor` · `config` · `models` | set it up, and find out why something won't work |
-| `import list` · `import <hermes\|openclaw> --source … --dry-run` | preview portable agent data without writing or activating it |
+| `import list` · `import <hermes\|openclaw> …` | preview, stage, activate one skill, or archive rollback |
+| `connections list` · `connections draft …` | isolated-worker inventory and disabled secret-free connector drafts |
 | `status` · `events` · `why <id>` | what it did, and why that was allowed or refused |
 | `report` · `review` | a record someone else can read · what this installation should change |
 | `update` · `version` | signature checked, tests first |
@@ -936,11 +946,12 @@ sitting — a gate you cannot read is not a gate.
 | `vision.py` / `hearing.py` / `speech.py` / `frames.py` | reading a picture, hearing a recording, speaking, one still out of a video — ordinary READ/WRITE with a target |
 | `cli.py` / `doctor.py` / `configcli.py` / `schema.py` | the subcommands: diagnose, read and change settings — the schema decides what may be written, and the allowlist and the network exceptions never are |
 | `askcli.py` | `talos ask` — one turn from a script, as a channel with no special right |
-| `import_agents.py` | bounded, redacted, zero-write migration previews; imported text remains inactive |
+| `import_agents.py` / `import_apply.py` | bounded migration plans, inactive atomic staging, recovery archive and managed skill activation |
+| `connections.py` / `mcpservers.py` | public disabled connection drafts and the operator-owned isolated-worker registry |
 | `models.py` / `model_catalog_sync.py` | provider-bound live model lists; complete snapshots may replace membership, incomplete ones only add, and failures keep the last good cache |
 | `updater.py` | update beside the old tree, both suites in the new one, switch only if green |
 | `eventlog.py` / `memory.py` / `usage.py` | durable log, conversation memory, metering |
-| `mcpservers.py` / `skillwrite.py` | the operator-owned MCP registry, and the one gated write into the skills directory |
+| `skillwrite.py` | the one gated write into the skills directory |
 
 ## Roadmap
 
