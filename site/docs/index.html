@@ -257,6 +257,7 @@ html.js .rv.in{opacity:1; transform:none}
     <li><a href="#install">Raise the keep</a></li>
     <li><a href="#identity">Name the sworn</a></li>
     <li><a href="#model">Give it a mind</a></li>
+    <li><a href="#migration">Move from another agent</a></li>
     <li><a href="#run">Set it to work</a></li>
     <li><a href="#session">The terminal session</a></li>
     <li><a href="#background">Work on the side</a></li>
@@ -374,6 +375,31 @@ python -m talos help setup</pre>
       whose key is missing now fails the <em>switch</em>  ·  the previous provider stays
       active instead of a conversation dying mid-turn.</p>
     </div>
+  </section>
+
+  <section id="migration" class="rv">
+    <h2><span class="n">Source note</span>Move from Hermes or OpenClaw</h2>
+    <div class="note warn">
+      <b>Available on main, not in the signed 0.20.0-rc.2 installer</b>
+      <p>The signed release remains immutable. Use these commands only from a source
+      checkout that contains them, or wait for the next signed release.</p>
+    </div>
+    <p>Preview first. Talos inventories only portable profile text, memory documents
+    and Agent Skills, redacts the plan and gives it a fingerprint.</p>
+<pre>talos import list
+talos import hermes --source "$HOME/.hermes" --dry-run
+talos import openclaw --source "$HOME/.openclaw" --dry-run
+
+<span class="c"># apply exactly the reviewed plan into inactive private staging</span>
+talos import hermes --source "$HOME/.hermes" --apply --confirm &lt;fingerprint&gt;
+
+<span class="c"># public connector inventory and disabled secret-free drafts</span>
+talos connections list
+talos connections draft --help</pre>
+    <p><code>--apply</code> does not overwrite active state or activate imported skills.
+    One imported skill can be activated later through the managed-skill validator;
+    staging can be moved intact to a recovery archive. Passwords, permissions,
+    schedules, plugins, sessions, databases and live MCP access are not imported.</p>
   </section>
 
   <section id="run" class="rv">
@@ -524,7 +550,7 @@ You:                  and add the offsite copy</pre>
 
   <section id="commands" class="rv">
     <h2><span class="n">Section 08</span>Every command</h2>
-    <p>Sixteen, each answering a question an operator actually asks. Every one takes
+    <p>Twenty-five top-level commands, each answering a question an operator actually asks. Every one takes
     <code>--help</code>.</p>
     <div class="tw"><table>
       <thead><tr><th>Command</th><th>What it answers</th></tr></thead>
@@ -534,17 +560,26 @@ You:                  and add the offsite copy</pre>
       <tr><td>setup</td><td class="d">How do I set this up. Writes a file and stops.</td></tr>
       <tr><td>doctor</td><td class="d">Why doesn't something work. Changes nothing; no network without <code>--online</code>.</td></tr>
       <tr><td>config</td><td class="d">What's in there, and how do I change it.</td></tr>
+      <tr><td>import</td><td class="d">Preview or stage portable Hermes/OpenClaw data without inheriting authority.</td></tr>
+      <tr><td>connections</td><td class="d">List isolated-worker connections or store a disabled secret-free draft.</td></tr>
       <tr><td>models</td><td class="d">What can it think with.</td></tr>
+      <tr><td>local-check</td><td class="d">Probe a local Ollama or LM Studio endpoint without operator data.</td></tr>
       <tr><td>status</td><td class="d">What did it do last.</td></tr>
       <tr><td>health [--json]</td><td class="d">Is it well  ·  runs, errors, schedules, anchor.</td></tr>
+      <tr><td>dashboard</td><td class="d">Open a localhost-only observing view.</td></tr>
+      <tr><td>proof</td><td class="d">Compact outcome receipt without prompts or result bodies.</td></tr>
+      <tr><td>computer</td><td class="d">Inspect or open the separately qualified private desktop boundary.</td></tr>
       <tr><td>events</td><td class="d">What happened  ·  filter by run, type or tool.</td></tr>
       <tr><td>why &lt;id&gt;</td><td class="d">Why was <em>that</em> allowed or refused, and what came of it.</td></tr>
       <tr><td>verify</td><td class="d">Prove the log was not edited after the fact.</td></tr>
       <tr><td>anchor [--send]</td><td class="d">Pin the chain head  ·  catches tail truncation.</td></tr>
+      <tr><td>briefing</td><td class="d">Build or deliver a morning status from recorded health and chain facts.</td></tr>
       <tr><td>report</td><td class="d">The log as a record someone else can read, with a chain digest.</td></tr>
+      <tr><td>metrics</td><td class="d">Latency and tool-success measurements from the event log.</td></tr>
       <tr><td>review</td><td class="d">What this installation should change about itself.</td></tr>
       <tr><td>update</td><td class="d">New version beside the old one; signature checked, tests first.</td></tr>
       <tr><td>version</td><td class="d">Which build is this.</td></tr>
+      <tr><td>help</td><td class="d">The current command list or help for one command.</td></tr>
       </tbody>
     </table></div>
     <div class="note">

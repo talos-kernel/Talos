@@ -383,7 +383,7 @@ html.js .rv.in{opacity:1;transform:none}
 <body class="talos-home">
 
 <a class="skip-link" href="#main-content">Skip to content</a>
-<nav class="marble-nav" aria-label="Main navigation"><a class="marble-brand" href="/">TALOS<span>THE OPERATOR'S AGENT</span></a><div class="marble-links" id="marble-links"><a href="/#kernel">Kernel</a><a href="/#grants">Grants</a><a href="/docs/">Codex</a><a href="/console.html">Command Hall</a><a href="/faq/">FAQ</a><details class="explore"><summary>Explore</summary><div><a href="/#chronicle">Chronicle</a><a href="/#does">Deeds</a><a href="/#tools">Arsenal</a><a href="/#nail">The Nail</a><a href="/#ledger">Ledger</a><a href="/#limits">Bounds</a><a href="/#numbers">Proof</a><a href="/registry/">Roll of Arms</a><a href="/vergleich/">Weigh the Orders</a><a href="/redteam/">Adversarial trials</a><a href="/watcher/">The Watcher</a></div></details><a class="nav-cta" href="/#install">Raise the keep ↗</a></div><button class="mobile-menu" aria-expanded="false" aria-controls="marble-links">Menu</button></nav>
+<nav class="marble-nav" aria-label="Main navigation"><a class="marble-brand" href="/">TALOS<span>THE OPERATOR'S AGENT</span></a><div class="marble-links" id="marble-links"><a href="/#kernel">Kernel</a><a href="/#grants">Grants</a><a href="/docs/">Codex</a><a href="/console.html">Command Hall</a><a href="/faq/">FAQ</a><details class="explore"><summary>Explore</summary><div><a href="/#chronicle">Chronicle</a><a href="/#does">Deeds</a><a href="/#source">Latest source</a><a href="/#tools">Arsenal</a><a href="/#nail">The Nail</a><a href="/#ledger">Ledger</a><a href="/#limits">Bounds</a><a href="/#numbers">Proof</a><a href="/registry/">Roll of Arms</a><a href="/vergleich/">Weigh the Orders</a><a href="/redteam/">Adversarial trials</a><a href="/watcher/">The Watcher</a></div></details><a class="nav-cta" href="/#install">Raise the keep ↗</a></div><button class="mobile-menu" aria-expanded="false" aria-controls="marble-links">Menu</button></nav>
 
 
 <div class="hall-story" id="top"><header class="marble-hero" id="main-content" tabindex="-1"><div class="hero-copy"><p class="eyebrow">SELF-HOSTED INTELLIGENCE. HUMAN AUTHORITY.</p><h1>Room to act.<br>Rules to keep.</h1><p class="hero-lede">Your AI agent for real work.<br>Your models. Your machine. Your command.</p><div class="hero-actions"><a class="marble-button" href="#mission">Witness the deed <span>↗</span></a><a class="text-link" href="#install">Raise the keep ↗</a></div><p class="hero-footnote">Open source · Terminal &amp; Telegram · MIT</p></div><div class="hall-art" aria-hidden="true"><div class="hall-travel"><div class="hall-camera"><div class="hall-sanctum"><img src="/sentinel.png" alt="" width="1254" height="1254"><div class="pedestal"></div></div><div class="hall-frame" style="--i:0;--turn:-1"></div><div class="hall-frame" style="--i:1;--turn:1"></div><div class="hall-frame" style="--i:2;--turn:-1"></div><div class="hall-frame" style="--i:3;--turn:1"></div><div class="hall-frame" style="--i:4;--turn:-1"></div><div class="hall-frame" style="--i:5;--turn:1"></div><div class="hall-frame" style="--i:6;--turn:-1"></div><div class="hall-frame" style="--i:7;--turn:1"></div><div class="hall-frame" style="--i:8;--turn:-1"></div></div></div><div class="hall-light"></div><div class="hall-caption"><span>FIG. 01 / THE GUARDIAN</span><span>MOVE TO EXPLORE</span></div></div><div class="hero-bottom"><span>The model proposes. It never decides.</span><a href="#mission">SCROLL INTO THE HALL ↓</a><button class="motion-toggle" aria-pressed="false">Pause motion</button></div></header></div>
@@ -533,13 +533,40 @@ html.js .rv.in{opacity:1;transform:none}
   </div>
 </section>
 
+<section id="source">
+  <div class="wrap">
+    <p class="sec-tag rv">new on main · source only</p>
+    <h2 class="rv">Move the work. Leave authority behind.</h2>
+    <p class="sub rv">The signed installer remains at 0.20.0-rc.2. The newer source on
+    <code>main</code> can prepare a bounded move from Hermes or OpenClaw and can record
+    disabled connector drafts. It never inherits an old agent's passwords, grants,
+    schedules or live connections.</p>
+    <div class="nails">
+      <div class="nail rv"><code>talos import … --dry-run</code><p>Inventory portable
+      profile text, memory documents and Agent Skills. The plan is redacted, read-only
+      and fingerprinted; sessions, databases and executable configuration stay out.</p></div>
+      <div class="nail rv"><code>--apply --confirm &lt;fingerprint&gt;</code><p>Copy exactly
+      that plan into private inactive staging. Archive the staging intact for recovery,
+      then activate one imported skill by name through the existing validator.</p></div>
+      <div class="nail rv"><code>talos connections</code><p>Inspect the isolated-worker
+      registry or store a secret-free connector draft. Drafts start disabled and cannot
+      run until the operator separately installs and allowlists them on both sides.</p></div>
+      <div class="nail rv"><code>current demos</code><p>Watch the current terminal and
+      Telegram recordings in the <a href="https://github.com/talos-kernel/Talos#talos--self-hosted-ai-agent">GitHub README</a>.
+      Their provenance states which parts are real and which transport is simulated.</p></div>
+    </div>
+    <p class="nail-foot rv">Source availability is not a release claim. Signed archives
+    remain immutable; wait for a later signed tag if you do not install from source.</p>
+  </div>
+</section>
+
 <section id="tools">
   <div class="wrap">
     <p class="sec-tag rv">the roll of arms</p>
     <h2 class="rv">Each instrument bears its declared power.</h2>
     <p class="sub rv">The kernel does not guess what a tool might do. Every tool declares its
     <strong>effect</strong> in the manifest, and anything undeclared is refused on sight.
-    <strong>18 read, 5 write, 10 exec  ·  33 in all.</strong></p>
+    <strong>21 read, 6 write, 10 exec  ·  37 in all.</strong></p>
     <div class="tools">
       <div class="tool-row rv">
         <div><h3>read</h3><div class="fx">free at autonomy 5</div></div>
