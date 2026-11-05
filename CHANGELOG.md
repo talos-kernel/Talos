@@ -9,6 +9,8 @@ remain historical snapshots. Beta does not mean error-free operation.
 
 ## [Unreleased]
 
+## [0.20.0-rc.3] — 2026-11-05
+
 ### Added
 
 - Add an explicit, read-only `talos import ... --dry-run` preview for portable
