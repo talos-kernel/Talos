@@ -1,9 +1,9 @@
 # From beta to a stable 0.20.0
 
-This tree identifies `0.20.0-rc.2`, followed by `0.20.0` only after the evidence
+This tree identifies `0.20.0-rc.3`, followed by `0.20.0` only after the evidence
 below passes. Publication is established by the signed release assets, not this
-source label. The upgrade baseline is `0.20.0-rc.1`. RC.2 updates pypdf to address newly
-reported high-severity advisories; its deployed observation window starts afresh.
+source label. The upgrade baseline is `0.20.0-rc.2`. RC.3 adds safe agent migration, Talos
+Connections and labelled scheduled results; its deployed observation window starts afresh.
 
 The historical `0.20.0-alpha.rc.*` artifacts qualified the earlier transition
 **into beta**. They are not candidates for this transition out of beta. `1.0.0`
@@ -31,7 +31,7 @@ not silently included in a broad claim that everything passed.
 | Real model flow | Isolated real-model E2E: read, approval/refusal, exactly-once effect, restart/state restoration and the event chain. Record provider and results; do not send external test messages. |
 | User-visible flow | Telegram reply/approval/background completion behavior, including conversation isolation and no false completion while waiting. Injected transport tests and an actual service probe are distinct evidence. |
 | Exact artifact | Build from the qualified public commit; SHA-256, pinned Ed25519 verification, tamper rejection and archive hygiene. Source tests alone do not qualify an archive. |
-| Installation/recovery | Clean install and RC.1→RC.2 signed upgrade on macOS and ARM64 Linux; check operator identity/configuration, selected model, history, schedules, file modes and rollback. Rehearse isolated service restart and retain the prior runtime. |
+| Installation/recovery | Clean install and RC.2→RC.3 signed upgrade on macOS and ARM64 Linux; check operator identity/configuration, selected model, history, schedules, file modes and rollback. Rehearse isolated service restart and retain the prior runtime. |
 | Delivery | Native Homebrew lifecycle, Pinokio clean/repeated install, and byte-for-byte HTTPS read-back of the release, website and installer definitions. Check main CI after each merge. |
 | Observation before stable | Seven consecutive calendar days on a deployed RC, with daily health/event-chain records, investigated errors, no unexplained restart and no unresolved security or data-loss regression. Preserve failed samples. A release-blocking runtime fix starts a new candidate/window. |
 | Stable promotion | Rebuild/sign the final version and requalify its exact bytes, including RC→stable upgrade and recovery. A version-only change is still a new artifact. |
@@ -48,7 +48,7 @@ Start with the current published baseline in a prepared, hash-locked development
 environment:
 
 ```sh
-python scripts/beta-gate.py --previous 0.20.0-rc.1 --current 0.20.0-rc.2
+python scripts/beta-gate.py --previous 0.20.0-rc.2 --current 0.20.0-rc.3
 python -m pytest macos/Tests -q
 python e2e.py
 ```
@@ -59,8 +59,8 @@ dependency locks, a disposable clean install, and signed upgrade/migration/rollb
 `--without-upgrade` is a partial source check and says so; it does not qualify a
 candidate. Tests and artifact downloads require their normal dependencies/network.
 
-For an unpublished candidate, use `--current 0.20.0-rc.2`, `--previous
-0.20.0-rc.1`, an explicit `--base` pointing to the candidate's `dist/` directory
+For an unpublished candidate, use `--current 0.20.0-rc.3`, `--previous
+0.20.0-rc.2`, an explicit `--base` pointing to the candidate's `dist/` directory
 parent, and `--assets-dir` containing both versions' archive/checksum/signature.
 The checkout's installer must name the candidate. The existing scripts support
 `file://` for an isolated pre-publication install. Run against the actual signed
@@ -91,6 +91,7 @@ installation or restart its service.
 | Artifact | State | Evidence boundary |
 |---|---|---|
 | `0.20.0-beta.9` | Published baseline | [Core main CI](https://github.com/talos-kernel/Talos/actions/runs/40661310306), [Homebrew](https://github.com/talos-kernel/homebrew-tap/actions/runs/40661911664), [Pinokio](https://github.com/talos-kernel/talos-pinokio/actions/runs/40663657826). These qualify beta.9 only. |
-| `0.20.0-rc.1` | Published, superseded candidate | Original signed assets remain available. Its observation days do not qualify RC.2. |
-| `0.20.0-rc.2` | Candidate source | Requires matching signed assets and platform/install/recovery evidence; seven new observation days start after rollout. |
+| `0.20.0-rc.1` | Published, superseded candidate | Original signed assets remain available. Its observation days do not qualify RC.3. |
+| `0.20.0-rc.2` | Published upgrade baseline | Original signed security release remains available; qualification now rehearses RC.2→RC.3. |
+| `0.20.0-rc.3` | Candidate source | Requires matching signed assets and platform/install/recovery evidence; seven new observation days start after rollout. |
 | `0.20.0` | Not qualified | Needs the RC observation window and final-artifact gates above. |

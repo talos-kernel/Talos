@@ -70,18 +70,18 @@ a handover, save and read back a local note, and compare release notes without i
 missing facts. Already tried it? [Share your first-run result](https://github.com/talos-kernel/Talos/issues/new?template=first_run.yml),
 including installation blockers. No star or positive review required.
 
-**Latest signed release — [0.20.0-rc.2](https://github.com/talos-kernel/Talos/releases/tag/v0.20.0-rc.2):**
-the security candidate hash-locks `pypdf` 6.21.4 after seven high-severity parser
-advisories affected RC.1. It retains the frozen operator contract and restarts the
-observation window required before stable 0.20.0.
+**Latest signed release — [0.20.0-rc.3](https://github.com/talos-kernel/Talos/releases/tag/v0.20.0-rc.3):**
+this candidate adds safe agent migration, Talos Connections and labelled scheduled
+results. It retains the pypdf 6.21.4 security fix and starts a fresh observation
+window before stable 0.20.0.
 
-**New on `main` — not yet in the signed RC.2 installer:** migration from Hermes or
+**New in RC.3:** migration from Hermes or
 OpenClaw can now fingerprint and apply an exact redacted plan into inactive staging,
 archive that staging for recovery, and activate one validated imported skill at a time.
 [Talos Connections](docs/connections.md) adds secret-free disabled connector drafts and
 an inventory of the existing isolated-worker registry. Neither feature inherits accounts,
 credentials, permissions, schedules or plugin authority. See the
-[migration contract](docs/import-agents.md) and [unreleased changelog](CHANGELOG.md#unreleased).
+[migration contract](docs/import-agents.md) and [release changelog](CHANGELOG.md).
 
 Recent milestones include [missions and projects](docs/missions.md), managed skill
 creation and restore, hash-locked installer tooling, and Telegram receipts that say
@@ -94,7 +94,7 @@ See the
 **Source versus release:** `main` can contain newer changes. Signed installers and
 package managers follow their pinned release; older archives remain immutable.
 
-RC.2 includes the Beta.8 pip 26.2.2 hash lock and isolates pip from per-user
+RC.3 includes the Beta.8 pip 26.2.2 hash lock and isolates pip from per-user
 configuration. When upgrading from Beta.7 or older with custom pip settings, use
 `PIP_CONFIG_FILE=/dev/null talos update` once; those older updaters still inherit pip
 configuration.
@@ -423,7 +423,7 @@ come from `stdin` instead of `getUpdates`.
 ```
 $ talos chat
 
-  ◉  Talos / 0.20.0-rc.2
+  ◉  Talos / 0.20.0-rc.3
      Your terminal. Your rules.
   ──────────────────────────────────────────────────────────────────────────
   model      claude-cli/claude-opus-4-1
@@ -988,7 +988,7 @@ artifact checks and the seven-day operating observation. The frozen
 [beta contract](docs/beta-contract.md), [recovery runbook](docs/recovery.md) and
 local `python scripts/beta-gate.py --previous <published-version>` make these checks repeatable.
 The [RC and stable qualification plan](docs/stable-readiness.md) tracks the next
-transition from beta through `0.20.0-rc.2` to `0.20.0`; stable remains subject to the RC observation and final-artifact gates. The path to 1.0
+transition from beta through `0.20.0-rc.3` to `0.20.0`; stable remains subject to the RC observation and final-artifact gates. The path to 1.0
 requires evidence from the beta line and a verified upgrade from a previous beta;
 it is not a calendar promise.
 
