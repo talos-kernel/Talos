@@ -779,12 +779,14 @@ class _Line:
     text: str
     started: float
     done_at: float | None = None
+    tool_id: str = ""
 
-    def render(self, now: float) -> str:
+    def render(self, now: float, *, identify_tool: bool = False) -> str:
         span = (self.done_at if self.done_at is not None else now) - self.started
         # Unter einer Sekunde keine Zahl: sonst zappelt die Zeile bei jedem Edit.
         stamp = f"  {span:.0f}s" if span >= 1.0 else ""
-        return f"{self.sym} {self.text}{stamp}"
+        identity = f" · [{self.tool_id}]" if identify_tool and self.tool_id else ""
+        return f"{self.sym} {self.text}{identity}{stamp}"
 
 
 def _keep_work_trail() -> bool:
@@ -837,6 +839,9 @@ class TelegramActivity:
     ) -> None:
         self._client = client
         self._style = style
+        # Only the header changes rhythm; reading content never moves. Telegram
+        # has no reduced-motion signal, so operators can explicitly disable this.
+        self._animate = os.environ.get("TALOS_STATUS_ANIMATION", "1").strip() == "1"
         self._chat_id = chat_id
         self._conversation = conversation
         self._background_jobs = background_jobs
@@ -861,6 +866,7 @@ class TelegramActivity:
         self._finished = False
         self._start = clock()
         self._last_update = self._start
+        self._last_progress = self._start
         # Serialize updates with terminal delivery: no heartbeat after the final state.
         self._lock = threading.RLock()
         # Noch KEINE Nachricht: erst ein Werkzeug rechtfertigt eine (siehe `_ensure_message`).
@@ -916,6 +922,7 @@ class TelegramActivity:
     def _progress(self, event: AgentProgress) -> None:
         if self._finished:
             return
+        self._last_progress = self._clock()
         self._current_stage = event.stage
         if event.stage is ProgressStage.TOOL:
             self._current_tool = event.tool
@@ -952,6 +959,7 @@ class TelegramActivity:
                     self._style.tool_symbol(event.tool),
                     _tool_text(event, self._style),
                     self._clock(),
+                    tool_id=event.tool if event.tool in TOOL_LABELS else "",
                 )
             )
             # Hier faellt die Entscheidung: ab jetzt gibt es etwas zu belegen.
@@ -968,6 +976,8 @@ class TelegramActivity:
         with self._lock:
             if self._finished:
                 return
+            if self._waiting:
+                return  # Approval is a resting state, not continuing execution.
             self._send_update()
             if self._message_id is None:
                 self._typing()
@@ -1109,6 +1119,9 @@ class TelegramActivity:
         except Exception:
             pass
         if self.failure_delivered:
+            # Stop the visible live state as well as its timer. The separate
+            # failure message carries the error; this remains the work evidence.
+            self._edit(text=self._render(final=True), force=True)
             return
         # Preserve the last visible evidence when even the failure cannot be sent.
         body = self._render(final=True)
@@ -1179,6 +1192,8 @@ class TelegramActivity:
             line.sym, line.text = self._style.blocked, f"{_tool_text(event, self._style)} — {TXT_REFUSED}"
         else:
             line.sym = self._style.fail
+            if self._style is EXPRESSIVE:
+                line.text += " — failed"
 
     def _settle(self) -> None:
         self._end_thinking()
@@ -1218,7 +1233,16 @@ class TelegramActivity:
         elif final:
             glyph, state = ("⚠️", "Reply done with issues") if self._issues else ("🏁", "Reply done")
         else:
-            glyph, state = self._style.talos, "Working"
+            glyph = self._style.talos
+            if self._current_stage is ProgressStage.TOOL:
+                state = self._style.tool_label(self._current_tool, "Running a tool")
+            elif self._current_stage is ProgressStage.THINKING:
+                state = "Thinking"
+            else:
+                state = "Continuing"
+            if self._animate and not self._waiting:
+                # Reuse the existing five-second heartbeat, no extra timer/API calls.
+                state += " " + "." * (int(max(0, elapsed) // DEFAULT_HEARTBEAT_S) % 3 + 1)
         seconds = max(0, int(elapsed))
         duration = f"{seconds // 60}m {seconds % 60:02d}s" if seconds >= 60 else f"{seconds}s"
         calls = f"{self._tool_calls} tool call{'s' if self._tool_calls != 1 else ''}"
@@ -1229,10 +1253,14 @@ class TelegramActivity:
         if not final and self._step:
             # The safety budget is neither task size nor a useful completion estimate.
             parts[-1] += f"  ·  Step {self._step}"
+        if not final and self._tool_calls:
+            parts.append(f"{self._completed_calls} completed · {self._issues} failed or refused")
         parts.append("")
         if self._dropped:
             parts.append(f"↥ {self._dropped} earlier events · /log for the full record")
-        parts.extend(line.render(now) for line in self._lines)
+        parts.extend(line.render(now, identify_tool=True) for line in self._lines)
+        if not final and not self._waiting and now - self._last_progress >= 30:
+            parts.append("\nWaiting for the next result · elapsed time is not progress")
         if self._issues:
             parts.append(f"\n⚠️ {self._issues} tool call{'s' if self._issues != 1 else ''} refused or failed")
         if final and footer and not beleg:
@@ -1248,6 +1276,9 @@ class TelegramActivity:
         lines[0] = f"<b>{html.escape(lines[0])}</b>"
         for index in range(1, len(lines)):
             line = html.escape(lines[index])
+            # Only fixed tool identifiers receive code styling; never arguments.
+            line = re.sub(r"\[([A-Za-z0-9_]+)\]",
+                          lambda m: f"<code>{m[1]}</code>" if m[1] in TOOL_LABELS else m[0], line)
             # Quiet metadata under a clear heading; every dynamic value stays escaped.
             lines[index] = f"<i>{line}</i>" if index == 1 else line
         return "\n".join(lines)

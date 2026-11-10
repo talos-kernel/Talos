@@ -30,10 +30,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3492).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3499).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-3492-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-3499-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-277%2F277-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-996%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-37%20gated-8a4318.svg" alt="Tools">
@@ -329,6 +329,12 @@ Completed answers stay formatted after approval buttons, and Markdown tables bec
 compact labelled rows. Approval prompts keep the exact command visible.
 `/stop` interrupts the run and `/log` opens its receipts. A finished conversation
 does not imply that a delegated background job has finished.
+
+The next release adds phase-specific headings, code-styled tool identifiers and
+separate completed/failed counts to the expressive card. A quiet activity indicator
+uses the existing five-second heartbeat; `TALOS_STATUS_ANIMATION=0` disables it.
+Approval waits stay still, and a long wait is labelled without inventing progress
+or an ETA. Tool arguments and full commands remain confined to approval prompts.
 
 Operator-defined OpenAI-compatible endpoints can be listed in the JSON file named by
 `TALOS_CUSTOM_PROVIDERS` (default: `data/custom-providers.json`). Each entry needs

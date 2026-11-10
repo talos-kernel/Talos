@@ -9,6 +9,14 @@ remain historical snapshots. Beta does not mean error-free operation.
 
 ## [Unreleased]
 
+### Changed
+
+- Make expressive Telegram activity show the current phase, code-styled known tool
+  identifiers, completed/failed counts and an explicit long-wait hint. The header
+  indicator uses the existing heartbeat and can be disabled with
+  `TALOS_STATUS_ANIMATION=0`. Approval waits stop cosmetic edits; fatal errors freeze
+  the existing card as Stopped. Reply receipts and pending worker semantics remain.
+
 ## [0.20.0-rc.3] — 2026-11-05
 
 ### Added
