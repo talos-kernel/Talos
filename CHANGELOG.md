@@ -9,6 +9,8 @@ remain historical snapshots. Beta does not mean error-free operation.
 
 ## [Unreleased]
 
+## [0.20.1] — 2026-11-11
+
 ### Changed
 
 - Make expressive Telegram activity show the current phase, code-styled known tool
@@ -16,6 +18,19 @@ remain historical snapshots. Beta does not mean error-free operation.
   indicator uses the existing heartbeat and can be disabled with
   `TALOS_STATUS_ANIMATION=0`. Approval waits stop cosmetic edits; fatal errors freeze
   the existing card as Stopped. Reply receipts and pending worker semantics remain.
+
+## [0.20.0] — 2026-11-11
+
+### Stable release
+
+- Promote the RC.3 runtime to stable 0.20.0 with the frozen operator contract,
+  unchanged permissions and unchanged dependency locks. This release adds no
+  runtime behavior beyond the version identifier.
+- Carry forward safe Hermes/OpenClaw migration, Talos Connections, managed skills,
+  labelled scheduled results and the pypdf 6.21.4 security fix.
+- Require the seven-day RC observation review and independent qualification of
+  the final signed archive, including RC.3-to-stable upgrade and rollback.
+- Keep the next Telegram live-display update separate from this release.
 
 ## [0.20.0-rc.3] — 2026-11-05
 

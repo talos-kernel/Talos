@@ -10,7 +10,7 @@ DEMO_PROVIDER=claude-cli DEMO_MODEL=… assets/demo/build_gif.sh
 ```
 
 `../talos-telegram-demo.gif` shows the same control model in Telegram: the live
-work trail, an approval card, a reply-only receipt that names a pending worker,
+work trail with phase headings, code identifiers and wait feedback, an approval card, a reply-only receipt that names a pending worker,
 the worker result arriving separately, and a scheduled run arriving as its own
 labelled notification. Rebuild it with:
 
@@ -50,6 +50,6 @@ pauses over two seconds are capped, so model latency does not inflate the GIF.
 
 **Provenance of the shipped GIFs:** the terminal recording was rebuilt 2026-11-04
 from Talos 0.20.0-rc.2 with `ollama/qwen3.8:latest` (local, no account). The
-Telegram animation was generated the same day from the current source UI strings;
+Telegram animation was regenerated 2026-11-11 for the 0.20.1 activity update;
 its transport is intentionally offline and synthetic. Rebuild either asset with
 the commands above.
