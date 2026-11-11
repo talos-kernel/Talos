@@ -9,6 +9,14 @@ remain historical snapshots. Beta does not mean error-free operation.
 
 ## [Unreleased]
 
+## [0.20.3] — 2026-11-11
+
+### Fixed
+
+- Buffer emoji-only or decorative streaming prefixes until readable text follows,
+  avoiding oversized checkmark flashes in Telegram. Keep the first readable text
+  immediate, preserve complete answers and leave tool/control-line filtering intact.
+
 ## [0.20.2] — 2026-11-11
 
 ### Changed

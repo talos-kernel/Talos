@@ -9,6 +9,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from talos import tools
@@ -147,6 +149,56 @@ def test_prose_grows_visibly_and_the_last_version_is_exactly_the_answer() -> Non
     assert client.messages == 1              # und keine zweite daneben
     assert client.edited[-1][2] == "Ja, das passt."
     assert client.edited[-1][3]["parse_mode"] == "HTML"  # adopt() formatiert nach Telegram-HTML (tgmarkup), nicht legacy-Markdown
+
+
+@pytest.mark.parametrize('prefix', ['✅', '✓', '✔️', '🛠️', '✅ **', '⚠️\n', '...'])
+def test_decorative_prefix_waits_for_text_without_delaying_the_first_send(prefix) -> None:
+    client = FakeChatClient()
+    reply = _reply(client, min_edit_interval=1.2)
+    for char in prefix:
+        reply.push(char)
+    assert client.texts == []
+
+    # Same clock tick: buffering the prefix must not consume the edit interval.
+    reply.push('Bereit')
+    assert client.texts == [prefix + 'Bereit']
+    assert reply.adopt(prefix + 'Bereit') is True
+    assert client.messages == 1
+
+
+def test_a_new_turn_never_replaces_visible_prose_with_a_lone_checkmark() -> None:
+    client = FakeChatClient()
+    reply = _reply(client, min_edit_interval=0)
+    reply.push('Ich pruefe den Dienst.')
+    reply.begin_turn()
+    reply.push('✅')
+    reply.settle()
+    assert client.texts == ['Ich pruefe den Dienst.']
+
+
+def test_emoji_only_tool_narration_stays_buffered_and_control_text_stays_hidden() -> None:
+    client = FakeChatClient()
+    reply = _reply(client, min_edit_interval=0)
+    text = '✅\n' + _tool_call('read_file', {'path': 'note.md'})
+    reply.push(text)
+    reply.complete_turn(text)
+    assert client.texts == []
+
+
+@pytest.mark.parametrize('text', ['好', 'جاهز', '42'])
+def test_unicode_text_and_numbers_still_stream_immediately(text) -> None:
+    client = FakeChatClient()
+    reply = _reply(client)
+    reply.push(text)
+    assert client.texts == [text]
+
+
+def test_an_intentionally_emoji_only_final_answer_is_delivered_once(tmp_path) -> None:
+    client = FakeChatClient()
+    conductor, sent = _conductor(tmp_path, StreamingReasoner(('✅',)), client=client)
+    assert conductor.handle(_msg(408, 'Antworte mit einem Haken.')) is True
+    assert client.texts == []
+    assert sent == [(CHAT, '✅')]
 
 
 def test_growth_is_raw_and_only_the_final_version_is_formatted() -> None:

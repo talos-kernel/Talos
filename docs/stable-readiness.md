@@ -113,3 +113,9 @@ This maintenance release adds bounded Telegram command previews and measured wor
 cards. Qualify its own source and signed artifact using the same gates above, with
 `--previous 0.20.1 --current 0.20.2`. Earlier observations are historical evidence,
 not a substitute for the updated artifact's installation and service checks.
+
+## Subsequent stable correction: 0.20.3
+
+Telegram buffers decorative streaming prefixes until readable text follows. Qualify
+the signed correction independently with `--previous 0.20.2 --current 0.20.3`.
+The 0.20.2 work-card demo remains representative; no renderer or command preview changes.
