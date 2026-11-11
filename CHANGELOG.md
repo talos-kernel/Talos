@@ -9,6 +9,19 @@ remain historical snapshots. Beta does not mean error-free operation.
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-11-11
+
+### Stable release
+
+- Promote the RC.3 runtime to stable 0.20.0 with the frozen operator contract,
+  unchanged permissions and unchanged dependency locks. This release adds no
+  runtime behavior beyond the version identifier.
+- Carry forward safe Hermes/OpenClaw migration, Talos Connections, managed skills,
+  labelled scheduled results and the pypdf 6.21.4 security fix.
+- Require the seven-day RC observation review and independent qualification of
+  the final signed archive, including RC.3-to-stable upgrade and rollback.
+- Keep the next Telegram live-display update separate from this release.
+
 ## [0.20.0-rc.3] — 2026-11-05
 
 ### Added
