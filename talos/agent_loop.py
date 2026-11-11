@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
 
+from .activity_preview import command_preview, safe_label
 from .background import SteerInbox
 from .channel import Principal
 from .executor import Executor, Status
@@ -411,7 +412,10 @@ class ProgressStage(str, Enum):
 
 @dataclass(frozen=True)
 class AgentProgress:
-    """Fortschritt ohne Prompt, Ergebnis oder rohe Tool-Argumente.
+    """Fortschritt ohne Prompt, Ergebnis oder unkontrollierte Tool-Argumente.
+
+    `preview` contains only a bounded structural projection, never arbitrary shell
+    arguments. Channels must apply the same projector again before rendering it.
 
     `step`/`max_steps` tragen den Zaehler bis in die Anzeige. Ohne sie konnte der Kanal
     nur „irgendwas laeuft" sagen — mit ihnen sieht the operator, ob ein Lauf vorankommt oder
@@ -424,6 +428,8 @@ class AgentProgress:
     summary: str = ""
     step: int = 0
     max_steps: int = 0
+    preview: str = ""
+    target_label: str = ""
 
 
 @dataclass(frozen=True)
@@ -887,10 +893,13 @@ def run_agent(
                 history.append(QUESTION_REPAIR_NOTE)
                 continue
         summary = _safe_tool_summary(tool, args, targets)
+        preview = command_preview(args.get("command")) if tool in {"run_shell", "remote_exec"} else ""
+        target_label = safe_label(args.get("host")) if tool == "remote_exec" else ""
         _emit(
             progress,
             AgentProgress(
                 ProgressStage.TOOL, tool=tool, status="running", summary=summary,
+                preview=preview, target_label=target_label,
                 step=step, max_steps=max_steps,
             ),
         )
@@ -902,7 +911,7 @@ def run_agent(
                 ProgressStage.RESULT,
                 tool=tool,
                 status=outcome.status.value,
-                summary=summary,
+                summary=summary, preview=preview, target_label=target_label,
                 step=step,
                 max_steps=max_steps,
             ),

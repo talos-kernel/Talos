@@ -9,6 +9,19 @@ remain historical snapshots. Beta does not mean error-free operation.
 
 ## [Unreleased]
 
+## [0.20.2] — 2026-11-11
+
+### Changed
+
+- Show concrete work in expressive Telegram activity: native shell code blocks,
+  named remote hosts, file and skill actions, elapsed time and separate verdicts.
+- Project only known diagnostic argument grammars; omit unknown arguments and
+  inline programs explicitly. Revalidate previews at the channel boundary.
+- Keep refused actions and missing results distinct from successful execution.
+  Bound messages by dropping whole older cards, preserving valid HTML.
+- Refresh the Telegram demo from the current renderer. Approval, background-job,
+  CLI, kernel and dependency behavior remain unchanged.
+
 ## [0.20.1] — 2026-11-11
 
 ### Changed

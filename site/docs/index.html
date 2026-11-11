@@ -244,7 +244,7 @@ html.js .rv.in{opacity:1; transform:none}
     <p class="lede">That one decision shapes the rest of this manual. It is why the
     command list is short, and why a few obvious conveniences are missing on purpose.</p>
     <div class="spec-row">
-      <div class="spec"><b>3499</b>automated tests</div>
+      <div class="spec"><b>3565</b>automated tests</div>
       <div class="spec"><b>277/277</b>adversarial</div>
       <div class="spec"><b>996</b>gate lines</div>
       <div class="spec"><b>37</b>gated tools</div>
@@ -323,6 +323,10 @@ python -m talos chat</pre>
     their formatting after approval buttons; tables become compact labelled rows.
     Approval prompts show the exact command, and stored approvals apply only to the
     action you approved.</p>
+    <p>Telegram work cards now show native command blocks for known diagnostic
+    argument grammars, plus file and skill names and remote-host aliases. Unknown
+    arguments and inline scripts are visibly omitted. Each action carries its own
+    result state; a request is not proof that it ran.</p>
     <p>An identity is <strong>channel-qualified</strong>. The same number on a different
     channel is a different identity  ·  so a Telegram account that may command Talos grants
     nothing to an email address spelling the same name.</p>
@@ -378,10 +382,10 @@ python -m talos help setup</pre>
   </section>
 
   <section id="migration" class="rv">
-    <h2><span class="n">0.20.1</span>Move from Hermes or OpenClaw</h2>
+    <h2><span class="n">0.20.2</span>Move from Hermes or OpenClaw</h2>
     <div class="note warn">
-      <b>Included in the signed 0.20.1 installer</b>
-      <p>Upgrade to 0.20.1 to use these commands. Preview the fingerprinted plan before
+      <b>Included in the signed 0.20.2 installer</b>
+      <p>Upgrade to 0.20.2 to use these commands. Preview the fingerprinted plan before
       applying it; staged content grants no permissions.</p>
     </div>
     <p>Preview first. Talos inventories only portable profile text, memory documents
@@ -436,7 +440,7 @@ talos connections draft --help</pre>
   <section id="session" class="rv">
     <h2><span class="n">Section 05</span>The terminal session</h2>
 <pre>$ talos chat
-Talos 0.20.1  ·  anthropic-api/claude-opus-4-8  ·  autonomy 3
+Talos 0.20.2  ·  anthropic-api/claude-opus-4-8  ·  autonomy 3
 speaking as cli:1000  ·  approvals possible  ·  you are at a terminal
 /help for commands, `exit` to leave
 
@@ -688,7 +692,7 @@ talos why 4831                    <span class="c"># the verdict, the rule, and w
     <div class="tw"><table>
       <thead><tr><th>Channel</th><th>Trust</th><th>Notes</th></tr></thead>
       <tbody>
-      <tr><td>telegram</td><td class="d">FULL</td><td class="d">Approval buttons, phase headings, tool outcomes and images. Set TALOS_STATUS_STYLE=expressive for the live work card; TALOS_STATUS_ANIMATION=0 disables its indicator.</td></tr>
+      <tr><td>telegram</td><td class="d">FULL</td><td class="d">Approval buttons, native safe command blocks, named file/skill actions, tool outcomes and images. Set TALOS_STATUS_STYLE=expressive for the live work card; TALOS_STATUS_ANIMATION=0 disables its indicator.</td></tr>
       <tr><td>cli</td><td class="d">FULL</td><td class="d"><code>chat</code> and <code>ask</code>. Approvals only at a terminal.</td></tr>
       <tr><td>mail</td><td class="d">ASK</td><td class="d">Sender proven from the receiving server's <code>Authentication-Results</code>, fail-closed.</td></tr>
       <tr><td>whatsapp</td><td class="d">FULL · NOTIFY</td><td class="d">Broker over SSH pull (FULL)  ·  or Cloud API, outbound only (NOTIFY).</td></tr>

@@ -21,6 +21,7 @@ from typing import Callable, Protocol
 import requests
 
 from . import documents
+from .activity_preview import command_preview, safe_label
 from .agent_loop import AgentProgress, ProgressStage
 from .channel import (
     Button, CallbackQuery, DeliveryUncertain, Inbound, Principal, StructuredMessage, Trust,
@@ -780,6 +781,9 @@ class _Line:
     started: float
     done_at: float | None = None
     tool_id: str = ""
+    preview: str = ""
+    target_label: str = ""
+    status: str = "running"
 
     def render(self, now: float, *, identify_tool: bool = False) -> str:
         span = (self.done_at if self.done_at is not None else now) - self.started
@@ -906,7 +910,7 @@ class TelegramActivity:
             return True
         try:
             self._message_id = self._client.send_message(
-                self._chat_id, self._format(self._render()), disable_notification=True,
+                self._chat_id, self._render(), disable_notification=True,
                 **({"parse_mode": "HTML"} if self._style is EXPRESSIVE else {}),
             )
         except Exception:
@@ -959,7 +963,9 @@ class TelegramActivity:
                     self._style.tool_symbol(event.tool),
                     _tool_text(event, self._style),
                     self._clock(),
-                    tool_id=event.tool if event.tool in TOOL_LABELS else "",
+                    tool_id=event.tool if event.tool in EXPRESSIVE.tool_verbs or event.tool in TOOL_LABELS else "",
+                    preview=command_preview(event.preview) if event.tool in {"run_shell", "remote_exec"} else "",
+                    target_label=safe_label(event.target_label) if event.tool == "remote_exec" else "",
                 )
             )
             # Hier faellt die Entscheidung: ab jetzt gibt es etwas zu belegen.
@@ -1125,7 +1131,8 @@ class TelegramActivity:
             return
         # Preserve the last visible evidence when even the failure cannot be sent.
         body = self._render(final=True)
-        self._edit(text=f"{body}\n{self._style.fail} {TXT_FAILED}: {detail}", force=True)
+        self._edit(text=f"{body}\n{self._style.fail} {TXT_FAILED}: "
+                   + (html.escape(detail) if self._style is EXPRESSIVE else detail), force=True)
 
     def cleanup(self) -> None:
         """Remove only this run's temporary messages, never its delivered result."""
@@ -1184,6 +1191,9 @@ class TelegramActivity:
             return
         line = self._lines[-1]
         line.done_at = self._clock()
+        line.status = event.status
+        if self._style is EXPRESSIVE:
+            return  # The card keeps its action label; the receipt supplies its state.
         if event.status == "done":
             line.sym = self._style.ok
         elif event.status == "needs_human":
@@ -1246,42 +1256,63 @@ class TelegramActivity:
         seconds = max(0, int(elapsed))
         duration = f"{seconds // 60}m {seconds % 60:02d}s" if seconds >= 60 else f"{seconds}s"
         calls = f"{self._tool_calls} tool call{'s' if self._tool_calls != 1 else ''}"
-        parts = [f"{glyph} {_redact(self._name)[:60]} · {state}"]
+        heading = f"{glyph} {_redact(self._name)[:60]} · {state}"
+        parts = [f"<b>{html.escape(heading)}</b>"]
         if not (final and beleg):
-            # Dauer und Aufrufe stehen im Beleg — die Spur wiederholt sie nicht.
-            parts.append(f"⏱ {duration}  ·  {calls}")
-        if not final and self._step:
-            # The safety budget is neither task size nor a useful completion estimate.
-            parts[-1] += f"  ·  Step {self._step}"
+            metadata = f"⏱ {duration}  ·  {calls}"
+            if not final and self._step:
+                metadata += f"  ·  Step {self._step}"
+            parts.append(f"<i>{html.escape(metadata)}</i>")
         if not final and self._tool_calls:
             parts.append(f"{self._completed_calls} completed · {self._issues} failed or refused")
-        parts.append("")
-        if self._dropped:
-            parts.append(f"↥ {self._dropped} earlier events · /log for the full record")
-        parts.extend(line.render(now, identify_tool=True) for line in self._lines)
+        cards = [self._work_card(line, now) for line in self._lines]
+        tail = []
         if not final and not self._waiting and now - self._last_progress >= 30:
-            parts.append("\nWaiting for the next result · elapsed time is not progress")
+            tail.append("Waiting for the next result · elapsed time is not progress")
         if self._issues:
-            parts.append(f"\n⚠️ {self._issues} tool call{'s' if self._issues != 1 else ''} refused or failed")
+            tail.append(f"⚠️ {self._issues} tool call{'s' if self._issues != 1 else ''} refused or failed")
         if final and footer and not beleg:
-            parts.append(f"\n{_redact(footer)}")
+            tail.append(_redact(footer))
         if not final:
-            parts.append("\n/stop · interrupt  /log · details")
-        return "\n".join(parts)
+            tail.append("/stop · interrupt  /log · details")
+        # Drop whole older cards, never slice HTML or silently lose a closing tag.
+        # Counting encoded characters is stricter than Telegram's parsed-text limit.
+        dropped = self._dropped
+        while True:
+            earlier = [f"↥ {dropped} earlier events · /log for the full record"] if dropped else []
+            body = "\n\n".join(["\n".join(parts), *earlier, *cards,
+                                    *(html.escape(text) for text in tail)])
+            if len(body.encode("utf-16-le")) // 2 <= 3800 or not cards:
+                return body
+            cards.pop(0)
+            dropped += 1
 
-    def _format(self, text: str) -> str:
-        if self._style is not EXPRESSIVE:
-            return text
-        lines = text.split("\n")
-        lines[0] = f"<b>{html.escape(lines[0])}</b>"
-        for index in range(1, len(lines)):
-            line = html.escape(lines[index])
-            # Only fixed tool identifiers receive code styling; never arguments.
-            line = re.sub(r"\[([A-Za-z0-9_]+)\]",
-                          lambda m: f"<code>{m[1]}</code>" if m[1] in TOOL_LABELS else m[0], line)
-            # Quiet metadata under a clear heading; every dynamic value stays escaped.
-            lines[index] = f"<i>{line}</i>" if index == 1 else line
-        return "\n".join(lines)
+    def _work_card(self, line: _Line, now: float) -> str:
+        if not line.tool_id:
+            return html.escape(_redact(line.render(now)))
+        # TOOL is a requested action before the executor verdict, not proof of
+        # execution. Only RESULT may change this to Done, Failed or Not executed.
+        status = {"done": "Done", "needs_human": "Needs your approval",
+                  "denied": "Not executed · refused", "binding_changed": "Not executed · changed",
+                  "error": "Failed", "verify_failed": "Verification failed",
+                  "running": "In progress"}.get(line.status, "Result unavailable")
+        if line.status == "running" and self._finished:
+            status = "No result recorded"
+        elapsed = max(0, (line.done_at if line.done_at is not None else now) - line.started)
+        if elapsed >= 1:
+            status += f" · {elapsed:.0f}s"
+        glyph = self._style.tool_symbol(line.tool_id)
+        text = _redact(line.text)
+        if line.preview:
+            title = "Remote terminal" if line.tool_id == "remote_exec" else "Terminal"
+            target = f" <code>{html.escape(line.target_label)}</code>" if line.target_label else ""
+            heading = f"{glyph} <b>{title}</b>{target} · <i>{html.escape(status)}</i>"
+            return heading + '\n<pre><code class="language-bash">' + html.escape(line.preview) + '</code></pre>'
+        label, separator, subject = text.partition(" — ")
+        # Fixed action label, concrete bounded filename/skill, and measured state.
+        detail = f" <code>{html.escape(subject)}</code>" if separator else ""
+        identity = f" · <code>{line.tool_id}</code>"
+        return f"{glyph} <b>{html.escape(label)}</b>{detail}{identity} · <i>{html.escape(status)}</i>"
 
     def _edit(self, *, text: str | None = None, force: bool = False) -> None:
         if self._message_id is None:
@@ -1293,7 +1324,7 @@ class TelegramActivity:
             self._last_edit = self._clock()
         try:
             self._client.edit_message_text(
-                self._chat_id, self._message_id, self._format(payload),
+                self._chat_id, self._message_id, payload,
                 **({"parse_mode": "HTML"} if self._style is EXPRESSIVE else {}),
             )
         except Exception:
