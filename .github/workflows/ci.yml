@@ -30,8 +30,13 @@ jobs:
       - name: Install bubblewrap
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes bubblewrap
+          # Hosted runners can fail DNS for Ubuntu's primary archive domains.
+          # Keep Ubuntu package signatures and the mandatory sandbox probe.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://mirrors.edge.kernel.org/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+          fi
+          timeout 180s sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 -o APT::Update::Error-Mode=any update
+          timeout 120s sudo apt-get -o Acquire::Retries=2 -o Acquire::https::Timeout=30 install --yes bubblewrap
           if sysctl kernel.unprivileged_userns_clone >/dev/null 2>&1; then
             sudo sysctl --write kernel.unprivileged_userns_clone=1
           fi

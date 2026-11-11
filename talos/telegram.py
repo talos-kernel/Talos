@@ -1409,7 +1409,7 @@ class TelegramReply:
         # A first send can be accepted while its response is lost. Without a known
         # message_id no later delta may retry it as a fresh message.
         self._delivery_uncertain: DeliveryUncertain | None = None
-        # Das erste Delta soll sofort sichtbar werden — dafuer wurde gestreamt.
+        # Show the first readable text immediately; an emoji-only prefix stays buffered.
         self._last_edit = clock() - self._min_edit_interval
         # Nur Zustand liegt unter dem Lock, nie ein Netzaufruf: sonst haenge der
         # Poll-Thread an einem Telegram-Timeout und `/stop` waere nur eine Behauptung.
@@ -1594,7 +1594,9 @@ class TelegramReply:
         now = self._clock()
         if now - self._last_edit < self._min_edit_interval:
             return None                       # gebuendelt; der naechste Takt zeigt alles
-        if not self._text.strip() or self._text == self._shown:
+        if not any(char.isalnum() for char in self._text) or self._text == self._shown:
+            # Telegram enlarges standalone emoji. Wait for text without consuming
+            # the edit interval; keep the original prefix for the complete reply.
             return None
         if len(self._text) > TELEGRAM_TEXT_LIMIT:
             return None                       # sichere 400 — die Endfassung geht eigene Wege
@@ -1610,6 +1612,10 @@ class TelegramReply:
         waechst sie immer; formatiert wird ein einziges Mal, in `adopt`, wenn der Text
         vollstaendig ist.
         """
+        # complete_turn/settle also use this path: never flash an emoji-only draft.
+        # Final delivery uses adopt()/channel.send() and preserves the full answer.
+        if not any(char.isalnum() for char in text):
+            return False
         if self._delivery_uncertain is not None:
             return False
         try:
