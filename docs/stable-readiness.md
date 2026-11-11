@@ -95,4 +95,14 @@ installation or restart its service.
 | `0.20.0-rc.1` | Published, superseded candidate | Original signed assets remain available. Its observation days do not qualify RC.3. |
 | `0.20.0-rc.2` | Published, superseded candidate | Original signed security release remains available. |
 | `0.20.0-rc.3` | Published upgrade baseline | Signed candidate, with seven deployed daily records dated 5–11 November 2026. Transient channel/provider errors were reviewed; no unresolved security or data-loss regression was identified. |
-| `0.20.0` | Stable source | Release publication requires the final-artifact gates above; matching signed assets and hosted CI establish delivery. No new runtime feature is included. |
+| `0.20.0` | Published stable baseline | Signed artifacts and [main CI](https://github.com/talos-kernel/Talos/actions/runs/42986282432) qualify the first stable release. Seven RC.3 calendar dates and final-artifact install/upgrade/rollback checks passed. |
+
+
+## Subsequent stable update: 0.20.1
+
+Version 0.20.1 adds the separately qualified Telegram activity update after the first
+stable release. It retains the operator contract, permissions and dependency locks.
+Qualify its exact source and signed bytes with the source, platform, real-model,
+installation/recovery and delivery gates above. Use `--previous 0.20.0 --current
+0.20.1`; do not relabel the historical RC.3 observations as observations of this update.
+Publication is established by matching signed assets and CI, not this source label.

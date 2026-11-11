@@ -30,10 +30,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3492).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3499).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-3492-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-3499-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-277%2F277-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-996%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-37%20gated-8a4318.svg" alt="Tools">
@@ -54,7 +54,7 @@ tools — but only after a deterministic permission kernel has ruled on the acti
 Choose **Allow once**, **Allow this task**, or an exact-action standing approval;
 you do not have to approve every step individually. Sandboxed shell execution and an
 append-only audit trail keep actions bounded and reviewable. Talos is MIT-licensed;
-model-provider and hosting costs depend on your setup. The **0.20.0 stable** release retains the frozen
+model-provider and hosting costs depend on your setup. The **0.20.1 stable** release retains the frozen
 [operator contract](docs/beta-contract.md). Stable is not a claim of error-free
 operation or a substitute for reviewing permissions and keeping backups.
 
@@ -70,12 +70,13 @@ a handover, save and read back a local note, and compare release notes without i
 missing facts. Already tried it? [Share your first-run result](https://github.com/talos-kernel/Talos/issues/new?template=first_run.yml),
 including installation blockers. No star or positive review required.
 
-**Latest signed release — [0.20.0](https://github.com/talos-kernel/Talos/releases/tag/v0.20.0):**
-this stable release carries forward the qualified RC.3 runtime: safe agent migration,
-Talos Connections and labelled scheduled results, including the pypdf 6.21.4
-security fix. The operator contract and permissions remain unchanged.
+**Latest signed release — [0.20.1](https://github.com/talos-kernel/Talos/releases/tag/v0.20.1):**
+this stable update adds clearer Telegram live activity: phase headings, code-styled
+tool identifiers, measured outcomes and a quiet optional indicator. It retains safe
+agent migration, Talos Connections and labelled scheduled results. The operator
+contract, permissions and dependency locks remain unchanged.
 
-**Included in 0.20.0:** migration from Hermes or
+**Included in 0.20.1:** migration from Hermes or
 OpenClaw can now fingerprint and apply an exact redacted plan into inactive staging,
 archive that staging for recovery, and activate one validated imported skill at a time.
 [Talos Connections](docs/connections.md) adds secret-free disabled connector drafts and
@@ -94,7 +95,7 @@ See the
 **Source versus release:** `main` can contain newer changes. Signed installers and
 package managers follow their pinned release; older archives remain immutable.
 
-0.20.0 includes the Beta.8 pip 26.2.2 hash lock and isolates pip from per-user
+0.20.1 includes the Beta.8 pip 26.2.2 hash lock and isolates pip from per-user
 configuration. When upgrading from Beta.7 or older with custom pip settings, use
 `PIP_CONFIG_FILE=/dev/null talos update` once; those older updaters still inherit pip
 configuration.
@@ -107,7 +108,7 @@ configuration.
 - **Inspect the evidence:** review tool outcomes and the audit trail; do not mistake a confident answer for a successful action.
 
 Start with the [model, cost and permission FAQ](https://talos-agent.ch/faq/).
-Talos is not Talos Linux or Cisco Talos. It is a self-hosted AI agent, with a stable 0.20.0 release.
+Talos is not Talos Linux or Cisco Talos. It is a self-hosted AI agent, with a stable 0.20.1 release.
 If this approach is useful, **star the repository to bookmark it**, try a small task and
 [report a reproducible result](https://github.com/talos-kernel/Talos/issues).
 Want to improve it? [Fork Talos](https://github.com/talos-kernel/Talos/fork) and read
@@ -330,6 +331,12 @@ compact labelled rows. Approval prompts keep the exact command visible.
 `/stop` interrupts the run and `/log` opens its receipts. A finished conversation
 does not imply that a delegated background job has finished.
 
+Version 0.20.1 adds phase-specific headings, code-styled tool identifiers and
+separate completed/failed counts to the expressive card. A quiet activity indicator
+uses the existing five-second heartbeat; `TALOS_STATUS_ANIMATION=0` disables it.
+Approval waits stay still, and a long wait is labelled without inventing progress
+or an ETA. Tool arguments and full commands remain confined to approval prompts.
+
 Operator-defined OpenAI-compatible endpoints can be listed in the JSON file named by
 `TALOS_CUSTOM_PROVIDERS` (default: `data/custom-providers.json`). Each entry needs
 `name`, `base_url` and `models`; optional `env_key` names that endpoint's own key.
@@ -423,7 +430,7 @@ come from `stdin` instead of `getUpdates`.
 ```
 $ talos chat
 
-  ◉  Talos / 0.20.0
+  ◉  Talos / 0.20.1
      Your terminal. Your rules.
   ──────────────────────────────────────────────────────────────────────────
   model      claude-cli/claude-opus-4-1

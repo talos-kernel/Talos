@@ -6,13 +6,13 @@
 
 - Permission kernel: 996 lines of Python, the only code that decides
 - 37 tools, all gated; unattended runs cannot escalate
-- 3492 tests collected in the source tree; 277/277 red-team cases passed in source verification. Release contents follow their own signed tag.
+- 3499 tests collected in the source tree; 277/277 red-team cases passed in source verification. Release contents follow their own signed tag.
 - MCP servers run only inside a UID-separated worker, from an operator-owned registry — no marketplace, no third-party code in the agent process
 - Channels: Telegram, mail (IMAP pull), CLI, WhatsApp via an operator-controlled broker — every channel fetches; no inbound port, no webhook
 - Updates: signed tarballs, verified before anything is unpacked; dependencies pinned and hashed, installed with --require-hashes
-- Latest signed release: 0.20.0. Includes safe migration, Talos Connections and labelled scheduled-result notifications.
-- Migration in 0.20.0: fingerprinted redacted preview, inactive staging apply, recovery archive and one-at-a-time validated skill activation; no inherited secrets or authority
-- Talos Connections in 0.20.0: isolated-worker inventory plus disabled secret-free drafts; no bundled account, endpoint or private service
+- Latest signed release: 0.20.1. Adds expressive Telegram phase headings, code-styled tool identifiers, measured outcome counts and an optional activity indicator; retains migration, Connections and scheduled results.
+- Migration in 0.20.1: fingerprinted redacted preview, inactive staging apply, recovery archive and one-at-a-time validated skill activation; no inherited secrets or authority
+- Talos Connections in 0.20.1: isolated-worker inventory plus disabled secret-free drafts; no bundled account, endpoint or private service
 - Scheduled runs on current source stay quiet while working and deliver one labelled final result; interactive work trails show bounded skill and executable names without arguments or contents
 - License: MIT
 

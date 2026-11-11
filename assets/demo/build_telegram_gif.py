@@ -89,7 +89,7 @@ def plain(text: str) -> str:
     return html.unescape(re.sub(r"<[^>]+>", "", text))
 
 
-def talos_states() -> tuple[str, str, str, str, str]:
+def talos_states() -> tuple[str, ...]:
     client = DemoClient()
     activity = TelegramActivity(
         client,
@@ -109,16 +109,22 @@ def talos_states() -> tuple[str, str, str, str, str]:
     activity.progress(progress("read_file", "running", step=2, summary="read — notes.md"))
     client.now[0] = 3
     reading = plain(client.messages[client.sent_order[0]])
+    client.now[0] = 5
+    activity.tick()
+    heartbeat = plain(client.messages[client.sent_order[0]])
+    client.now[0] = 35
+    activity.tick()
+    waiting = plain(client.messages[client.sent_order[0]])
     activity.progress(progress("read_file", "done", step=2))
     activity.progress(
         progress("write_file", "running", step=3, summary="write — summary.md")
     )
-    client.now[0] = 7
+    client.now[0] = 37
     activity.progress(progress("write_file", "needs_human", step=3))
     approval = plain(client.messages[client.sent_order[0]])
     activity.progress(progress("write_file", "done", step=3))
     activity.progress(progress("delegate_codex", "running", step=4))
-    client.now[0] = 15
+    client.now[0] = 45
     activity.progress(progress("delegate_codex", "done", step=4))
     activity.succeed()
     trail = plain(client.messages[client.sent_order[0]])
@@ -132,7 +138,7 @@ def talos_states() -> tuple[str, str, str, str, str]:
     scheduled = ScheduledRun("41c226d2", "Daily project status").wrap(
         "The project is healthy. The dependency scan found no known vulnerabilities."
     )
-    return reading, approval, trail + "\n\n" + receipt, worker, scheduled
+    return reading, heartbeat, waiting, approval, trail, receipt, worker, scheduled
 
 
 def font(size: int) -> ImageFont.FreeTypeFont:
@@ -220,14 +226,16 @@ def frame(messages: list[tuple[str, bool]], *, approval: bool = False,
     if approval:
         y = buttons(draw, y, selected=selected)
     draw.rectangle((0, HEIGHT - 72, WIDTH, HEIGHT), fill="#17212b")
-    draw.text((26, HEIGHT - 55), caption, font=SMALL, fill="#9fb3c8")
-    draw.text((WIDTH - 26, HEIGHT - 55), "simulated transport · real Talos text",
+    if y > HEIGHT - 84:
+        raise RuntimeError(f"Demo frame overflows: {caption}")
+    draw.text((26, HEIGHT - 65), caption, font=SMALL, fill="#9fb3c8")
+    draw.text((WIDTH - 26, HEIGHT - 32), "simulated transport · real Talos text",
               font=SMALL, fill="#6e8296", anchor="ra")
     return image
 
 
 def main() -> None:
-    reading, approval_text, finished, worker, scheduled = talos_states()
+    reading, heartbeat, waiting, approval_text, trail, receipt, worker, scheduled = talos_states()
     user = "Summarise notes.md, save the result, then have a worker verify it."
     approval_card = (
         "Approval required\nwrite_file · workspace/summary.md\n"
@@ -236,18 +244,21 @@ def main() -> None:
     frames = [
         frame([(user, True)], caption="1 · request received"),
         frame([(user, True), (reading, False)], caption="2 · live measured work trail"),
-        frame([(user, True), (approval_text, False), (approval_card, False)],
-              approval=True, caption="3 · protected action waits for the operator"),
-        frame([(user, True), (approval_text, False), (approval_card, False)],
-              approval=True, selected=True, caption="4 · task-scoped approval selected"),
+        frame([(user, True), (heartbeat, False)], caption="3 · one card, current phase"),
+        frame([(waiting, False)], caption="4 · elapsed time is not progress"),
+        frame([(approval_text, False), (approval_card, False)],
+              approval=True, caption="5 · approval pauses the indicator"),
+        frame([(approval_text, False), (approval_card, False)],
+              approval=True, selected=True, caption="6 · task-scoped approval selected"),
+        frame([(trail, False)], caption="7 · completed work remains visible"),
         frame([("Saved the summary. The verification worker is still running.", False),
-               (finished, False)], caption="5 · reply receipt separates pending work"),
-        frame([(finished, False), (worker, False)],
-              caption="6 · the background result arrives separately"),
+               (receipt, False)], caption="8 · reply and pending work are separate"),
+        frame([(receipt, False), (worker, False)],
+              caption="9 · the worker result follows separately"),
         frame([(scheduled, False)],
-              caption="7 · a scheduled result is one labelled notification"),
+              caption="10 · scheduled results keep their own label"),
     ]
-    durations = [1400, 1800, 2200, 1100, 2600, 2800, 3200]
+    durations = [1400, 1800, 1800, 2400, 2200, 1100, 2200, 2600, 2800, 3200]
     frames[0].save(
         OUT,
         save_all=True,
