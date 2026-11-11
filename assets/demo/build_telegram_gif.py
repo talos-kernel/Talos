@@ -78,10 +78,12 @@ class DemoClient:
         return
 
 
-def progress(tool: str, status: str, *, step: int, summary: str = "") -> AgentProgress:
+def progress(tool: str, status: str, *, step: int, summary: str = "", preview: str = "",
+             target_label: str = "") -> AgentProgress:
     stage = ProgressStage.TOOL if status == "running" else ProgressStage.RESULT
     return AgentProgress(
-        stage, tool=tool, status=status, step=step, max_steps=7, summary=summary
+        stage, tool=tool, status=status, step=step, max_steps=7, summary=summary,
+        preview=preview, target_label=target_label,
     )
 
 
@@ -97,6 +99,7 @@ def talos_states() -> tuple[str, ...]:
         clock=lambda: client.now[0],
         heartbeat_s=0,
         min_edit_interval=0,
+        max_lines=3,
         conversation="telegram:demo",
         background_jobs=lambda _conversation: 1,
         name="Talos",
@@ -108,26 +111,33 @@ def talos_states() -> tuple[str, ...]:
     activity.progress(progress("skill_view", "done", step=1))
     activity.progress(progress("read_file", "running", step=2, summary="read — notes.md"))
     client.now[0] = 3
-    reading = plain(client.messages[client.sent_order[0]])
+    reading = client.messages[client.sent_order[0]]
     client.now[0] = 5
     activity.tick()
-    heartbeat = plain(client.messages[client.sent_order[0]])
+    heartbeat = client.messages[client.sent_order[0]]
     client.now[0] = 35
     activity.tick()
-    waiting = plain(client.messages[client.sent_order[0]])
+    waiting = client.messages[client.sent_order[0]]
     activity.progress(progress("read_file", "done", step=2))
+    activity.progress(progress("remote_exec", "running", step=3,
+        preview="hostname; df -h; systemctl status demo.service --no-pager",
+        target_label="demo-host"))
+    terminal = client.messages[client.sent_order[0]]
+    client.now[0] = 36
+    activity.progress(progress("remote_exec", "done", step=3))
+    terminal_done = client.messages[client.sent_order[0]]
     activity.progress(
         progress("write_file", "running", step=3, summary="write — summary.md")
     )
     client.now[0] = 37
     activity.progress(progress("write_file", "needs_human", step=3))
-    approval = plain(client.messages[client.sent_order[0]])
+    approval = client.messages[client.sent_order[0]]
     activity.progress(progress("write_file", "done", step=3))
     activity.progress(progress("delegate_codex", "running", step=4))
     client.now[0] = 45
     activity.progress(progress("delegate_codex", "done", step=4))
     activity.succeed()
-    trail = plain(client.messages[client.sent_order[0]])
+    trail = client.messages[client.sent_order[0]]
     receipt = plain(client.messages[client.sent_order[-1]])
     activity.cleanup()
     worker = completion_text(
@@ -138,7 +148,7 @@ def talos_states() -> tuple[str, ...]:
     scheduled = ScheduledRun("41c226d2", "Daily project status").wrap(
         "The project is healthy. The dependency scan found no known vulnerabilities."
     )
-    return reading, heartbeat, waiting, approval, trail, receipt, worker, scheduled
+    return reading, heartbeat, waiting, terminal, terminal_done, approval, trail, receipt, worker, scheduled
 
 
 def font(size: int) -> ImageFont.FreeTypeFont:
@@ -148,6 +158,8 @@ def font(size: int) -> ImageFont.FreeTypeFont:
 BODY = font(27)
 SMALL = font(21)
 TITLE = font(30)
+MONO = typeface(("/System/Library/Fonts/Menlo.ttc",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"), 23)
 try:
     EMOJI = typeface(EMOJI_FONTS, 32)
     COLOUR_EMOJI = True
@@ -187,16 +199,34 @@ def wrapped(text: str, width: int) -> list[str]:
 
 def bubble(draw: ImageDraw.ImageDraw, text: str, y: int, *, mine: bool = False,
            max_width: int = 690) -> int:
-    lines = wrapped(text, 48 if max_width > 600 else 36)
-    line_h = 36
-    height = len(lines) * line_h + 34
+    # Approximate Telegram's native code-block styling using actual HTML payloads.
+    # No simulated result text is inserted into the captured work cards.
+    sections = []
+    for index, piece in enumerate(re.split(r'(<pre>.*?</pre>)', text, flags=re.S)):
+        if not piece:
+            continue
+        is_code = piece.startswith('<pre>')
+        lines = wrapped(plain(piece).strip('\n'), 43 if is_code else 48)
+        sections.append((is_code, lines))
+    line_h = 32
+    height = sum(len(lines) * line_h + (42 if code else 4)
+                 for code, lines in sections) + 32
     x1 = WIDTH - 34 - max_width if mine else 34
     x2 = WIDTH - 34 if mine else x1 + max_width
     fill = "#2b5278" if mine else "#182533"
     draw.rounded_rectangle((x1, y, x2, y + height), radius=24, fill=fill)
-    for index, line in enumerate(lines):
-        rich_text(draw, (x1 + 22, y + 17 + index * line_h), line,
-                  regular=BODY, fill="#f5f7fa")
+    top = y + 16
+    for code, lines in sections:
+        if code:
+            draw.rounded_rectangle((x1 + 12, top, x2 - 12, top + len(lines) * line_h + 38),
+                                   radius=8, fill='#243f57')
+            draw.text((x1 + 24, top + 4), 'bash', font=SMALL, fill='#7ec4ff')
+            top += 32
+        for line in lines:
+            rich_text(draw, (x1 + 22, top), line,
+                      regular=MONO if code else BODY, fill="#f5f7fa")
+            top += line_h
+        top += 10 if code else 4
     return y + height + 16
 
 
@@ -235,8 +265,8 @@ def frame(messages: list[tuple[str, bool]], *, approval: bool = False,
 
 
 def main() -> None:
-    reading, heartbeat, waiting, approval_text, trail, receipt, worker, scheduled = talos_states()
-    user = "Summarise notes.md, save the result, then have a worker verify it."
+    reading, heartbeat, waiting, terminal, terminal_done, approval_text, trail, receipt, worker, scheduled = talos_states()
+    user = "Read notes.md, check demo-host, save a summary and have a worker verify it."
     approval_card = (
         "Approval required\nwrite_file · workspace/summary.md\n"
         "The exact action stays subject to the kernel."
@@ -246,19 +276,21 @@ def main() -> None:
         frame([(user, True), (reading, False)], caption="2 · live measured work trail"),
         frame([(user, True), (heartbeat, False)], caption="3 · one card, current phase"),
         frame([(waiting, False)], caption="4 · elapsed time is not progress"),
+        frame([(terminal, False)], caption="5 · actual commands, safe argument previews"),
+        frame([(terminal_done, False)], caption="6 · a result changes In progress to Done"),
         frame([(approval_text, False), (approval_card, False)],
-              approval=True, caption="5 · approval pauses the indicator"),
+              approval=True, caption="7 · approval pauses the indicator"),
         frame([(approval_text, False), (approval_card, False)],
-              approval=True, selected=True, caption="6 · task-scoped approval selected"),
-        frame([(trail, False)], caption="7 · completed work remains visible"),
+              approval=True, selected=True, caption="8 · task-scoped approval selected"),
+        frame([(trail, False)], caption="9 · completed work remains visible"),
         frame([("Saved the summary. The verification worker is still running.", False),
-               (receipt, False)], caption="8 · reply and pending work are separate"),
+               (receipt, False)], caption="10 · reply and pending work are separate"),
         frame([(receipt, False), (worker, False)],
-              caption="9 · the worker result follows separately"),
+              caption="11 · the worker result follows separately"),
         frame([(scheduled, False)],
-              caption="10 · scheduled results keep their own label"),
+              caption="12 · scheduled results keep their own label"),
     ]
-    durations = [1400, 1800, 1800, 2400, 2200, 1100, 2200, 2600, 2800, 3200]
+    durations = [1400, 1800, 1800, 2400, 3200, 2600, 2200, 1100, 2200, 2600, 2800, 3200]
     frames[0].save(
         OUT,
         save_all=True,

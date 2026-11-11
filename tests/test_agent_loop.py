@@ -203,6 +203,19 @@ def test_safe_progress_names_the_skill_but_never_its_payload() -> None:
     assert "private" not in named + suspicious
 
 
+def test_command_projection_reaches_both_tool_and_result_without_executing(tmp_path: Path) -> None:
+    """Even a refused remote call carries useful display facts, never its payload."""
+    events = []
+    run_agent(lambda _history: _tool_call('remote_exec',
+        {'host': 'demo-host', 'command': 'hostname; curl https://example.test/ordinaryword'}, []),
+        _executor(tmp_path), OWNER, 'preview-progress', max_steps=1, progress=events.append)
+    calls = [event for event in events if event.stage in {ProgressStage.TOOL, ProgressStage.RESULT}]
+    assert [event.stage for event in calls] == [ProgressStage.TOOL, ProgressStage.RESULT]
+    assert all(event.preview == 'hostname;\ncurl [arguments hidden]' for event in calls)
+    assert all(event.target_label == 'demo-host' for event in calls)
+    assert 'ordinaryword' not in repr(events)
+
+
 # --- Fremdsyntax: der Ausfall, der wie eine Antwort aussieht ------------------------
 def test_a_foreign_tool_syntax_is_not_delivered_as_an_answer(tmp_path: Path) -> None:
     """Der gefaehrlichste Fehlermodus, weil er wie Erfolg aussieht.

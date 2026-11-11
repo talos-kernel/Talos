@@ -106,3 +106,10 @@ Qualify its exact source and signed bytes with the source, platform, real-model,
 installation/recovery and delivery gates above. Use `--previous 0.20.0 --current
 0.20.1`; do not relabel the historical RC.3 observations as observations of this update.
 Publication is established by matching signed assets and CI, not this source label.
+
+## Subsequent stable update: 0.20.2
+
+This maintenance release adds bounded Telegram command previews and measured work
+cards. Qualify its own source and signed artifact using the same gates above, with
+`--previous 0.20.1 --current 0.20.2`. Earlier observations are historical evidence,
+not a substitute for the updated artifact's installation and service checks.

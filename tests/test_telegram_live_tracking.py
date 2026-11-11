@@ -76,7 +76,8 @@ def test_failure_and_frozen_trail_keep_evidence_without_live_indicator():
     client, activity = setup_activity()
     activity.progress(_tool('run_shell', summary='shell — pytest'))
     activity.progress(_result('run_shell', 'error'))
-    assert 'Running pytest — failed' in client.edited[-1][2]
+    assert '<b>Running pytest</b>' in client.edited[-1][2]
+    assert '<i>Failed</i>' in client.edited[-1][2]
     activity.succeed()
     assert 'Work trail' in client.edited[-1][2]
     assert 'Reply done with issues' in client.sent[-1][1]
