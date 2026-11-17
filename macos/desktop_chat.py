@@ -13,6 +13,8 @@ class ChatMirror:
     def __init__(self, profile: Path):
         from desktop_runtime import private_path
         self.lock = threading.RLock()
+        self.next_item_id = 0
+        self.final_reply_id = None
         self.path = profile / ".desktop-chat.json"
         private_path(self.path)
         self.state = {"pid": os.getpid(), "started": time.time(), "phase": "starting",
@@ -81,6 +83,11 @@ class ChatMirror:
             for item in items:
                 if item.get("message_id") == event.get("message_id"):
                     item["status"] = event["status"]
+            if event["status"] in {"ended", "failed", "cancelled"}:
+                # Post-run diagnostics may follow the streamed answer. Keep the
+                # result after that work trail, before the next queued task starts.
+                self._move_final_reply_last(items)
+                self.final_reply_id = None
             if self.state["phase"] not in {"approval", "question"}:
                 self.state["phase"] = "working" if any(item.get("status") in {"running", "queued"}
                                                          for item in items if item["kind"] == "user") else "ready"
@@ -95,6 +102,9 @@ class ChatMirror:
                 matching.update(event)
             else:
                 items.append(event)
+            if kind == "stream" and event.get("final"):
+                self.final_reply_id = event["reply_id"]
+                self._move_final_reply_last(items)
         elif kind == "delete":
             items[:] = [item for item in items if item.get("reply_id") != event.get("reply_id")]
         elif kind == "attachment":
@@ -119,8 +129,10 @@ class ChatMirror:
         elif kind in {"assistant", "error", "note"}:
             items.append(event)
         self.state["items"] = items[-160:]
-        for index, item in enumerate(self.state["items"]):
-            item["id"] = index
+        for item in self.state["items"]:
+            if "id" not in item:
+                item["id"] = self.next_item_id
+                self.next_item_id += 1
         self.state["revision"] += 1
         fd, temporary = tempfile.mkstemp(prefix=".chat-view-", dir=self.path.parent)
         try:
@@ -129,3 +141,11 @@ class ChatMirror:
             os.replace(temporary, self.path)
         finally:
             Path(temporary).unlink(missing_ok=True)
+
+    def _move_final_reply_last(self, items):
+        if self.final_reply_id is None:
+            return
+        for index, item in enumerate(items):
+            if item.get("reply_id") == self.final_reply_id:
+                items.append(items.pop(index))
+                return

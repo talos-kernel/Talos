@@ -56,6 +56,42 @@ def test_display_failure_does_not_break_reply_or_terminal(tmp_path):
     assert out.getvalue() == "Still visible\n"
 
 
+def test_streamed_result_follows_tools_and_post_run_diagnostics(tmp_path):
+    mirror = ChatMirror(tmp_path)
+    mirror.emit({"kind": "user", "text": "Check", "message_id": "task-1"})
+    mirror.emit({"kind": "stream", "reply_id": "reply-1", "text": "Checking…"})
+    reply_id = mirror.state["items"][-1]["id"]
+    mirror.emit({"kind": "progress", "stage": "tool", "tool": "vault_get", "status": "running"})
+    tool_id = mirror.state["items"][-1]["id"]
+    mirror.emit({"kind": "progress", "stage": "result", "tool": "vault_get", "status": "error"})
+    mirror.emit({"kind": "stream", "reply_id": "reply-1", "text": "Final result", "final": True})
+    assert [item["kind"] for item in mirror.state["items"]] == ["user", "tool", "assistant"]
+    assert mirror.state["items"][-1]["id"] == reply_id
+    assert mirror.state["items"][1]["id"] == tool_id
+    assert mirror.state["items"][1]["status"] == "error"
+    mirror.emit({"kind": "assistant", "text": "Measured failure note"})
+    mirror.emit({"kind": "worker", "message_id": "task-1", "status": "ended"})
+    state = json.loads(mirror.path.read_text())
+    assert [item.get("text") for item in state["items"][-2:]] == ["Measured failure note", "Final result"]
+    assert sum(item.get("reply_id") == "reply-1" for item in state["items"]) == 1
+    # The next queued task must keep its own result, not move the prior answer.
+    mirror.emit({"kind": "user", "text": "Next", "message_id": "task-2"})
+    mirror.emit({"kind": "assistant", "text": "Next result"})
+    mirror.emit({"kind": "worker", "message_id": "task-2", "status": "ended"})
+    assert mirror.state["items"][-1]["text"] == "Next result"
+
+
+def test_trimming_chat_items_preserves_identity_and_new_ids_are_unique(tmp_path):
+    mirror = ChatMirror(tmp_path)
+    for index in range(160):
+        mirror.emit({"kind": "assistant", "text": str(index)})
+    old_ids = [item["id"] for item in mirror.state["items"]]
+    mirror.emit({"kind": "assistant", "text": "New"})
+    new_ids = [item["id"] for item in mirror.state["items"]]
+    assert new_ids[:-1] == old_ids[1:]
+    assert new_ids[-1] > max(old_ids)
+
+
 def test_multiline_message_is_one_turn_beyond_terminal_line_limit(tmp_path, monkeypatch):
     nonce = str(uuid.uuid4())
     path = tmp_path / f".desktop-input-{nonce}.json"

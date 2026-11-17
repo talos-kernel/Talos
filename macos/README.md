@@ -18,7 +18,8 @@ an explicit Copy button, and collapsible tool steps with measured duration. A
 private mirror receives typed CLI events, including approval questions. Explicit
 operator clicks return through the same identity and token checks as Telegram;
 display events never grant approval or change the kernel's decision. Replies stream when
-available, without a duplicate terminal transcript underneath. **Full terminal**
+available, without a duplicate terminal transcript underneath. Completed answers
+follow their work trail and post-run diagnostics, so the result is last for each task. **Full terminal**
 remains available for setup, commands and troubleshooting; it becomes the fallback
 if the native view cannot connect. History uses the same reply formatting. Showing
 an archived exchange does not add it to the model's current context.

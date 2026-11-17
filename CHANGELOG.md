@@ -39,6 +39,8 @@ only to the qualified Talos core. Core updates do not replace the app interface.
 - Add an attended core-update button using signed archives, hash-locked dependencies,
   candidate tests and an atomic runtime selection; preserve the operator profile.
 
+- Keep completed replies below their tool cards and post-run diagnostics, with
+  stable message identity when cards move or older items leave the view.
 - Keep development app bundles under a noindex build directory by default; archive
   rollback copies instead of leaving duplicate apps in searchable folders.
 

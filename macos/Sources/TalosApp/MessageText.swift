@@ -176,7 +176,7 @@ struct ConversationView: View {
                 }.padding(28).frame(maxWidth: 840, alignment: .leading).frame(maxWidth: .infinity)
             }
             .onAppear { scroll.scrollTo("latest", anchor: .bottom) }
-            .onChange(of: session.live.items.count) { _, _ in scroll.scrollTo("latest", anchor: .bottom) }
+            .onChange(of: session.live.items.last?.id) { _, _ in scroll.scrollTo("latest", anchor: .bottom) }
             .onChange(of: session.archive.turns.first?.id) { _, _ in
                 if session.live.items.isEmpty { scroll.scrollTo("latest", anchor: .bottom) }
             }
