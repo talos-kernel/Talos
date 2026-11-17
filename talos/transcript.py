@@ -118,8 +118,10 @@ class TranscriptStore:
     def record(self, conversation: str, *, asked: str, answered: str, now: float | None = None) -> None:
         """Legt einen beantworteten Zug ab. Nie ein Fehler nach aussen — siehe Modul-
         Docstring (fail-open): der Aufrufer hat die Antwort bereits zugestellt."""
-        asked_clean = " ".join(str(asked).split())
-        answered_clean = " ".join(str(answered).split())
+        asked_clean = str(asked).strip()
+        # The archive is also a readable conversation. Flattening whitespace
+        # destroys paragraphs and, more seriously, code indentation.
+        answered_clean = str(answered).strip()
         if not asked_clean or not answered_clean or self._conn is None:
             return
         ts = time.time() if now is None else float(now)

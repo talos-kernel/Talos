@@ -20,7 +20,7 @@ from desktop_runtime import backend_digest
 
 ROOT = Path(__file__).resolve().parent.parent
 HELPERS = ("desktop_runtime.py", "desktop_state.py", "desktop_connections.py",
-           "desktop_accounts.py", "desktop_hermes.py")
+           "desktop_accounts.py", "desktop_hermes.py", "desktop_updates.py", "desktop_chat.py")
 SWIFT_ENV_ALLOWLIST = ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL",
                        "DEVELOPER_DIR", "SDKROOT", "TOOLCHAINS")
 
@@ -38,7 +38,7 @@ def source_record(allow_dirty: bool = False) -> dict:
     if dirty and not allow_dirty:
         raise SystemExit("Commit the build inputs first, or use --allow-dirty for a labelled local preview.")
     paths = subprocess.check_output(["git", "ls-files", "-z", "talos", "blueprints", "SOUL.md",
-                                     "macos", "requirements.lock", "site/brand/icon-512.png",
+                                     "macos", "CHANGELOG.md", "requirements.lock", "site/brand/icon-512.png",
                                      "docs/computer.md", "LICENSE"], cwd=ROOT).decode().split("\0")
     hashes = {}
     for relative in filter(None, paths):
@@ -123,7 +123,7 @@ def build(python_root: Path, destination: Path, identity: str = "-", *, allow_di
     if interpreter != ["arm64", [3, 13]]:
         raise SystemExit("The app requires an ARM64 CPython 3.13 interpreter.")
     run_swift("build", "--package-path", str(ROOT / "macos"), "-c", "release",
-              "--force-resolved-versions")
+              "--force-resolved-versions", "--build-system", "native")
     # A resolver must not silently change the reviewed dependency pins.
     if source_record(allow_dirty) != provenance:
         raise SystemExit("Build inputs changed during Swift compilation.")
@@ -154,7 +154,7 @@ def build(python_root: Path, destination: Path, identity: str = "-", *, allow_di
         scrub_python_paths(resources / "python", packages, python_root)
         backend = resources / "backend"
         backend.mkdir()
-        tracked = subprocess.check_output(["git", "ls-files", "-z", "talos", "blueprints", "SOUL.md"],
+        tracked = subprocess.check_output(["git", "ls-files", "-z", "talos", "blueprints", "SOUL.md", "CHANGELOG.md"],
                                           cwd=ROOT).decode().split("\0")
         for relative in filter(None, tracked):
             source = ROOT / relative
@@ -222,7 +222,7 @@ def build(python_root: Path, destination: Path, identity: str = "-", *, allow_di
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--python-root", required=True, type=Path)
-    parser.add_argument("--out", type=Path, default=ROOT / "macos/build/Talos.app")
+    parser.add_argument("--out", type=Path, default=ROOT / "macos/build.noindex/Talos.app")
     parser.add_argument("--sign", default=os.environ.get("TALOS_APP_SIGN_IDENTITY", "-"))
     parser.add_argument("--allow-dirty", action="store_true", help="label an uncommitted local preview in its provenance")
     args = parser.parse_args()

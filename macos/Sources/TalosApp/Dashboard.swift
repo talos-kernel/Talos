@@ -22,7 +22,7 @@ struct DashboardView: View {
                 }
                 VStack(alignment: .leading, spacing: 16) {
                     HStack {
-                        Label("Model connection", systemImage: "sparkle").foregroundStyle(Palette.bronze)
+                        Label("Configured model", systemImage: "sparkle").foregroundStyle(Palette.bronze)
                         Spacer()
                         Button("Manage") { session.page = .connections }.buttonStyle(.plain)
                     }.font(.system(size: 13, weight: .medium))
@@ -109,7 +109,7 @@ struct HistoryView: View {
                         Text(turn.asked).font(.system(size: 15)).textSelection(.enabled)
                         Divider()
                         Text("TALOS").font(.system(size: 11, weight: .semibold)).tracking(2).foregroundStyle(Palette.bronze)
-                        Text(turn.answered).font(.system(size: 15)).lineSpacing(5).textSelection(.enabled)
+                        MessageText(text: turn.answered)
                         Text("Saved archive. Use session_search in chat to find older exchanges. Starting a new session keeps this archive.")
                             .font(.system(size: 11)).foregroundStyle(Palette.muted).padding(.top, 14)
                     } else {

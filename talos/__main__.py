@@ -109,7 +109,7 @@ def queued_text(*, running_s: float, waiting: int) -> str:
 REPO_DIR = Path(__file__).resolve().parent.parent
 
 
-def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
+def run(once: bool = False, ask: str = "", chat: bool = False, *, chat_observer=None, chat_reader=None) -> None:
     # ⚠️ `run()` laedt die Konfiguration ein ZWEITES Mal — `cmd_ask` und `cmd_chat` haben
     # sie vorher schon geladen, um Sandbox und Kennung zu pruefen. Genau daran ist der
     # erste Anlauf gescheitert: dort stand `require_channel=False`, hier nicht, und der
@@ -184,8 +184,11 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
     # Decke am TTY haengt statt am Befehlsnamen (siehe `chatcli`).
     elif chat:
         from .chatcli import ChatChannel
+        from .native_chat import NativeChatChannel
 
-        chat_channel = ChatChannel(os.getuid(), style=config.status_style)
+        channel_type = NativeChatChannel if chat_observer else ChatChannel
+        chat_channel = channel_type(os.getuid(), style=config.status_style, observer=chat_observer,
+                                    **({"background_jobs": background_jobs} if chat_observer else {}))
         channels += (chat_channel,)
     if config.wa_broker_ssh and not (ask or chat):
         # Der Broker-Kanal heisst wie die Cloud-API-Variante („whatsapp") und die
@@ -853,6 +856,10 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
             chatcli.interactive(
                 chat_channel, registry, conductor,
                 unattended=None if beaufsichtigt else unattended,
+                reader=chat_reader,
+                dispatch=(lambda update: _route_update(update, registry, conductor, questions, worker,
+                                                       on_state=chat_channel.observe))
+                         if chat_observer and beaufsichtigt else None,
             )
             return
         finally:
@@ -877,27 +884,7 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
                     return
                 continue
             for update in updates:
-                # --once bleibt bewusst synchron: Diagnose soll deterministisch sein.
-                # ⚠️ `/queue <text>` wird VOR der Kommando-Zustellung abgefangen und
-                # nicht in der Kommando-Zentrale behandelt. Die haette zwar den Worker,
-                # aber kein vollstaendiges `Inbound` — beides zusammen gibt es nur hier.
-                # Der Befehl ist die ausdrueckliche Gegenrichtung zur Lenkung: „das ist
-                # ein zweiter Auftrag, nicht eine Korrektur", und er muss deshalb an der
-                # Umlenkung vorbei.
-                angehaengt = _queued_on_purpose(update)
-                if angehaengt is not None:
-                    if worker.submit(angehaengt):
-                        _notify_queued(registry, update.conversation, worker, angehaengt)
-                    else:
-                        _notify_full(registry, update.conversation)
-                elif once or conductor.is_inline(update):
-                    conductor.handle(update)
-                elif _steers_the_running_task(conductor, questions, update):
-                    _notify_redirected(registry, update.conversation)
-                elif not worker.submit(update):
-                    _notify_full(registry, update.conversation)
-                else:
-                    _notify_queued(registry, update.conversation, worker, update)
+                _route_update(update, registry, conductor, questions, worker, once=once)
             if once:
                 return
     finally:
@@ -907,6 +894,36 @@ def run(once: bool = False, ask: str = "", chat: bool = False) -> None:
         for conversation in conductor.ask_contexts.conversations():
             questions.cancel(conversation)
         worker.stop()
+
+
+def _route_update(update, registry, conductor, questions, worker, *, once=False, on_state=None):
+    """The same ingress routing for Telegram and the attended native Mac chat."""
+    queued = _queued_on_purpose(update)
+    if queued is not None:
+        if on_state and is_command(queued.text) and parse(queued.text)[0] in {"approve", "deny"}:
+            registry.send(update.conversation, "Send an approval answer directly after reviewing the pending action; it cannot be queued as a new task.")
+            on_state({"kind": "worker", "message_id": update.dedup_key, "status": "refused"})
+            return
+        # Bind a typed yes to the approval visible at ingress, before waiting.
+        conductor.is_inline(queued)
+        item = queued
+    elif once or conductor.is_inline(update):
+        conductor.handle(update)
+        return
+    elif _steers_the_running_task(conductor, questions, update):
+        _notify_redirected(registry, update.conversation)
+        if on_state:
+            on_state({"kind": "worker", "message_id": update.dedup_key, "status": "redirected"})
+        return
+    else:
+        item = update
+    accepted = worker.submit(item)
+    if on_state:
+        worker.watch(item, lambda state: on_state({"kind": "worker", "message_id": item.dedup_key, "status": state}))
+    if not accepted:
+        _notify_full(registry, update.conversation)
+    elif on_state is None:
+        _notify_queued(registry, update.conversation, worker, item)
 
 
 def _start_status(reasoner: ModelRouter, config) -> dict[str, object]:

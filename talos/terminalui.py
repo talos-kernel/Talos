@@ -61,3 +61,30 @@ def help_text(text: str, *, out=None) -> str:
         else:
             lines.append(clean(line))
     return "\n".join(lines) + "\n"
+
+
+def markdown_text(text: str, *, out=None) -> str:
+    """Readable terminal replies, with literal code and no output-controlled escapes."""
+    def inline(value: str) -> str:
+        pattern = r"(`+)(.+?)\1|\*\*(.+?)\*\*|\[([^\]]+)\]\(([^)]+)\)"
+        def replace(match):
+            if match.group(1):
+                return paint(match.group(2), out=out)
+            if match.group(3):
+                return paint(clean(inline(match.group(3))), out=out, bold=True)
+            return f"{match.group(4)} ({match.group(5)})"
+        return re.sub(pattern, replace, value)
+
+    lines, code = [], False
+    for line in clean(text).splitlines():
+        if line.lstrip().startswith("```"):
+            code = not code
+            label = line.lstrip()[3:].strip()
+            lines.append(paint(f"  ── {label or 'code'} ──" if code else "  ────────", "muted", out=out))
+        elif code:
+            lines.append("  " + line)
+        elif re.match(r"^#{1,6} ", line):
+            lines.append(paint(clean(inline(re.sub(r"^#{1,6} +", "", line))), out=out, bold=True))
+        else:
+            lines.append(inline(line))
+    return "\n".join(lines)

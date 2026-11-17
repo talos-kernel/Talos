@@ -157,7 +157,7 @@ def test_question_reaches_the_chat_as_a_structured_message(tmp_path):
     assert QUESTION in message.text
     assert "1) logs/app.log" in message.text  # Kanäle ohne Knöpfe sehen dieselbe Liste
     buttons = _buttons(message)
-    assert len(buttons) == len(OPTIONS) + 1
+    assert len(buttons) == len(OPTIONS) + 2
     assert all(button.data.startswith(CALLBACK_PREFIX) for button in buttons)
     # Nichts daran darf nach dem Freigabe-Dialog aussehen.
     assert "Approval required" not in message.text and "Tool:" not in message.text

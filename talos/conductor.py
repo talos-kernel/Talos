@@ -56,7 +56,7 @@ from .prompt_context import (
     append_run_context,
     frame_untrusted_tool_result,
 )
-from .question import CALLBACK_PREFIX as QUESTION_PREFIX, Answer, QuestionDesk, SKIP_WORDS
+from .question import CALLBACK_PREFIX as QUESTION_PREFIX, Answer, AnswerReason, QuestionDesk, SKIP_WORDS
 from .reasoner import Reasoner
 from .redirect import Redirect
 from .standing import StandingStore
@@ -379,6 +379,8 @@ class Conductor:
         if ticket is None:
             return False
         raw = update.text.strip().lower()
+        if ticket.entry.awaiting_text or raw == "other":
+            return True
         if raw in SKIP_WORDS:
             return True
         number = raw.rstrip(").").strip()
@@ -610,6 +612,8 @@ class Conductor:
             text, notice = "Question invalid or expired. Nothing was answered.", "Invalid or expired"
         else:
             text, notice = _answer_receipt(answer), "Answer received"
+            if answer.reason == AnswerReason.AWAITING_TEXT:
+                notice = "Awaiting typed response"
             self.log.append(Event(run_id, "human", "question.answered",
                                   {"answered": answer.answered, "reason": answer.reason}))
         return self._reply_structured(
@@ -2353,6 +2357,10 @@ def _no_approval(channel: str, prompt: str) -> str:
 def _answer_receipt(answer: Answer) -> str:
     """Quittung der Rückfrage. Sagt ausdrücklich, dass nichts freigegeben wurde —
     dieselbe Trennung wie im Fragetext, nur am anderen Ende des Vorgangs."""
+    if answer.reason == AnswerReason.AWAITING_TEXT:
+        return "Awaiting your typed response. Send your answer, or 0 to skip. Nothing has been approved."
+    if answer.reason == AnswerReason.TYPED:
+        return "Your typed answer was recorded. The run continues; nothing was approved."
     if not answer.answered:
         return "No answer recorded. The run continues without one; nothing was approved."
     return (

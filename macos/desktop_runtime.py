@@ -88,7 +88,7 @@ def clean_environment(profile: Path, source: Path, packages: Path) -> dict[str, 
     if os.environ.get("TALOS_SANDBOX"):
         env["TALOS_SANDBOX"] = os.environ["TALOS_SANDBOX"]
     env.update({"TALOS_SECRETS_ENV": str(profile / "talos.env"),
-                "PYTHONPATH": os.pathsep.join((str(source), str(packages))),
+                "PYTHONPATH": str(source) if (source / ".venv").is_dir() else os.pathsep.join((str(source), str(packages))),
                 "PYTHONUNBUFFERED": "1", "PYTHONNOUSERSITE": "1", "PYTHONDONTWRITEBYTECODE": "1",
                 "TERM": "xterm-256color", "COLORTERM": "truecolor"})
     config = profile / "talos.env"
@@ -167,6 +167,7 @@ def status(profile: Path = PROFILE) -> dict:
     identity = f"cli:{os.getuid()}"
     allowed = values.get("TALOS_ALLOWED_PRINCIPALS", "").replace(",", " ").split()
     return {"configured": identity in allowed and bool(values.get("TALOS_MODEL_PROVIDER")),
+            "version": __import__("talos").__version__,
             "provider": values.get("TALOS_MODEL_PROVIDER", ""),
             "model": values.get("TALOS_MODEL", ""),
             "claude_available": bool(shutil.which("claude")),
@@ -217,6 +218,11 @@ def run_action(action: str, profile: Path = PROFILE) -> int:
         from desktop_state import history
         print(json.dumps(history(profile)))
         return 0
+    if action == "update-check":
+        from desktop_updates import check
+        from talos import __version__
+        print(json.dumps(check(__version__)))
+        return 0
     require_operator_terminal()
     # No duplicate chats against the same profile/event log.
     private_path(profile / ".session.lock")
@@ -225,6 +231,10 @@ def run_action(action: str, profile: Path = PROFILE) -> int:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise RuntimeError("A Talos session is already open. Return to that window first.")
+        if action == "update":
+            from desktop_updates import install
+            from talos import __version__
+            return install(profile, __version__)
         if action == "quick-claude":
             quick_claude(profile)
             action = "chat"
@@ -232,12 +242,21 @@ def run_action(action: str, profile: Path = PROFILE) -> int:
             import desktop_connections
             getattr(desktop_connections, action)(profile)
             action = "chat"
-        if action == "chat" and not status(profile)["configured"]:
+        if action in {"chat", "native-chat"} and not status(profile)["configured"]:
             code = run_setup(["terminal", "--out", str(profile / "talos.env")])
             if code or not status(profile)["configured"]:
                 return code or 1
         if action == "chat":
             return cli.dispatch(["chat"]) or 0
+        if action == "native-chat":
+            import inspect
+            if "observer" not in inspect.signature(cli.cmd_chat).parameters:
+                # A signed core predating the display mirror remains usable via
+                # the visible terminal fallback, with the same attendance gates.
+                return cli.dispatch(["chat"]) or 0
+            from desktop_chat import ChatMirror
+            mirror = ChatMirror(profile)
+            return cli.cmd_chat([], observer=mirror.emit, reader=mirror.read)
         if action in {"model", "telegram"}:
             from talos.configcli import read_file, write_keys
             identity = f"cli:{os.getuid()}"
@@ -279,11 +298,20 @@ def main() -> int:
     bundle = Path(__file__).resolve().parent
     try:
         release = provision(bundle, PROFILE)
+        from desktop_updates import selected_runtime
+        # Older bundles/fixtures without a package version retain their original route.
+        if (release / "talos/__init__.py").is_file():
+            release = selected_runtime(PROFILE, release)
+        updated_python = release / ".venv/bin/python"
+        if updated_python.is_file() and Path(sys.prefix).resolve() != (release / ".venv").resolve():
+            os.execve(str(updated_python), [str(updated_python), "-B", str(bundle / "desktop_runtime.py"), *sys.argv[1:]],
+                      clean_environment(PROFILE, release, bundle / "packages"))
         env = clean_environment(PROFILE, release, bundle / "packages")
         os.environ.clear()
         os.environ.update(env)
         sys.path.insert(0, str(release))
-        sys.path.insert(1, str(bundle / "packages"))
+        if not updated_python.is_file():
+            sys.path.insert(1, str(bundle / "packages"))
         # Relative file tools must create durable work, never files inside a
         # versioned code release that the next app update will stop using.
         os.chdir(PROFILE / "workspace")
@@ -292,7 +320,7 @@ def main() -> int:
         os.environ["SSL_CERT_FILE"] = certifi.where()
         os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
         action = sys.argv[1] if len(sys.argv) == 2 else "status"
-        if action not in {"status", "history"}:
+        if action not in {"status", "history", "update-check"}:
             for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
                 signal.signal(sig, interrupted)
         return run_action(action)

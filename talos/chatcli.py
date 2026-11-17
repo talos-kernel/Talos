@@ -62,6 +62,7 @@ class ChatChannel:
     uid: int
     out: object = None
     style: str = ""
+    observer: object = None
     _queue: list[str] = field(default_factory=list, init=False)
     _seq: int = field(default=0, init=False)
 
@@ -88,11 +89,23 @@ class ChatChannel:
     def feed(self, text: str) -> None:
         self._queue.append(text)
 
+    def observe(self, event: dict) -> bool:
+        """Optional display-only mirror; it cannot grant or consume an approval."""
+        if callable(self.observer):
+            try:
+                self.observer(event)
+                return True
+            except Exception:
+                return False
+        return False
+
     def poll(self) -> list[Inbound]:
         wartend, self._queue = self._queue, []
         eingaben = []
         for text in wartend:
             self._seq += 1
+            self.observe({"kind": "user", "text": text,
+                          "message_id": f"{CHANNEL_NAME}:{self.uid}:{os.getpid()}:{self._seq}"})
             eingaben.append(Inbound(
                 principal=self.principal,
                 conversation=self.conversation,
@@ -100,12 +113,16 @@ class ChatChannel:
                 # Fortlaufend je Sitzung: zweimal dieselbe Frage hintereinander ist im
                 # Gespraech normal und darf nicht als Doublette verschluckt werden.
                 dedup_key=f"{CHANNEL_NAME}:{self.uid}:{os.getpid()}:{self._seq}",
+                callback=getattr(text, "callback", None),
             ))
         return eingaben
 
     def send(self, conversation: str, text: str) -> None:
-        schreiben = (self.out or sys.stdout).write
-        schreiben(text.rstrip("\n") + "\n")
+        self.observe({"kind": "assistant", "text": text})
+        from .terminalui import is_terminal, markdown_text
+        out = self.out or sys.stdout
+        rendered = markdown_text(text, out=out) if is_terminal(out) else text
+        out.write(rendered.rstrip("\n") + "\n")
 
     def send_structured(self, conversation: str, message: StructuredMessage) -> None:
         """Knoepfe gibt es hier nicht — der Text schon.
@@ -125,7 +142,41 @@ class ChatChannel:
         from .cli_activity import CliActivity
         from .ux import style_for
 
-        return CliActivity(out=self.out, style=style_for(self.style))
+        activity = CliActivity(out=self.out, style=style_for(self.style))
+        return ObservedActivity(activity, self.observe) if self.observer else activity
+
+
+class ObservedActivity:
+    """Mirror typed progress, never parse model text as an execution event."""
+    def __init__(self, activity, emit):
+        self.activity, self.emit = activity, emit
+        self.background_jobs = None
+
+    def progress(self, event):
+        from .agent_loop import AgentProgress
+        from .activity_preview import command_preview, safe_label
+        self.activity.progress(event)
+        if isinstance(event, AgentProgress):
+            self.emit({"kind": "progress", "stage": event.stage.value,
+                       "tool": safe_label(event.tool), "status": safe_label(event.status),
+                       "text": safe_label(event.summary), "step": event.step,
+                       "preview": command_preview(event.preview) if event.tool in {"run_shell", "remote_exec"} else ""})
+
+    def succeed(self, footer="", *, receipt=True):
+        self.activity.succeed(footer, receipt=receipt)
+        self.emit({"kind": "receipt", "text": footer, "approval": not receipt})
+        if receipt and self.background_jobs:
+            try:
+                count = self.background_jobs()
+                if count > 0:
+                    noun = "job" if count == 1 else "jobs"
+                    self.emit({"kind": "note", "text": f"{count} background {noun} still running · result follows separately"})
+            except Exception:
+                pass  # Cosmetic state must never prevent the answer or receipt.
+
+    def fail(self, error):
+        self.activity.fail(error)
+        self.emit({"kind": "error", "text": str(error)})
 
 
 def attended(stdin=None, stdout=None) -> bool:
@@ -180,7 +231,7 @@ def banner(*, agent: str, version: str, model: str, autonomy: str, uid: int,
 
 
 def interactive(channel: ChatChannel, registry, conductor, *, unattended=None,
-                reader=None, out=None) -> int:
+                reader=None, out=None, dispatch=None) -> int:
     """Die Schleife. Zeile lesen, einspeisen, abarbeiten — bis EOF.
 
     Sie ist absichtlich dieselbe wie im Telegram-Betrieb: einspeisen, `poll_all()`,
@@ -195,6 +246,7 @@ def interactive(channel: ChatChannel, registry, conductor, *, unattended=None,
     from .terminalui import paint
 
     while True:
+        channel.observe({"kind": "ready"})
         zeile = read_line(prompt=paint("\n  you › ", out=out, bold=True), reader=reader)
         if zeile is None:
             schreiben("\n")
@@ -205,7 +257,9 @@ def interactive(channel: ChatChannel, registry, conductor, *, unattended=None,
             return 0
         channel.feed(zeile)
         for update in registry.poll_all():
-            if unattended is None:
+            if dispatch is not None:
+                dispatch(update)
+            elif unattended is None:
                 conductor.handle(update)
             else:
                 with unattended.active():
