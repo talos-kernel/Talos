@@ -11,6 +11,51 @@ recent conversations. **History** searches the latest 100 saved exchanges from
 this Mac conversation. The complete archive remains on disk and searchable
 through `session_search`. It is an archive, not automatic context restoration.
 
+## Chat and updates
+
+**Conversation** shows a native chat: formatted replies, literal code blocks with
+an explicit Copy button, and collapsible tool steps with measured duration. A
+private mirror receives typed CLI events, including approval questions. Explicit
+operator clicks return through the same identity and token checks as Telegram;
+display events never grant approval or change the kernel's decision. Replies stream when
+available, without a duplicate terminal transcript underneath. **Full terminal**
+remains available for setup, commands and troubleshooting; it becomes the fallback
+if the native view cannot connect. History uses the same reply formatting. Showing
+an archived exchange does not add it to the model's current context.
+The composer shows five lines, wraps long text and scrolls beyond that. Enter sends;
+Shift-Enter adds a newline. A private one-shot payload preserves multiline input as
+one attended message, including text longer than the terminal line buffer.
+During work, **Send** adds a correction to the current task; **Queue** starts a
+separate task afterward. Queue state and **Stop run** remain available while the
+model works. **Commands** exposes the existing help, tools, skills, schedules,
+queue and model controls. Questions and model/approval choices have native buttons.
+**Other** waits for a typed answer; it is never an approval. The paperclip adds
+explicitly selected local file paths to the draft; reading them still uses the
+normal tools and permissions. Delivered files offer **Show in Finder** without
+opening or executing them automatically. Delegated jobs show a separate pending
+count; a reply finishing does not mean those jobs have finished.
+Schedules and completion notices run while the local session is open. Features
+requiring a remote worker, bot or external service still need their own connection;
+opening the Mac app does not import another agent's private configuration.
+
+**Updates** (also **Talos → Check for Updates…**) displays the installed core version,
+checks the official release and offers **Install update** when a newer core exists.
+End the current session first. Installation verifies the pinned release signature
+and checksum, installs hash-locked dependencies, and runs the candidate's tests and
+adversarial suite before atomically selecting it. A failure retains the active core.
+Update proofs use a private copy of the embedded interpreter so child Python
+processes cannot add bytecode caches to the signed app.
+Configuration, history, skills and workspace remain in the same private profile.
+Older core directories are retained; `previous-runtime.json` records the previous
+downloaded selection when one existed. Restoring that record (with all sessions
+closed) rolls back; archiving `active-runtime.json` returns to the bundled core.
+A newer app bundle takes precedence over an older downloaded core.
+
+This button updates the **core**, not the signed Swift app bundle. Mac interface
+updates are distributed separately. The local preview remains unnotarized.
+The shared model prompt includes the running software version and bounded local
+release notes; it distinguishes installed code from an online latest-release check.
+
 ## Connections
 
 **Found on this Mac** automatically discovers Claude, Codex, Antigravity, Kimi
@@ -75,11 +120,13 @@ uv python install cpython-3.13.12-macos-aarch64-none --no-bin
 python3 macos/build_app.py --python-root "$(uv python dir)/cpython-3.13.12-macos-aarch64-none"
 ```
 
-Output: `macos/build/Talos.app`. The build packages locked Python dependencies,
+Output: `macos/build.noindex/Talos.app`. The build packages locked Python dependencies,
 SwiftTerm 1.19.0 and the existing public Talos runtime. It signs locally with
 an ad-hoc signature by default. Pass `--sign` for a developer identity.
 Notarization and public distribution are separate; this is a local preview,
-not an App Store release. An existing output is never overwritten.
+not an App Store release. An existing output is never overwritten. Keep development outputs in a `.noindex`
+directory and store rollback copies as ZIP archives outside Applications; multiple
+extracted app bundles can otherwise appear as duplicate Talos launcher icons.
 
 `macos/app-version.json` owns the app version/build; the core has its own version.
 All helpers, including account discovery, are built from this repository, never
@@ -92,6 +139,7 @@ across Xcode or signing versions. Public CI builds and verifies the same bundle.
 
 ```sh
 python -m pytest macos/Tests -q
+swift test --package-path macos --build-system native
 python -m pytest tests -q --basetemp=/tmp/talos-core-tests
 ```
 

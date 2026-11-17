@@ -46,3 +46,6 @@ backups/
 # Der Vault ist die private Wissensbasis der Instanz (Betreiber-Namen, Pfade,
 # Erkenntnisse) — er gehoert nie in einen Sync-Pfad, auch nicht den privaten.
 vault/
+
+# Exclude development bundles from both Git and Spotlight discovery.
+macos/build.noindex/

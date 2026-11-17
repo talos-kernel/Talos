@@ -231,7 +231,7 @@ def cmd_ask(rest: list[str], out=None) -> int:
     return 0
 
 
-def cmd_chat(rest: list[str], out=None) -> int:
+def cmd_chat(rest: list[str], out=None, *, observer=None, reader=None) -> int:
     """`talos chat` — eine Sitzung im Terminal statt eines einzelnen Zuges.
 
     Dieselben zwei Riegel wie bei `ask`, in derselben Reihenfolge und aus demselben
@@ -264,7 +264,12 @@ def cmd_chat(rest: list[str], out=None) -> int:
 
     from .__main__ import run
 
-    run(chat=True)
+    options = {"chat": True}
+    if observer:
+        options["chat_observer"] = observer
+    if reader:
+        options["chat_reader"] = reader
+    run(**options)
     return 0
 
 

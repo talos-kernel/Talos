@@ -9,6 +9,39 @@ remain historical snapshots. Beta does not mean error-free operation.
 
 ## [Unreleased]
 
+## [0.20.4] — 2026-11-17
+
+### Changed
+
+- Report the running Talos version and bounded local release notes to the model.
+  Keep installed software separate from the latest online release.
+- Preserve paragraphs and code indentation in new conversation transcripts and
+  render Markdown in attended terminal replies without accepting terminal controls.
+- Let operator questions accept an Other answer as bounded text under the original
+  identity and deadline. Answers grant no permission.
+
+### Mac app 0.4.0 preview
+
+The Swift app remains a separate, unnotarized preview; the stable designation applies
+only to the qualified Talos core. Core updates do not replace the app interface.
+
+
+- Add a native conversation view with formatted replies, copyable code blocks and
+  collapsible measured tool steps. Mirror approval questions without changing the
+  CLI gate, and retain the full terminal as a fallback. Show the installed core version.
+- Add a five-line native composer with wrapping, scrolling and Shift-Enter for
+  newlines; submit multiline text as one attended message.
+- Keep chat input live during work: Send steers the current task, Queue starts a
+  separate task afterward, and Stop cancels without closing the session. Use the
+  same ingress routing as Telegram; show measured queue and background-job states.
+- Render streamed replies, question/model/approval buttons and local output files.
+  Add an explicit file picker and command menu; retain existing tool permissions.
+- Add an attended core-update button using signed archives, hash-locked dependencies,
+  candidate tests and an atomic runtime selection; preserve the operator profile.
+
+- Keep development app bundles under a noindex build directory by default; archive
+  rollback copies instead of leaving duplicate apps in searchable folders.
+
 ## [0.20.3] — 2026-11-11
 
 ### Fixed

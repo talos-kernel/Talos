@@ -4,10 +4,12 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).parents[1]))
 spec = importlib.util.spec_from_file_location("desktop_runtime", Path(__file__).parents[1] / "desktop_runtime.py")
 desktop = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(desktop)

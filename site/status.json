@@ -1,11 +1,11 @@
 {
-  "version": "0.20.3",
+  "version": "0.20.4",
   "release_state": "released",
   "source_state": "release",
-  "installer_version": "0.20.3",
-  "tests": 3578,
+  "installer_version": "0.20.4",
+  "tests": 3583,
   "redteam_faelle": 277,
   "kernel_zeilen": 996,
   "werkzeuge": 37,
-  "release_ref": "v0.20.3"
+  "release_ref": "v0.20.4"
 }

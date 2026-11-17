@@ -4,6 +4,7 @@ import SwiftTerm
 import Darwin
 
 struct RuntimeStatus: Decodable {
+    var version = ""
     var configured = false
     var provider = ""
     var model = ""
@@ -37,6 +38,35 @@ struct Archive: Decodable {
     var turns: [SavedTurn] = []
     var total = 0
     var available = true
+}
+
+struct NativeButton: Decodable, Hashable {
+    var label: String
+    var data: String
+}
+
+struct LiveItem: Decodable, Identifiable {
+    var id: Int
+    var kind: String
+    var text: String?
+    var tool: String?
+    var status: String?
+    var preview: String?
+    var duration: Double?
+    var message_id: String?
+    var buttons: [NativeButton]?
+    var keyboard: [[NativeButton]]?
+    var channel_message_id: Int?
+    var literal: Bool?
+    var path: String?
+}
+
+struct LiveChat: Decodable {
+    var pid: Int32 = 0
+    var started: Double = 0
+    var phase = "starting"
+    var revision = 0
+    var items: [LiveItem] = []
 }
 
 // Terminal escape sequences are untrusted output, not clipboard or launch authority.
@@ -79,11 +109,19 @@ final class GuardedTerminal: LocalProcessTerminalView {
     @Published var hasTerminal = false
     @Published var currentAction = ""
     @Published var page: Page = .home
+    @Published var updateInfo: CoreUpdate?
+    @Published var checkingUpdates = false
+    @Published var updateError = ""
+    @Published var live = LiveChat()
+    @Published var awaitingInput = false
+    @Published var bridgeUnavailable = false
+    private var chatStarted = Date.distantPast
+    private var submittedRevision = -1
     let terminal = GuardedTerminal(frame: .zero)
     private var fence: TerminalFence?
     private var exitHandled = false
 
-    enum Page: String, CaseIterable { case home = "Dashboard", chat = "Chat", history = "History", connections = "Connections", computer = "Computer" }
+    enum Page: String, CaseIterable { case home = "Dashboard", chat = "Chat", history = "History", connections = "Connections", computer = "Computer", updates = "Updates" }
 
     override init() {
         super.init()
@@ -119,12 +157,47 @@ final class GuardedTerminal: LocalProcessTerminalView {
                 self.error = ""
             }
         }
+        refreshHistory()
+    }
+
+    func refreshHistory() {
         read("history") { data in
             if let result = try? JSONDecoder().decode(Archive.self, from: data) { self.archive = result }
         }
     }
 
-    private func read(_ action: String, done: @escaping (Data) -> Void) {
+    func refreshLive() {
+        guard currentAction == "chat", busy else { return }
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Talos/.desktop-chat.json")
+        if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size < 4_000_000,
+           let data = try? Data(contentsOf: url),
+           let value = try? JSONDecoder().decode(LiveChat.self, from: data),
+           value.pid == terminal.process.shellPid {
+            guard value.pid != live.pid || value.revision != live.revision else { return }
+            live = value
+            awaitingInput = value.revision > submittedRevision && ["ready", "approval", "question"].contains(value.phase)
+            bridgeUnavailable = false
+        } else if Date().timeIntervalSince(chatStarted) > 12 {
+            bridgeUnavailable = true
+        }
+    }
+
+    func checkForUpdates() {
+        guard !checkingUpdates else { return }
+        checkingUpdates = true
+        updateError = ""
+        read("update-check", failure: { error in
+            self.checkingUpdates = false
+            self.updateError = error
+        }) { data in
+            self.checkingUpdates = false
+            do { self.updateInfo = try JSONDecoder().decode(CoreUpdate.self, from: data) }
+            catch { self.updateError = "The update response could not be read. Try again." }
+        }
+    }
+
+    private func read(_ action: String, failure: ((String) -> Void)? = nil, done: @escaping (Data) -> Void) {
         let executable = python, script = runtime, env = environment()
         // Drain stdout while the child runs. An archive can exceed pipe capacity;
         // waiting for exit before reading would deadlock the whole history view.
@@ -146,7 +219,8 @@ final class GuardedTerminal: LocalProcessTerminalView {
             if result.1 == 0 { done(result.0) }
             else {
                 self.loaded = true
-                self.error = String(data: result.0, encoding: .utf8) ?? "The local runtime could not start."
+                let message = String(data: result.0, encoding: .utf8) ?? "The local runtime could not start."
+                if let failure { failure(message) } else { self.error = message }
             }
         }
     }
@@ -161,13 +235,18 @@ final class GuardedTerminal: LocalProcessTerminalView {
         exitHandled = false
         busy = true
         currentAction = action
+        live = LiveChat()
+        awaitingInput = false
+        bridgeUnavailable = false
+        chatStarted = Date()
+        submittedRevision = -1
         hasTerminal = true
         page = .chat
         activity = ["quick-claude": "Connecting Claude", "chat": "Your local agent", "model": "Model setup",
-                    "telegram": "Telegram setup", "telegram-run": "Telegram is running", "codex": "Connecting Codex", "ollama": "Connecting Ollama", "doctor": "Checking your setup"][action] ?? "Talos"
+                    "telegram": "Telegram setup", "telegram-run": "Telegram is running", "codex": "Connecting Codex", "ollama": "Connecting Ollama", "doctor": "Checking your setup", "update": "Installing and verifying the update"][action] ?? "Talos"
         if action == "quick-claude" { activity = "Claude · setup and chat" }
         terminal.feed(text: "\u{1b}[2J\u{1b}[H")
-        terminal.startProcess(executable: python.path, args: ["-B", runtime.path, action],
+        terminal.startProcess(executable: python.path, args: ["-B", runtime.path, action == "chat" ? "native-chat" : action],
                               environment: environment().map { "\($0.key)=\($0.value)" },
                               currentDirectory: resources.path)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
@@ -195,21 +274,62 @@ final class GuardedTerminal: LocalProcessTerminalView {
         if terminal.process.running { terminal.terminate() }
     }
 
-    func submit(_ text: String) {
-        guard busy && currentAction == "chat" else { return }
-        // A single operator message, never terminal escape sequences or a pasted
-        // series of implicit commands. Approvals still arrive through the CLI.
-        let line = text.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }
-        let message = String(String.UnicodeScalarView(line)).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !message.isEmpty else { return }
-        terminal.send(source: terminal, data: Array((String(message.prefix(20000)) + "\r").utf8)[...])
+    func submit(_ text: String, callback: [String: Any]? = nil) -> Bool {
+        guard busy && currentAction == "chat" && (live.pid != 0 || bridgeUnavailable) else { return false }
+        // A private one-shot payload preserves newlines and avoids the PTY's
+        // canonical-line limit. Only its random identifier travels over the TTY.
+        let scalars = text.unicodeScalars.filter {
+            !CharacterSet.controlCharacters.contains($0) || $0 == "\n" || $0 == "\t"
+        }
+        let message = String(String.UnicodeScalarView(scalars)).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty else { return false }
+        guard message.unicodeScalars.count <= 20000 else { error = "Please keep one message under 20,000 characters."; return false }
+        if bridgeUnavailable {
+            guard !message.contains("\n") else {
+                error = "Use a single line in terminal fallback mode. Your draft is still here."
+                return false
+            }
+            terminal.send(source: terminal, data: Array((message + "\r").utf8)[...])
+            return true
+        }
+        let nonce = UUID().uuidString
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Talos/.desktop-input-\(nonce).json")
+        do {
+            var payload: [String: Any] = ["text": message]
+            if let callback { payload["callback"] = callback }
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            let fd = open(url.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+            guard fd >= 0 else { throw CocoaError(.fileWriteUnknown) }
+            var success = false
+            defer { close(fd); if !success { try? FileManager.default.removeItem(at: url) } }
+            let count = data.withUnsafeBytes { Darwin.write(fd, $0.baseAddress!, data.count) }
+            guard count == data.count else { throw CocoaError(.fileWriteUnknown) }
+            success = true
+            awaitingInput = false
+            submittedRevision = live.revision
+            terminal.send(source: terminal, data: Array(("TALOS_MESSAGE:" + nonce + "\r").utf8)[...])
+            self.error = ""
+            return true
+        } catch { self.error = "The message could not be sent. Your draft is still here."; return false }
     }
+
+    func respond(_ button: NativeButton, messageID: Int) {
+        _ = submit(button.label, callback: ["data": button.data, "message_id": messageID])
+    }
+
+    var queuedCount: Int { live.items.filter { $0.kind == "user" && $0.status == "queued" }.count }
 
     func processTerminated(source: TerminalView, exitCode: Int32?) {
         guard !exitHandled else { return }
         exitHandled = true
         busy = false
+        if currentAction == "chat" && live.pid == 0 { bridgeUnavailable = true }
         activity = exitCode == 0 ? "Session finished" : "Session stopped"
+        if currentAction == "update" {
+            activity = exitCode == 0 ? "Update finished" : "Update stopped — check Updates for the installed version"
+            updateInfo = nil
+        }
         refresh()
     }
     func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}

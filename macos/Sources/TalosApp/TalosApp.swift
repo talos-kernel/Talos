@@ -22,6 +22,9 @@ import SwiftUI
             CommandGroup(replacing: .appSettings) {
                 Button("Connections…") { session.page = .connections }.keyboardShortcut(",")
             }
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { session.page = .updates; session.checkForUpdates() }
+            }
         }
     }
 }
@@ -49,6 +52,7 @@ enum Palette {
 struct MainView: View {
     @ObservedObject var session: Session
     @State private var message = ""
+    @State private var readableChat = true
 
     var body: some View {
         HStack(spacing: 0) {
@@ -60,14 +64,66 @@ struct MainView: View {
                 ZStack {
                     if session.hasTerminal {
                         VStack(spacing: 0) {
-                            TerminalPane(session: session).padding(22)
+                            if session.currentAction == "chat" {
+                                HStack {
+                                    Menu {
+                                        Button("All commands") { _ = session.submit("/help") }
+                                        Button("Status") { _ = session.submit("/status") }
+                                        Button("Queue") { _ = session.submit("/queue") }
+                                        Button("Schedules") { _ = session.submit("/schedules") }
+                                        Button("Skills") { _ = session.submit("/skills") }
+                                        Button("Tools & permissions") { _ = session.submit("/tools") }
+                                        Button("Choose model") { _ = session.submit("/model") }
+                                    } label: { Label("Commands", systemImage: "command") }
+                                    .menuStyle(.borderlessButton).fixedSize()
+                                    if session.queuedCount > 0 {
+                                        Text("\(session.queuedCount) queued").font(.caption).foregroundStyle(Palette.bronze)
+                                    }
+                                    if session.live.phase == "working" {
+                                        Button("Stop run") { _ = session.submit("/stop") }.buttonStyle(.plain).font(.caption)
+                                    }
+                                    Spacer()
+                                    Picker("Chat display", selection: $readableChat) {
+                                        Text("Conversation").tag(true)
+                                        Text("Full terminal").tag(false)
+                                    }.pickerStyle(.segmented).labelsHidden().frame(width: 240)
+                                }.padding(.horizontal, 24).padding(.vertical, 12)
+                                if readableChat && !session.bridgeUnavailable {
+                                    ConversationView(session: session)
+                                }
+                            }
+                            if session.currentAction != "chat" || !readableChat || session.bridgeUnavailable {
+                                TerminalPane(session: session).padding(12)
+                            }
+                            if session.bridgeUnavailable {
+                                Text("The chat view is unavailable. Use the terminal above; your session is still active.")
+                                    .font(.caption).foregroundStyle(Palette.bronze).padding(12)
+                            }
                             if session.busy && session.currentAction == "chat" {
-                                HStack(spacing: 12) {
-                                    EntryField(placeholder: "Message Talos…", text: $message, onSubmit: sendMessage)
-                                        .frame(height: 30)
-                                    Button("Send", action: sendMessage).buttonStyle(BronzeButtonStyle())
-                                        .disabled(message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                                        .accessibilityLabel("Send message")
+                                VStack(spacing: 8) {
+                                    MessageComposer(placeholder: "Message Talos…", text: $message, onSubmit: sendMessage)
+                                        .frame(height: 112)
+                                    HStack {
+                                        Button(action: attachFile) { Image(systemName: "paperclip") }
+                                            .buttonStyle(.plain).accessibilityLabel("Attach file")
+                                            .help("Add a file to this message")
+                                        Text(session.live.phase == "approval" ? "Choose an approval option above" : session.live.phase == "working"
+                                             ? "Send adds to this task · Queue starts a new task"
+                                             : "Enter to send · Shift+Enter for a new line")
+                                            .font(.caption).foregroundStyle(Palette.muted)
+                                        Spacer()
+                                        if session.live.phase == "working" {
+                                            Button("Queue") {
+                                                if session.submit("/queue " + message) { message = "" }
+                                            }.buttonStyle(.bordered)
+                                                .disabled(message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                                          || message.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/"))
+                                                .help("Run this as a separate task after the current one")
+                                        }
+                                        Button("Send", action: sendMessage).buttonStyle(BronzeButtonStyle())
+                                            .disabled(message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (session.live.pid == 0 && !session.bridgeUnavailable))
+                                            .accessibilityLabel("Send message")
+                                    }
                                 }.padding(16).background(Palette.panel, in: RoundedRectangle(cornerRadius: 12))
                                     .padding(.horizontal, 24).padding(.bottom, 22)
                             }
@@ -83,12 +139,19 @@ struct MainView: View {
                     if session.page == .history { HistoryView(session: session) }
                     if session.page == .connections { ConnectionsView(session: session) }
                     if session.page == .computer { ComputerView() }
+                    if session.page == .updates { UpdatesView(session: session) }
                     if session.page == .chat && !session.hasTerminal { welcome }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .background(Palette.background)
+        .task {
+            while !Task.isCancelled {
+                session.refreshLive()
+                do { try await Task.sleep(for: .milliseconds(400)) } catch { break }
+            }
+        }
         .overlay(alignment: .bottom) {
             if !session.error.isEmpty {
                 Label(session.error, systemImage: "exclamationmark.circle")
@@ -101,8 +164,17 @@ struct MainView: View {
     }
 
     private func sendMessage() {
-        session.submit(message)
-        message = ""
+        if session.submit(message) { message = "" }
+    }
+
+    private func attachFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Attach"
+        guard panel.runModal() == .OK else { return }
+        let paths = panel.urls.map { $0.path }.joined(separator: "\n")
+        if !paths.isEmpty { message += (message.isEmpty ? "" : "\n\n") + "Attached files:\n" + paths }
     }
 
     private var sidebar: some View {
@@ -118,6 +190,7 @@ struct MainView: View {
                 nav(.history, icon: "clock.arrow.circlepath")
                 nav(.connections, icon: "point.3.connected.trianglepath.dotted")
                 nav(.computer, icon: "desktopcomputer")
+                nav(.updates, icon: "arrow.down.circle")
             }
             Spacer()
             VStack(alignment: .leading, spacing: 13) {
@@ -132,6 +205,8 @@ struct MainView: View {
                 Link(destination: URL(string: "https://talos-agent.ch/docs/")!) {
                     Label("Help & documentation", systemImage: "questionmark.circle").font(.system(size: 12))
                 }.foregroundStyle(Palette.muted)
+                Text("Talos \(session.status.version.isEmpty ? "…" : session.status.version)")
+                    .font(.caption).foregroundStyle(Palette.muted)
             }
             .padding(.bottom, 22)
         }
@@ -172,9 +247,9 @@ struct MainView: View {
         VStack(alignment: .leading, spacing: 26) {
             Spacer(minLength: 20)
             Text("YOUR OWN AGENT").font(.system(size: 11, weight: .semibold)).tracking(3).foregroundStyle(Palette.bronze)
-            Text(session.status.configured ? "Make yourself\nat home." : "A little setup.\nA lot of possibility.")
+            Text(!session.loaded ? "Opening your\nworkspace…" : session.status.configured ? "Make yourself\nat home." : "A little setup.\nA lot of possibility.")
                 .font(.system(size: 46, weight: .medium, design: .rounded)).tracking(-1.6).lineSpacing(1)
-            Text(session.status.configured
+            Text(!session.loaded ? "Loading your saved connection and conversation history." : session.status.configured
                  ? "Your connection is saved. Open a conversation and tell Talos what you want to get done."
                  : "Connect a model and start talking. Your workspace and history stay here on your Mac.")
                 .font(.system(size: 16)).lineSpacing(6).foregroundStyle(Palette.muted).frame(maxWidth: 470, alignment: .leading)
@@ -183,7 +258,7 @@ struct MainView: View {
                     session.start(session.status.configured ? "chat" : (session.status.claude_available ? "quick-claude" : "chat"))
                 } label: {
                     HStack(spacing: 20) {
-                        Text(session.status.configured ? "Open chat" : (session.status.claude_available ? "Continue with Claude" : "Get started"))
+                        Text(!session.loaded ? "Loading settings…" : session.status.configured ? "Open chat" : (session.status.claude_available ? "Continue with Claude" : "Get started"))
                         Image(systemName: "arrow.right")
                     }.font(.system(size: 14, weight: .semibold)).padding(.horizontal, 18).padding(.vertical, 12)
                 }.buttonStyle(BronzeButtonStyle()).foregroundStyle(Palette.background).disabled(!session.loaded)
@@ -193,7 +268,7 @@ struct MainView: View {
                         .buttonStyle(.plain).foregroundStyle(Palette.muted).font(.system(size: 13))
                 }
             }.padding(.top, 5)
-            if !session.status.configured {
+            if session.loaded && !session.status.configured {
                 Text(session.status.claude_available
                      ? "Uses your Claude login and enables this Mac account. No API key to copy."
                      : "The guided setup helps you choose a model connection.")

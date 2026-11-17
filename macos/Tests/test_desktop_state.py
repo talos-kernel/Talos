@@ -15,13 +15,15 @@ def test_history_is_read_only_and_scoped_to_this_mac(tmp_path):
     db = tmp_path / "data/transcript.db"
     store = TranscriptStore(db)
     identity = f"cli:{os.getuid()}"
-    store.record(identity, asked="My question", answered="My answer", now=1)
+    answer = "**My answer**\n\n```python\nif True:\n    print('kept')\n```"
+    store.record(identity, asked="My question\nwith a second line", answered=answer, now=1)
     store.record("telegram:999", asked="Another channel", answered="Must not show", now=2)
     store.close()
     before = db.read_bytes()
     result = history(tmp_path)
     assert result["total"] == 1 and result["available"]
-    assert result["turns"][0]["asked"] == "My question"
+    assert result["turns"][0]["asked"] == "My question\nwith a second line"
+    assert result["turns"][0]["answered"] == answer
     assert "Must not show" not in str(result)
     assert db.read_bytes() == before
 

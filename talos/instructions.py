@@ -143,6 +143,8 @@ def assemble_system_prompt(
     user_path: Path = USER_PATH,
 ) -> str:
     """Einziger Aufbaupfad fuer CLI- und API-Reasoner."""
+    from .runtime_facts import release_context
+
     return (
         load_instruction_context(
             soul_path=soul_path, agents_path=agents_path, user_path=user_path
@@ -152,4 +154,5 @@ def assemble_system_prompt(
         + skills
         + final_protocol
         + ANSWER_FORMAT
+        + release_context()
     )

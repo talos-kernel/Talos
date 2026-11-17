@@ -46,7 +46,7 @@ def _all_buttons(ticket):
 def test_buttons_carry_opaque_data_not_the_choice():
     ticket = _ask(_desk())
     buttons = _all_buttons(ticket)
-    assert len(buttons) == len(OPTIONS) + 1  # plus „keine Antwort"
+    assert len(buttons) == len(OPTIONS) + 2  # Other and No answer
     for button in buttons:
         assert button.data.startswith(CALLBACK_PREFIX)
         payload = button.data[len(CALLBACK_PREFIX):]
@@ -240,7 +240,7 @@ def test_long_option_labels_are_capped():
 def test_too_many_options_are_capped_not_refused():
     desk = _desk()
     ticket = _ask(desk, options=tuple(f"file-{i}.log" for i in range(20)))
-    assert len(_all_buttons(ticket)) == MAX_OPTIONS + 1
+    assert len(_all_buttons(ticket)) == MAX_OPTIONS + 2
     assert f"({MAX_OPTIONS} of 20 options shown)" in ticket.message.text
 
 
@@ -404,4 +404,9 @@ def test_only_one_of_many_racing_clicks_wins():
     for thread in threads:
         thread.join(timeout=10)
     assert len(wins) == 1
-    assert desk.wait(ticket) == wins[0]
+    if wins[0].reason == AnswerReason.AWAITING_TEXT:
+        assert desk.pending(CHAT) is not None
+        answer = desk.resolve_text("typed choice", principal=OWNER, conversation=CHAT)
+        assert desk.wait(ticket) == answer
+    else:
+        assert desk.wait(ticket) == wins[0]

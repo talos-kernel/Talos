@@ -119,3 +119,15 @@ not a substitute for the updated artifact's installation and service checks.
 Telegram buffers decorative streaming prefixes until readable text follows. Qualify
 the signed correction independently with `--previous 0.20.2 --current 0.20.3`.
 The 0.20.2 work-card demo remains representative; no renderer or command preview changes.
+
+
+## Subsequent stable update: 0.20.4
+
+This update adds installed-version context, attended terminal formatting, multiline
+transcripts and bounded typed Other answers. Native Mac chat shares the existing
+identity, approval, queue and steering routes. Kernel permissions and dependency
+locks remain unchanged. Qualify the exact source and signed core bytes with
+`--previous 0.20.3 --current 0.20.4`, including question isolation, late/queued
+approval rejection, real-model execution and clean install/upgrade/rollback.
+The accompanying Mac app 0.4.0 remains an independently tested, unnotarized preview;
+core Stable does not claim Apple notarization or a stable desktop release.
