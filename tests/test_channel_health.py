@@ -100,16 +100,14 @@ def test_degraded_cli_is_visible_but_keeps_warning_exit_contract(tmp_path):
     assert "telegram" in out.getvalue() and "recovery not yet confirmed" in out.getvalue()
 
 
-@pytest.mark.parametrize("failure", ["timeout", "502", "401", "409", "dns"])
-def test_real_channel_recovers_with_same_offset_and_no_send(monkeypatch, tmp_path, failure):
+def _scripted_telegram(monkeypatch, tmp_path, responses):
+    """A real TelegramChannel in a real registry over a scripted wire and a fake clock."""
     db = tmp_path / "events.db"
     log = EventLog(db)
     now = [100.0]
     offsets = []
-    responses = [[], failure, [{"update_id": 7, "message": {
-        "from": {"id": 7}, "chat": {"id": 42}, "text": "hello"}}], []]
 
-    def get(url, **kwargs):
+    def get(_self, url, **kwargs):
         offsets.append(kwargs["params"]["offset"])
         result = responses.pop(0)
         if result == "timeout":
@@ -126,29 +124,63 @@ def test_real_channel_recovers_with_same_offset_and_no_send(monkeypatch, tmp_pat
     def forbidden(*args, **kwargs):
         pytest.fail("Polling recovery must not send messages or replay actions")
 
-    monkeypatch.setattr("talos.telegram.requests.get", get)
+    def sleep(seconds):
+        now[0] += seconds
+
+    monkeypatch.setattr(TelegramClient, "_poll_get", get)
     monkeypatch.setattr("talos.telegram.requests.post", forbidden)
     def emit(kind, payload):
         log.append(Event("poll", "ingress", kind, payload), now=now[0])
+    client = TelegramClient("fixture-token", 20, clock=lambda: now[0], sleep=sleep)
     registry = ChannelRegistry(
-        (TelegramChannel(TelegramClient("fixture-token", 20)),),
+        (TelegramChannel(client),),
         on_error=lambda name, error: emit("channel.error", {"channel": name, "error": str(error)}),
         on_ready=lambda name: emit("channel.ready", {"channel": name}),
         clock=lambda: now[0], sleep=lambda seconds: None,
     )
     kw = dict(db_path=db, schedule_db=tmp_path / "none", anchors_path=tmp_path / "absent", now=102)
+    return registry, log, now, offsets, kw
+
+
+HELLO = [{"update_id": 7, "message": {"from": {"id": 7}, "chat": {"id": 42}, "text": "hello"}}]
+
+
+@pytest.mark.parametrize("failure", [["401"], ["409"], ["dns"] * 6, ["502"] * 6,
+                                     ["timeout", "timeout"]])
+def test_real_channel_recovers_with_same_offset_and_no_send(monkeypatch, tmp_path, failure):
+    # A rejection, or a failure that outlasts the poll's own healing window, is
+    # recorded once and cleared only by a later successful poll.
+    registry, log, now, offsets, kw = _scripted_telegram(
+        monkeypatch, tmp_path, [[], *failure, HELLO, []])
     assert registry.poll_all() == []  # First proven poll, even if empty.
     assert registry.poll_all() == []  # Failure is retained.
     assert collect(**kw)["status"] == "degraded"
+    polled = len(offsets)
     assert registry.poll_all() == []  # Backoff does not touch the network.
-    assert offsets == [0, 0]
+    assert len(offsets) == polled and set(offsets) == {0}
     now[0] += 1
+    incoming = registry.poll_all()
+    assert len(incoming) == 1 and incoming[0].text == "hello"
+    assert registry.poll_all() == []
+    assert offsets[-2:] == [0, 8]
+    assert collect(**kw)["status"] == "ok"
+    rows = log.recent(20)
+    assert [r["type"] for r in reversed(rows)] == ["channel.ready", "channel.error", "channel.ready"]
+    assert "fixture-token" not in json.dumps(rows)
+    assert log.verify() is None
+
+
+@pytest.mark.parametrize("failure", ["timeout", "502", "dns"])
+def test_a_blip_the_poll_heals_is_not_a_channel_failure(monkeypatch, tmp_path, failure):
+    # One lost poll that the next attempt survives delivered the message late by a
+    # second, not never. Recording it as a failure taught operators to skim the log.
+    registry, log, _now, offsets, kw = _scripted_telegram(
+        monkeypatch, tmp_path, [[], failure, HELLO, []])
+    assert registry.poll_all() == []
     incoming = registry.poll_all()
     assert len(incoming) == 1 and incoming[0].text == "hello"
     assert registry.poll_all() == []
     assert offsets == [0, 0, 0, 8]
     assert collect(**kw)["status"] == "ok"
-    rows = log.recent(20)
-    assert [r["type"] for r in reversed(rows)] == ["channel.ready", "channel.error", "channel.ready"]
-    assert "fixture-token" not in json.dumps(rows)
+    assert [r["type"] for r in log.recent(20)] == ["channel.ready"]
     assert log.verify() is None

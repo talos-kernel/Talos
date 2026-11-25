@@ -243,8 +243,9 @@ def test_get_updates_keeps_ordinary_redacted_connection_error(monkeypatch) -> No
     def get(url: str, **_kwargs: object):
         raise requests.ConnectionError(f"read reset at {url}")
 
-    monkeypatch.setattr("talos.telegram.requests.get", get)
-    client = TelegramClient("private-token", 1)
+    monkeypatch.setattr(TelegramClient, "_poll_get", lambda _self, url, **kw: get(url, **kw))
+    # The poll retries a connection failure before reporting it; do not wait for real.
+    client = TelegramClient("private-token", 1, sleep=lambda _seconds: None)
 
     with pytest.raises(requests.ConnectionError) as caught:
         client.get_updates(0)
@@ -261,12 +262,12 @@ def test_get_updates_http_error_keeps_plain_type_without_raw_response(monkeypatc
     upstream = requests.HTTPError(f"502 at {response.url}", response=response)
 
     monkeypatch.setattr(
-        "talos.telegram.requests.get",
+        TelegramClient, "_poll_get",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(upstream),
     )
 
     with pytest.raises(requests.HTTPError) as caught:
-        TelegramClient("private-token", 1).get_updates(0)
+        TelegramClient("private-token", 1, sleep=lambda _seconds: None).get_updates(0)
 
     assert type(caught.value) is requests.HTTPError
     assert caught.value.response is None
