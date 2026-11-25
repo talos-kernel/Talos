@@ -11,6 +11,7 @@ import json
 import os
 import html
 import re
+import socket
 import threading
 import time
 from dataclasses import dataclass
@@ -19,6 +20,8 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.connection import HTTPConnection
 
 from . import documents
 from .activity_preview import command_preview, safe_label
@@ -65,6 +68,86 @@ _MUTATION_METHODS = frozenset({
     "sendChatAction", "sendPhoto", "sendDocument", "sendAudio", "sendVideo",
     "sendVoice", "sendAnimation",
 })
+
+# --- The long poll's own transport ---------------------------------------------------
+# Measured on a deployed instance, nine days: 150 read timeouts, 37 resets, 73 DNS
+# failures — nearly all single events the next poll survived. Every poll opened a new
+# TCP and TLS connection and resolved the name again, so every poll had three chances
+# to fail that a kept connection does not have. `getUpdates` with an unchanged offset
+# is a pure read: repeating it can neither skip nor duplicate an update. That is what
+# makes a retry safe HERE and nowhere else in this module — a send keeps its
+# single attempt (`DeliveryUncertain`).
+_POLL_CONNECT_TIMEOUT_S = 10
+# Fast failures (DNS, reset, 5xx) may heal for this long before the channel reports
+# them. Longer than a resolver hiccup, far shorter than anything an operator would
+# call an outage: silence stays bounded, which is the property `poll_all` asks for.
+_POLL_HEAL_WINDOW_S = 20.0
+_POLL_RETRY_DELAYS_S = (0.5, 1.0, 2.0, 4.0, 8.0)
+# Probe an idle poll after 15 s, give up after three unanswered probes 5 s apart. A
+# connection whose NAT entry vanished is then reported by the kernel after ~30 s
+# instead of being discovered when the 60 s read deadline passes.
+_KEEPALIVE_IDLE_S, _KEEPALIVE_INTERVAL_S, _KEEPALIVE_PROBES = 15, 5, 3
+
+
+def _keepalive_socket_options() -> list[tuple[int, int, int]]:
+    options = list(HTTPConnection.default_socket_options)
+    options.append((socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1))
+    # Linux calls the idle time TCP_KEEPIDLE, macOS TCP_KEEPALIVE. A platform that
+    # offers neither still gets SO_KEEPALIVE with the system's own schedule.
+    idle = getattr(socket, "TCP_KEEPIDLE", None) or getattr(socket, "TCP_KEEPALIVE", None)
+    for name, value in (
+        (idle, _KEEPALIVE_IDLE_S),
+        (getattr(socket, "TCP_KEEPINTVL", None), _KEEPALIVE_INTERVAL_S),
+        (getattr(socket, "TCP_KEEPCNT", None), _KEEPALIVE_PROBES),
+    ):
+        if name is not None:
+            options.append((socket.IPPROTO_TCP, name, value))
+    return options
+
+
+class _KeepAliveAdapter(HTTPAdapter):
+    def init_poolmanager(self, *args: object, **kwargs: object) -> None:
+        kwargs["socket_options"] = _keepalive_socket_options()
+        super().init_poolmanager(*args, **kwargs)
+
+
+def _new_poll_session() -> requests.Session:
+    """One connection for the long poll only; sends keep their per-call connections."""
+    session = requests.Session()
+    session.mount("https://", _KeepAliveAdapter(pool_connections=1, pool_maxsize=1))
+    return session
+
+
+def _poll_retry_delay(error: Exception, attempt: int) -> float | None:
+    """Seconds to wait before polling again — or None when waiting cannot help.
+
+    A rejection (401 revoked token, 409 second poller, any other 4xx) is a fact about
+    this installation, not about the network. Retrying it would only delay the one
+    message the operator needs.
+    """
+    if attempt >= len(_POLL_RETRY_DELAYS_S):
+        return None
+    own = _POLL_RETRY_DELAYS_S[attempt]
+    if isinstance(error, requests.HTTPError):
+        status = getattr(error, "status_code", None)
+        if status == 429:
+            asked = getattr(error, "retry_after", None)
+            return float(asked) if asked is not None else own
+        return own if isinstance(status, int) and status >= 500 else None
+    if isinstance(error, (requests.ConnectionError, requests.Timeout)):
+        return own
+    return None
+
+
+def _api_retry_after(response: object) -> int | None:
+    """Telegram's own wait for a 429, only if it is a positive whole number."""
+    try:
+        value = response.json()["parameters"]["retry_after"]  # type: ignore[union-attr]
+    except Exception:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
 
 
 class TelegramApiError(requests.HTTPError):
@@ -368,9 +451,14 @@ class TelegramClient:
         *,
         inbox: object = None,
         may_fetch: Callable[[int], bool] = lambda _user_id: False,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._token = token
         self._poll_timeout_s = poll_timeout_s
+        self._clock, self._sleep = clock, sleep
+        # Only the polling thread touches this; sends never share the connection.
+        self._poll_session: requests.Session | None = None
         # Fail-closed mit Absicht: ohne beides bleibt es beim bisherigen Verhalten. Der
         # Kanal parst Updates, BEVOR der Kernel ueber die Kennung geurteilt hat — ein
         # Abruf ohne diese Frage hiesse, dass jeder Fremde, der den Bot findet, Dateien
@@ -417,7 +505,13 @@ class TelegramClient:
             if not mutation:
                 # Reads cannot duplicate an outbound mutation. Keep their established
                 # requests exception type, but detach all response/request objects.
-                raise type(error)(meldung) from None
+                plain = type(error)(meldung)
+                # Plain numbers only, so the poll can tell a rejection from an
+                # outage without the raw response and its token-bearing URL.
+                if isinstance(status, int):
+                    plain.status_code = status  # type: ignore[attr-defined]
+                    plain.retry_after = _api_retry_after(response)  # type: ignore[attr-defined]
+                raise plain from None
             if mutation and (not isinstance(error, requests.HTTPError)
                              or not isinstance(status, int) or status >= 500):
                 # A timeout/reset or 5xx has no reliable negative acknowledgement.
@@ -576,14 +670,53 @@ class TelegramClient:
         except requests.RequestException as fehler:
             raise type(fehler)(self._redact(str(fehler))) from None
 
+    def _poll_get(self, url: str, **kw: object) -> "requests.Response":
+        if self._poll_session is None:
+            self._poll_session = _new_poll_session()
+        return self._poll_session.get(url, **kw)
+
+    def _drop_poll_session(self) -> None:
+        session, self._poll_session = self._poll_session, None
+        if session is not None:
+            try:
+                session.close()
+            except Exception:
+                pass  # A connection that failed may also fail to close; it is gone either way.
+
+    def _poll(self, offset: int) -> "requests.Response":
+        """One long poll that heals a short blip itself and reports everything else.
+
+        The window opens at the first failure. A read timeout has by then already cost
+        a whole long poll, so it gets exactly one fresh attempt: a second one is an
+        outage, and waiting it out would hide minutes of silence. What leaves this
+        method unhealed is the same exception as before, for `poll_all` to record.
+        """
+        attempt, first_failure, timed_out = 0, None, False
+        while True:
+            try:
+                return self._call(
+                    self._poll_get,
+                    "getUpdates",
+                    params={"offset": offset, "timeout": self._poll_timeout_s},
+                    timeout=(_POLL_CONNECT_TIMEOUT_S, self._poll_timeout_s + 10),
+                )
+            except requests.RequestException as error:
+                self._drop_poll_session()
+                now = self._clock()
+                first_failure = now if first_failure is None else first_failure
+                delay = _poll_retry_delay(error, attempt)
+                read_timeout = (isinstance(error, requests.Timeout)
+                                and not isinstance(error, requests.ConnectionError))
+                if (delay is None or (read_timeout and timed_out)
+                        or now - first_failure + delay > _POLL_HEAL_WINDOW_S):
+                    raise
+                timed_out = timed_out or read_timeout
+                attempt += 1
+                self._sleep(delay)
+
     def get_updates(self, offset: int) -> list[Update]:
         """Holt neue Text-Updates ab `offset`. Long-Poll; Nicht-Text wird ignoriert."""
-        resp = self._call(
-            requests.get,
-            "getUpdates",
-            params={"offset": offset, "timeout": self._poll_timeout_s},
-            timeout=self._poll_timeout_s + 10,
-        )
+        resp = self._poll(offset)
         payload = resp.json()
         updates: list[Update] = []
         for item in payload.get("result", []):

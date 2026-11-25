@@ -9,6 +9,17 @@ remain historical snapshots. Beta does not mean error-free operation.
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep one connection for the Telegram long poll instead of opening a new TCP and TLS
+  connection and resolving the name for every poll. Probe the idle connection so a
+  dropped route is noticed after about 30 seconds rather than at the read deadline.
+- Let the long poll heal a short network blip itself: a timeout, reset, DNS failure,
+  5xx or short rate limit is retried with the unchanged offset for at most 20 seconds
+  before it is recorded as `channel.error`. A second consecutive read timeout, a
+  lasting outage and every rejection (401, 409 and other 4xx) are reported as before.
+  Sends are unaffected and keep their single attempt.
+
 ## [0.20.4] — 2026-11-17
 
 ### Changed

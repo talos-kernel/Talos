@@ -30,10 +30,10 @@
 </p>
 
 <p align="center">
-  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3583).
+  <!-- ⚠️ Bewusst „tests“, nicht „passing“: die Zahl kommt aus dem Einsammeln (3607).
        Plattformabhaengige Sandbox- und Repository-Pruefungen koennen uebersprungen werden;
        `test_site_claims` prueft deshalb die gesammelte Zahl statt ein Umgebungsresultat. -->
-  <img src="https://img.shields.io/badge/tests-3583-2e7d32.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-3607-2e7d32.svg" alt="Tests">
   <img src="https://img.shields.io/badge/red%20team-277%2F277-2e7d32.svg" alt="Red team">
   <img src="https://img.shields.io/badge/gate%20path-996%20lines-8a4318.svg" alt="Gate path">
   <img src="https://img.shields.io/badge/tools-37%20gated-8a4318.svg" alt="Tools">

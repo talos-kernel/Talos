@@ -27,7 +27,7 @@ def test_callback_query_is_parsed_as_inbound_data_not_executed(monkeypatch) -> N
             },
         }]
     }
-    monkeypatch.setattr("talos.telegram.requests.get", lambda *a, **k: _response(payload))
+    monkeypatch.setattr(TelegramClient, "_poll_get", lambda *a, **k: _response(payload))
     update = TelegramClient("secret", 1).get_updates(0)[0]
     inbound = to_inbound(update)
     assert inbound.text == ""
@@ -98,7 +98,7 @@ def test_a_callback_is_acknowledged_at_poll_time_not_after_the_queue(monkeypatch
             },
         }]
     }
-    monkeypatch.setattr("talos.telegram.requests.get", lambda *a, **k: _response(payload))
+    monkeypatch.setattr(TelegramClient, "_poll_get", lambda *a, **k: _response(payload))
     monkeypatch.setattr("talos.telegram.requests.post", post)
     updates = TelegramChannel(TelegramClient("secret", 1)).poll()
     assert updates[0].callback is not None
